@@ -32,7 +32,7 @@
 <body>
 <div id="loading">加载泳池场景…</div>
 <div id="hud">拖动环视 · 滚轮缩放 · 点击躺椅靠近 · 水面滑动推浪</div>
-<div id="hint">果冻水体 · VibeSticker</div>
+<div id="hint">果冻水体 · 窗外日照循环 · VibeSticker</div>
 <button type="button" id="orientBtn">开启陀螺仪控水</button>
 <div id="err" role="alert"></div>
 <aside id="panel" aria-live="polite">
@@ -114,10 +114,28 @@ controls.minAzimuthAngle = AZ_MIN;
 controls.maxAzimuthAngle = AZ_MAX;
 controls.update();
 
-scene.add(new THREE.HemisphereLight(0xdfefff, 0x6a5a48, 1.15));
-const sun = new THREE.DirectionalLight(0xfff2e0, 1.35); sun.position.set(4, 10, 6); scene.add(sun);
-const fill = new THREE.DirectionalLight(0xb8d4ff, 0.45); fill.position.set(-6, 4, -4); scene.add(fill);
-const rim = new THREE.DirectionalLight(0xffe8c8, 0.35); rim.position.set(2, 3, -8); scene.add(rim);
+const ambient = new THREE.AmbientLight(0xfff2dd, 0.22);
+scene.add(ambient);
+const hemi = new THREE.HemisphereLight(0xdfefff, 0x6a5a48, 0.55);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2e0, 1.55);
+sun.position.set(2, 12, -14);
+sun.target.position.set(0, 1.0, 0);
+scene.add(sun); scene.add(sun.target);
+const fill = new THREE.DirectionalLight(0xb8d4ff, 0.28);
+fill.position.set(6, 5, 8);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffe8c8, 0.25);
+rim.position.set(-4, 4, 3);
+scene.add(rim);
+// sunlight pouring in through the big window (-Z)
+const windowSun = new THREE.DirectionalLight(0xfff0d8, 1.1);
+windowSun.position.set(0, 6, -10);
+windowSun.target.position.set(0, 0.8, 1.5);
+scene.add(windowSun); scene.add(windowSun.target);
+const bounce = new THREE.PointLight(0xffd2a0, 0.45, 16, 1.6);
+bounce.position.set(0, 2.2, -2.2);
+scene.add(bounce);
 
 const outdoor = new THREE.Group(); scene.add(outdoor);
 const buildingMats = [
@@ -126,11 +144,13 @@ const buildingMats = [
   new THREE.MeshStandardMaterial({ color: 0x5a6a78, roughness: 0.8, metalness: 0.08 }),
   new THREE.MeshStandardMaterial({ color: 0x9aa8b5, roughness: 0.75, metalness: 0.05 }),
 ];
+const cityWinMats = [];
 function makeBuilding(x, z, w, d, h, mat) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   mesh.position.set(x, h * 0.5 - 0.2, z); outdoor.add(mesh);
-  const win = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, h * 0.55, 0.05),
-    new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0x223344, emissiveIntensity: 0.25, roughness: 0.35 }));
+  const winMat = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xffe6a0, emissiveIntensity: 0.08, roughness: 0.35 });
+  cityWinMats.push(winMat);
+  const win = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, h * 0.55, 0.05), winMat);
   win.position.set(x, h * 0.42, z + d * 0.5 + 0.02); outdoor.add(win);
 }
 const rnd = (() => { let a = 42; return () => { a = (a * 16807) % 2147483647; return (a - 1) / 2147483646; }; })();
@@ -147,6 +167,10 @@ function makeCar(color) {
   body.position.y = 0.22; g.add(body);
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.24, 0.38), new THREE.MeshStandardMaterial({ color: 0xa8c8e8, roughness: 0.3 }));
   cabin.position.set(-0.05, 0.42, 0); g.add(cabin);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.28), new THREE.MeshStandardMaterial({ color: 0xfff2cc, emissive: 0xfff0c0, emissiveIntensity: 0.2 }));
+  head.position.set(0.42, 0.22, 0); g.add(head); g.userData.head = head.material;
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.28), new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0xff2200, emissiveIntensity: 0.15 }));
+  tail.position.set(-0.42, 0.22, 0); g.add(tail); g.userData.tail = tail.material;
   return g;
 }
 for (let i = 0; i < 4; i++) {
@@ -156,6 +180,103 @@ for (let i = 0; i < 4; i++) {
   car.userData.laneZ = car.position.z;
   outdoor.add(car); cars.push(car);
 }
+
+/* ========== Daylight cycle through the window (slow loop) ========== */
+// timeOfDay 0–24; one full day ≈ 210s (偏慢、一直循环)
+const DAY_CYCLE_MS = 210000;
+const DAY_START_H = 7.5; // start mid-morning
+const DAY_KEYS = [
+  { h: 0,  name: '深夜', amb: [0x6a7f9e, 0.10], sunCol: 0x8ba3c7, sunInt: 0.04,
+    sunPos: [-6, 10, -12], winInt: 0.05, bounceInt: 0.05, fillInt: 0.08, hemiInt: 0.12, rimInt: 0.05,
+    sky: 0x0c1220, fog: 0x0a1018, hemiSky: 0x4a5a78, hemiGround: 0x1a1520, exposure: 0.88 },
+  { h: 5.5, name: '黎明', amb: [0xffb08a, 0.16], sunCol: 0xffb08a, sunInt: 0.85,
+    sunPos: [-14, 4.5, -16], winInt: 0.7, bounceInt: 0.35, fillInt: 0.12, hemiInt: 0.28, rimInt: 0.15,
+    sky: 0xc8a0d0, fog: 0x3a2848, hemiSky: 0xffc8b0, hemiGround: 0x4a3028, exposure: 0.98 },
+  { h: 8.5, name: '上午', amb: [0xfff2dd, 0.24], sunCol: 0xfff4e6, sunInt: 1.55,
+    sunPos: [-8, 11, -15], winInt: 1.15, bounceInt: 0.5, fillInt: 0.22, hemiInt: 0.5, rimInt: 0.22,
+    sky: 0x8ec8e8, fog: 0x7aa0b8, hemiSky: 0xdfefff, hemiGround: 0x6a5a48, exposure: 1.08 },
+  { h: 12.5, name: '正午', amb: [0xfff8f0, 0.30], sunCol: 0xfff2dd, sunInt: 2.05,
+    sunPos: [1, 16, -12], winInt: 1.55, bounceInt: 0.65, fillInt: 0.28, hemiInt: 0.62, rimInt: 0.2,
+    sky: 0x6eb8e0, fog: 0x6a98b0, hemiSky: 0xe8f4ff, hemiGround: 0x7a6a58, exposure: 1.14 },
+  { h: 16.5, name: '下午', amb: [0xffe8c8, 0.24], sunCol: 0xffd8a8, sunInt: 1.7,
+    sunPos: [9, 10, -14], winInt: 1.25, bounceInt: 0.55, fillInt: 0.2, hemiInt: 0.48, rimInt: 0.28,
+    sky: 0x9ec0d8, fog: 0x7a98a8, hemiSky: 0xffe8d0, hemiGround: 0x6a5848, exposure: 1.08 },
+  { h: 18.5, name: '黄昏', amb: [0xff8a4c, 0.18], sunCol: 0xff8a4c, sunInt: 1.85,
+    sunPos: [13, 5.5, -15], winInt: 1.6, bounceInt: 0.7, fillInt: 0.14, hemiInt: 0.32, rimInt: 0.35,
+    sky: 0xe89bb5, fog: 0x6b4c7a, hemiSky: 0xffb090, hemiGround: 0x4a2830, exposure: 1.05 },
+  { h: 20.5, name: '夜晚', amb: [0x8ba3c7, 0.11], sunCol: 0x8ba3c7, sunInt: 0.06,
+    sunPos: [4, 12, -12], winInt: 0.06, bounceInt: 0.08, fillInt: 0.08, hemiInt: 0.14, rimInt: 0.08,
+    sky: 0x12182a, fog: 0x0c101c, hemiSky: 0x4a5a78, hemiGround: 0x1a1520, exposure: 0.9 },
+  { h: 24, name: '深夜', amb: [0x6a7f9e, 0.10], sunCol: 0x8ba3c7, sunInt: 0.04,
+    sunPos: [-6, 10, -12], winInt: 0.05, bounceInt: 0.05, fillInt: 0.08, hemiInt: 0.12, rimInt: 0.05,
+    sky: 0x0c1220, fog: 0x0a1018, hemiSky: 0x4a5a78, hemiGround: 0x1a1520, exposure: 0.88 },
+];
+const _cA = new THREE.Color(), _cB = new THREE.Color(), _cOut = new THREE.Color();
+const _vA = new THREE.Vector3(), _vB = new THREE.Vector3();
+const phaseEl = document.getElementById('hint');
+const SUN_PEAK = Math.max(...DAY_KEYS.map((k) => k.sunInt)) || 1;
+
+function lerpDayKeys(hour) {
+  const h = ((hour % 24) + 24) % 24;
+  let i = 0;
+  while (i < DAY_KEYS.length - 1 && DAY_KEYS[i + 1].h < h) i++;
+  const a = DAY_KEYS[i], b = DAY_KEYS[Math.min(i + 1, DAY_KEYS.length - 1)];
+  const span = (b.h - a.h) || 1;
+  const u = Math.min(1, Math.max(0, (h - a.h) / span));
+  const e = u * u * (3 - 2 * u);
+  return { a, b, e, name: e < 0.5 ? a.name : b.name, hour: h };
+}
+
+function applyDayCycle(hour) {
+  const { a, b, e, name, hour: h } = lerpDayKeys(hour);
+  ambient.color.set(a.amb[0]).lerp(_cA.set(b.amb[0]), e);
+  ambient.intensity = a.amb[1] + (b.amb[1] - a.amb[1]) * e;
+  sun.color.set(a.sunCol).lerp(_cA.set(b.sunCol), e);
+  sun.intensity = a.sunInt + (b.sunInt - a.sunInt) * e;
+  _vA.set(...a.sunPos); _vB.set(...b.sunPos);
+  sun.position.copy(_vA).lerp(_vB, e);
+  sun.target.updateMatrixWorld();
+
+  windowSun.color.copy(sun.color);
+  windowSun.intensity = a.winInt + (b.winInt - a.winInt) * e;
+  windowSun.position.set(sun.position.x * 0.35, Math.max(3.5, sun.position.y * 0.45), -10);
+  windowSun.target.updateMatrixWorld();
+  bounce.color.copy(sun.color);
+  bounce.intensity = a.bounceInt + (b.bounceInt - a.bounceInt) * e;
+
+  fill.intensity = a.fillInt + (b.fillInt - a.fillInt) * e;
+  rim.intensity = a.rimInt + (b.rimInt - a.rimInt) * e;
+  rim.color.copy(sun.color);
+  hemi.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * e;
+  hemi.color.set(a.hemiSky).lerp(_cA.set(b.hemiSky), e);
+  hemi.groundColor.set(a.hemiGround).lerp(_cA.set(b.hemiGround), e);
+
+  const skyC = _cOut.set(a.sky).lerp(_cA.set(b.sky), e);
+  scene.background.copy(skyC);
+  scene.fog.color.set(a.fog).lerp(_cA.set(b.fog), e);
+  renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
+  renderer.setClearColor(skyC.getHex(), 1);
+
+  // drive jelly light from sun
+  waterUniforms.uLightDir.value.copy(sun.position).normalize();
+
+  const sunK = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
+  const nightK = Math.pow(1 - sunK, 1.35);
+  cityWinMats.forEach((wm, i) => {
+    wm.emissiveIntensity = 0.05 + nightK * (0.55 + 0.7 * Math.abs(Math.sin(performance.now() * 0.0007 + i * 0.37)));
+  });
+  for (const car of cars) {
+    if (car.userData.head) car.userData.head.emissiveIntensity = 0.15 + nightK * 1.7;
+    if (car.userData.tail) car.userData.tail.emissiveIntensity = 0.1 + nightK * 1.3;
+  }
+
+  const hh = Math.floor(h);
+  const mm = Math.floor((h - hh) * 60);
+  phaseEl.textContent = `果冻水体 · ${name} ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} · 窗外日照循环`;
+  return { sunK, nightK, name, hour: h };
+}
+
+const dayT0 = performance.now() - (DAY_START_H / 24) * DAY_CYCLE_MS;
 
 /* ========== Jelly water: custom grid + shader (replace glTF water) ========== */
 const MAX_WAKES = 12;
@@ -536,6 +657,10 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(0.05, clock.getDelta());
   const t = clock.getElapsedTime();
+  const cycleT = ((performance.now() - dayT0) % DAY_CYCLE_MS) / DAY_CYCLE_MS;
+  const timeOfDay = cycleT * 24;
+  applyDayCycle(timeOfDay);
+
   waterUniforms.uTime.value = t;
   waterUniforms.uCamPos.value.copy(camera.position);
   syncWakeUniforms(t);
