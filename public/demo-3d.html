@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VibeSticker · 3D 房间 · 窗景占位</title>
+<title>VibeSticker · 3D 房间 · 窗外城市</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:100%;height:100%;overflow:hidden;background:#1a1210;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -368,68 +368,170 @@ for (const [px, py] of panePositions) {
   room.add(inner);
 }
 
-// —— 窗外：果冻海逐帧动画（视觉总监素材抽帧 → 图集，仅窗外）——
-// 所有窗外几何体都在后墙外侧（z < WALL_Z - 0.4），由不透明墙体遮挡，只能透过窗洞看到；相机被 clampIndoor 锁在室内。
+// —— 窗外：高楼 + 街道 + 来回车辆（仅窗外，不进室内）——
+// 全部几何 z < WALL_Z - 0.5，由不透明后墙遮挡；只能透过窗洞看见。
 const outside = new THREE.Group();
 scene.add(outside);
 
-// 兜底远景（贴图未加载/极端角度时）：不透明纯色，远在窗外
-const seaBackMat = new THREE.MeshBasicMaterial({ color: 0x3fb8b0, fog: false, toneMapped: false });
-const seaBack = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), seaBackMat);
-seaBack.position.set(0, winY, WALL_Z - 6);
-outside.add(seaBack);
+const cityMats = {
+  sky: new THREE.MeshBasicMaterial({ map: skyTex, color: 0x87b8e0, depthWrite: true, fog: false }),
+  asphalt: new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.95, metalness: 0.05 }),
+  sidewalk: new THREE.MeshStandardMaterial({ color: 0x6a6e74, roughness: 0.92, metalness: 0.02 }),
+  stripe: new THREE.MeshBasicMaterial({ color: 0xe8e0c8 }),
+  facadeA: new THREE.MeshStandardMaterial({ color: 0xb8c0c8, roughness: 0.78, metalness: 0.08 }),
+  facadeB: new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.82, metalness: 0.06 }),
+  facadeC: new THREE.MeshStandardMaterial({ color: 0xc8b8a8, roughness: 0.8, metalness: 0.04 }),
+  facadeD: new THREE.MeshStandardMaterial({ color: 0x7a8894, roughness: 0.75, metalness: 0.12 }),
+  glassLite: new THREE.MeshStandardMaterial({ color: 0x6a90b0, roughness: 0.35, metalness: 0.55, emissive: 0x1a3048, emissiveIntensity: 0.15 }),
+  roof: new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.9, metalness: 0.1 }),
+  carBody: new THREE.MeshStandardMaterial({ color: 0xd45848, roughness: 0.45, metalness: 0.35 }),
+  carDark: new THREE.MeshStandardMaterial({ color: 0x1a1e24, roughness: 0.55, metalness: 0.4 }),
+  carGlass: new THREE.MeshStandardMaterial({ color: 0x88a8c0, roughness: 0.25, metalness: 0.5 }),
+  head: new THREE.MeshStandardMaterial({ color: 0xfff0c0, emissive: 0xffe080, emissiveIntensity: 0.6, roughness: 0.4 }),
+  tail: new THREE.MeshStandardMaterial({ color: 0xff3030, emissive: 0xff1010, emissiveIntensity: 0.45, roughness: 0.5 }),
+  winGlow: new THREE.MeshStandardMaterial({ color: 0xffe8b0, emissive: 0xffcc66, emissiveIntensity: 0.0, roughness: 0.6 }),
+};
 
-// 海面画面：4:3（源竖屏 720×960 裁出无手/无礁石的纯水区域 540×405），按 4:3 平面显示，不拉伸
-const SEA_H = 10.2, SEA_W = SEA_H * 4 / 3;
-const seaMat = new THREE.MeshBasicMaterial({ color: 0x3fb8b0, fog: false, toneMapped: false, depthWrite: true });
-const seaPlane = new THREE.Mesh(new THREE.PlaneGeometry(SEA_W, SEA_H), seaMat);
-seaPlane.position.set(0, winY - 0.4, WALL_Z - 0.6);
-outside.add(seaPlane);
+function cityBox(w, h, d, material, x, y, z, parent) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  m.position.set(x, y, z);
+  m.castShadow = false;
+  m.receiveShadow = true;
+  (parent || outside).add(m);
+  return m;
+}
 
-const seaAnim = { ready: false, sheets: [], meta: null, frame: -1, acc: 0 };
-(async () => {
-  try {
-    const base = './media/jelly-sea/';
-    const meta = await (await fetch(base + 'atlas.json')).json();
-    const loader = new THREE.TextureLoader();
-    const load = (i) => new Promise((res, rej) => loader.load(base + `sheet-${i}.jpg`, res, undefined, rej));
-    for (let i = 0; i < meta.sheets; i++) {
-      const tex = await load(i);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.generateMipmaps = false;
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      tex.repeat.set(1 / meta.cols, 1 / meta.rows);
-      seaAnim.sheets.push(tex);
-      if (i === 0) { seaAnim.meta = meta; setSeaFrame(0); }
+// 远天空（窗外）
+const citySky = new THREE.Mesh(new THREE.PlaneGeometry(180, 100), cityMats.sky);
+citySky.position.set(0, 22, WALL_Z - 70);
+outside.add(citySky);
+
+// 街道更靠近窗，正对窗洞下方，保证能看见车流
+const STREET_Z = WALL_Z - 6.2;
+const STREET_Y = 2.15; // 抬高到窗台附近，保证车流在下半窗洞可读
+const STREET_W = 56;
+cityBox(STREET_W, 0.14, 8.5, cityMats.asphalt, 0, STREET_Y - 0.05, STREET_Z);
+cityBox(STREET_W, 0.16, 2.2, cityMats.sidewalk, 0, STREET_Y + 0.04, STREET_Z + 4.0);
+cityBox(STREET_W, 0.16, 2.0, cityMats.sidewalk, 0, STREET_Y + 0.04, STREET_Z - 4.0);
+for (let i = -12; i <= 12; i++) {
+  cityBox(1.2, 0.03, 0.16, cityMats.stripe, i * 2.3, STREET_Y + 0.04, STREET_Z);
+}
+
+const facades = [cityMats.facadeA, cityMats.facadeB, cityMats.facadeC, cityMats.facadeD];
+// 对面楼：中间留街景空隙；左右近楼推到窗洞外侧
+const buildingDefs = [
+  // x, w, d, h, z (绝对), facadeIdx
+  [-20, 4.4, 4.2, 28, STREET_Z - 10, 0],
+  [-15.2, 3.8, 3.8, 34, STREET_Z - 8, 1],
+  [-10.8, 3.6, 4.0, 22, STREET_Z - 12, 2],
+  [-6.6, 3.4, 3.6, 30, STREET_Z - 9, 3],
+  // 中央更远、稍矮，露出天空与街景
+  [-2.2, 3.0, 3.2, 18, STREET_Z - 16, 0],
+  [2.0, 3.2, 3.4, 20, STREET_Z - 15, 1],
+  [6.4, 3.6, 3.8, 28, STREET_Z - 9, 2],
+  [10.6, 3.8, 4.0, 24, STREET_Z - 11, 3],
+  [15.0, 4.0, 3.8, 32, STREET_Z - 8, 0],
+  [19.6, 4.4, 4.2, 26, STREET_Z - 10, 1],
+  // 第二排更远
+  [-12, 5.0, 4.5, 40, STREET_Z - 22, 2],
+  [0.0, 4.5, 4.0, 36, STREET_Z - 24, 3],
+  [12, 5.0, 4.5, 38, STREET_Z - 21, 0],
+  // 近侧左右（窗外两侧，不挡正中街景）
+  [-9.8, 2.8, 2.6, 11, WALL_Z - 2.8, 1],
+  [9.8, 2.8, 2.6, 12, WALL_Z - 2.6, 2],
+];
+const cityWindows = [];
+buildingDefs.forEach(([bx, bw, bd, bh, bz, fi]) => {
+  cityBox(bw, bh, bd, facades[fi], bx, STREET_Y + bh / 2, bz);
+  cityBox(bw * 0.92, 0.4, bd * 0.92, cityMats.roof, bx, STREET_Y + bh + 0.15, bz);
+  const cols = Math.max(2, Math.floor(bw / 0.95));
+  const rows = Math.max(3, Math.floor(bh / 1.5));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (Math.random() < 0.18) continue;
+      const wx = bx - bw / 2 + 0.5 + c * ((bw - 0.8) / Math.max(1, cols - 1));
+      const wy = STREET_Y + 1.2 + r * ((bh - 2.2) / Math.max(1, rows - 1));
+      const wz = bz + bd / 2 + 0.05;
+      const lit = Math.random() > 0.5;
+      const wm = lit ? cityMats.winGlow.clone() : cityMats.glassLite.clone();
+      cityBox(0.4, 0.52, 0.06, wm, wx, wy, wz);
+      if (lit) cityWindows.push(wm);
     }
-    seaAnim.ready = true;
-  } catch (err) {
-    console.warn('jelly-sea frames failed', err);
   }
-})();
+});
 
-function setSeaFrame(f) {
-  const m = seaAnim.meta;
-  const per = m.cols * m.rows;
-  const si = Math.floor(f / per);
-  const tex = seaAnim.sheets[si];
-  if (!tex) return;
-  const k = f % per, c = k % m.cols, r = Math.floor(k / m.cols);
-  tex.offset.set(c / m.cols, 1 - (r + 1) / m.rows);
-  if (seaMat.map !== tex) { seaMat.map = tex; seaMat.needsUpdate = true; }
-  seaAnim.frame = f;
+function makeCar(colorHex) {
+  const g = new THREE.Group();
+  const bodyMat = cityMats.carBody.clone();
+  bodyMat.color.setHex(colorHex);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.55, 1.1), bodyMat);
+  body.position.y = 0.5;
+  g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.5, 1.0), cityMats.carGlass);
+  cabin.position.set(-0.15, 0.95, 0);
+  g.add(cabin);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.1, 0.98), cityMats.carDark);
+  roof.position.set(-0.15, 1.22, 0);
+  g.add(roof);
+  for (const [sx, sz] of [[0.7, 0.55], [0.7, -0.55], [-0.7, 0.55], [-0.7, -0.55]]) {
+    const wh = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.18), cityMats.carDark);
+    wh.position.set(sx, 0.2, sz);
+    g.add(wh);
+  }
+  const headMat = cityMats.head.clone();
+  const tailMat = cityMats.tail.clone();
+  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.28), headMat);
+  hl.position.set(1.12, 0.52, 0);
+  g.add(hl);
+  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.28), tailMat);
+  tl.position.set(-1.12, 0.52, 0);
+  g.add(tl);
+  g.userData.head = headMat;
+  g.userData.tail = tailMat;
+  outside.add(g);
+  return g;
 }
 
-function tickSea(dt) {
-  if (!seaAnim.ready) return;
-  seaAnim.acc += dt;
-  const step = 1 / seaAnim.meta.fps;
-  if (seaAnim.acc < step) return;
-  const n = Math.floor(seaAnim.acc / step);
-  seaAnim.acc -= n * step;
-  setSeaFrame((seaAnim.frame + n) % seaAnim.meta.frames);
+const CAR_COLORS = [0xd45848, 0x3a7bd5, 0xf0c040, 0x2ecc71, 0xe8e8ec, 0x8e44ad, 0xff7a3c, 0x1abc9c];
+const cars = [];
+const lanes = [
+  { z: STREET_Z + 1.55, dir: 1, y: STREET_Y, speed: 5.5 },
+  { z: STREET_Z - 1.45, dir: -1, y: STREET_Y, speed: 6.4 },
+];
+let ci = 0;
+lanes.forEach((lane, li) => {
+  for (let i = 0; i < 5; i++) {
+    const car = makeCar(CAR_COLORS[ci++ % CAR_COLORS.length]);
+    car.userData.lane = lane;
+    car.userData.phase = (i / 5) + li * 0.11;
+    car.rotation.y = lane.dir > 0 ? 0 : Math.PI;
+    cars.push(car);
+  }
+});
+const CAR_SPAN = 24;
+
+function tickCity(dt, sunK) {
+  const t = performance.now() * 0.001;
+  for (const car of cars) {
+    const lane = car.userData.lane;
+    const u = (car.userData.phase + t * (lane.speed / (CAR_SPAN * 2))) % 1;
+    const x = (u * 2 - 1) * CAR_SPAN * lane.dir;
+    car.position.set(x, lane.y, lane.z);
+    const night = 1 - sunK;
+    car.userData.head.emissiveIntensity = 0.35 + night * 1.5;
+    car.userData.tail.emissiveIntensity = 0.25 + night * 1.0;
+  }
 }
+
+// 廉价日光轴：透明加色平面，无 transmission
+const shaftMat = new THREE.MeshBasicMaterial({
+  color: 0xfff2d0, transparent: true, opacity: 0.0,
+  depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+});
+const shaft = new THREE.Mesh(new THREE.PlaneGeometry(5.8, 9.2), shaftMat);
+shaft.position.set(0, 4.5, WALL_Z + 3.0);
+shaft.rotation.x = -0.48;
+scene.add(shaft);
 
 // —— 家具 ——
 const deskY = 3.05;
@@ -492,26 +594,26 @@ const KEYS = [
   {
     t: 0.15, name: '清晨',
     amb: [0xffe8d0, 0.05],
-    sunCol: 0xfff2dc, sunInt: 2.7,
+    sunCol: 0xfff2dc, sunInt: 3.15,
     sunPos: [-9.5, 12.5, WALL_Z - 18],
-    spotCol: 0xfff2d8, spotInt: 2.05,
-    fillInt: 0.09, hemiInt: 0.36,
+    spotCol: 0xfff2d8, spotInt: 2.55,
+    fillInt: 0.12, hemiInt: 0.42,
     lampInt: 0.02,
     sky: ['#6ab0e8', '#a8d4f0', '#e8f0f8'],
     disc: { x: 180, y: 160, r: 42, color: '#fff6d0' },
-    exposure: 1.22, seaSparkle: 1.05, seaDeep: 0x087a82, seaShallow: 0x3fd4cc, wallTint: 0xd8c8b4,
+    exposure: 1.32, seaSparkle: 1.05, seaDeep: 0x087a82, seaShallow: 0x3fd4cc, wallTint: 0xd8c8b4,
   },
   {
     t: 0.38, name: '午后',
     amb: [0xfff5e8, 0.055],
-    sunCol: 0xfff8ef, sunInt: 2.85,
+    sunCol: 0xfff8ef, sunInt: 3.35,
     sunPos: [2.0, 16.5, WALL_Z - 14],
-    spotCol: 0xfff8e8, spotInt: 2.15,
-    fillInt: 0.1, hemiInt: 0.4,
+    spotCol: 0xfff8e8, spotInt: 2.75,
+    fillInt: 0.14, hemiInt: 0.48,
     lampInt: 0.0,
     sky: ['#4a90d0', '#7eb8e8', '#d0e8f8'],
     disc: { x: 256, y: 90, r: 48, color: '#fffce8' },
-    exposure: 1.25, seaSparkle: 1.15, seaDeep: 0x0a6e78, seaShallow: 0x40e0d0, wallTint: 0xdcccb8,
+    exposure: 1.38, seaSparkle: 1.15, seaDeep: 0x0a6e78, seaShallow: 0x40e0d0, wallTint: 0xdcccb8,
   },
   {
     t: 0.55, name: '傍晚',
@@ -628,11 +730,21 @@ function applyDayCycle(t) {
   scene.background.set(0x161210);
   renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
 
-  // 窗外果冻海随昼夜着色：白天原色，黄昏偏暖，夜晚压暗偏蓝
+  // 窗外城市 + 室内日光轴随昼夜
   const sunK = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
-  const seaBright = 0.18 + 0.82 * Math.pow(sunK, 0.7);
-  seaMat.color.set(0xffffff).lerp(_cA.set(skyMid), 0.28 * (1 - sunK) + 0.12).multiplyScalar(seaBright);
-  seaBackMat.color.set(0x3fb8b0).lerp(_cA.set(skyBot), 0.4).multiplyScalar(seaBright);
+  cityMats.sky.color.set(skyMid);
+  // 建筑窗灯光：夜晚亮起
+  const nightK = Math.pow(1 - sunK, 1.4);
+  for (const wm of cityWindows) wm.emissiveIntensity = 0.15 + nightK * 1.35;
+  // 窗光更强回弹：阳光直射时室内明显变亮
+  const spotNow = a.spotInt + (b.spotInt - a.spotInt) * e;
+  windowBounce.intensity = spotNow * (0.55 + 0.35 * sunK);
+  floorBounce.intensity = 0.14 + spotNow * (0.12 + 0.1 * sunK);
+  // 廉价日光轴（加色平面）
+  shaftMat.opacity = 0.02 + sunK * 0.07;
+  shaftMat.color.set(a.spotCol).lerp(_cA.set(b.spotCol), e);
+  shaft.position.x = sun.position.x * 0.08;
+  shaft.rotation.z = -sun.position.x * 0.012;
   glassMat.envMapIntensity = 1.05;
   glassTint.envMapIntensity = 0.5;
 
@@ -701,7 +813,8 @@ function tick(now) {
   lastNow = now;
   const cycleT = ((now - t0) % CYCLE_MS) / CYCLE_MS;
   applyDayCycle(cycleT);
-  tickSea(dt);
+  const sunKTick = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
+  tickCity(dt, sunKTick);
 
   if (anim) {
     const u = Math.min(1, (now - anim.t0) / anim.dur);
