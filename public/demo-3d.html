@@ -3,54 +3,37 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VibeSticker · 3D 房间 · 窗外海景循环</title>
+<title>VibeSticker · 3D · Across Spider-Verse</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{width:100%;height:100%;overflow:hidden;background:#1a1210;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
-  #hud{
-    position:fixed;top:0;left:0;right:0;z-index:10;
-    padding:14px 18px;text-align:center;
-    color:#fff8f0;font-size:15px;letter-spacing:.04em;
-    background:linear-gradient(180deg,rgba(26,18,16,.72),rgba(26,18,16,0));
-    pointer-events:none;user-select:none;
-  }
-  #phase{
-    position:fixed;bottom:16px;left:0;right:0;z-index:10;
-    text-align:center;color:rgba(255,248,240,.7);font-size:12px;
-    pointer-events:none;user-select:none;letter-spacing:.08em;
-  }
+  html,body{width:100%;height:100%;overflow:hidden;background:#12101a;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  #hud{position:fixed;top:0;left:0;right:0;z-index:10;padding:14px 18px;text-align:center;color:#fff8f0;font-size:15px;letter-spacing:.04em;background:linear-gradient(180deg,rgba(18,16,26,.75),rgba(18,16,26,0));pointer-events:none;user-select:none}
+  #phase{position:fixed;bottom:16px;left:0;right:0;z-index:10;text-align:center;color:rgba(255,248,240,.72);font-size:12px;pointer-events:none;user-select:none;letter-spacing:.08em}
   #c{display:block;width:100%;height:100%;touch-action:none}
-  #err{
-    display:none;position:fixed;inset:0;z-index:20;align-items:center;justify-content:center;
-    padding:24px;background:rgba(26,18,16,.92);color:#fff8f0;font-size:15px;line-height:1.6;
-    text-align:center;white-space:pre-wrap;
-  }
+  #err{display:none;position:fixed;inset:0;z-index:20;align-items:center;justify-content:center;padding:24px;background:rgba(18,16,26,.92);color:#fff8f0;font-size:15px;line-height:1.6;text-align:center;white-space:pre-wrap}
   #err.show{display:flex}
 </style>
 </head>
 <body>
 <div id="hud">拖动环视 · 滚轮缩放 · 点击显示器靠近</div>
-<div id="phase">昼夜循环 · 约 75 秒一轮</div>
+<div id="phase">昼夜循环 · 约 150 秒一轮 · Spider-Verse</div>
 <div id="err" role="alert"></div>
 <canvas id="c"></canvas>
 <script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
+{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-const CYCLE_MS = 75000;
+const CYCLE_MS = 150000;
 const phaseEl = document.getElementById('phase');
 const errEl = document.getElementById('err');
 function showErr(msg) {
@@ -74,43 +57,37 @@ try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'default' });
 }
 if (!renderer.getContext()) throw new Error('WebGL 不可用（当前设备/浏览器不支持）');
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.35 : 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.25 : 1.75));
 renderer.setSize(innerWidth, innerHeight, false);
-renderer.setClearColor(0x161210, 1);
-// 移动端也开软阴影（降分辨率），避免塑料平光
+renderer.setClearColor(0x12101a, 1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
-let composer = null;
-let bloomPass = null;
+renderer.toneMapping = THREE.NoToneMapping;
 
-// —— 房间再 ×2（相对上一版），全程室内 ——
-const ROOM_W = 24, ROOM_D = 20, WALL_H = 10;
+const ROOM_W = 22, ROOM_D = 18, WALL_H = 9.5;
 const WALL_Z = -ROOM_D / 2;
 const CAM_MARGIN = 1.4;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x161210);
+scene.background = new THREE.Color(0x12101a);
+scene.fog = new THREE.FogExp2(0x1a1520, 0.011);
 
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 120);
-camera.position.set(0, 5.2, 7.2);
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.15, 140);
+camera.position.set(1.2, 5.0, 6.8);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.enablePan = false;
-controls.target.set(0, 4.5, -6.0);
+controls.target.set(0, 4.2, -5.2);
 controls.minDistance = 2.0;
-controls.maxDistance = 18;
+controls.maxDistance = 16;
 controls.maxPolarAngle = Math.PI * 0.485;
-controls.minPolarAngle = 0.32;
-// 软限位：可越过「电脑边对齐拐角」一点，松手回弹；硬顶防穿帮
-const AZ_SOFT = 0.85;
-const AZ_HARD = 1.08;
+controls.minPolarAngle = 0.35;
+const AZ_SOFT = 0.85, AZ_HARD = 1.08;
 controls.minAzimuthAngle = -AZ_HARD;
-controls.maxAzimuthAngle =  AZ_HARD;
+controls.maxAzimuthAngle = AZ_HARD;
 controls.update();
 
 let orbitDragging = false;
@@ -130,619 +107,398 @@ function softAzimuth(dt) {
   const az = controls.getAzimuthalAngle();
   if (az > AZ_SOFT) {
     const goal = orbitDragging ? (AZ_SOFT + (az - AZ_SOFT) * 0.42) : AZ_SOFT;
-    const lambda = orbitDragging ? 10 : 7.2;
-    setAzimuth(THREE.MathUtils.damp(az, goal, lambda, dt));
+    setAzimuth(THREE.MathUtils.damp(az, goal, orbitDragging ? 10 : 7.2, dt));
   } else if (az < -AZ_SOFT) {
     const goal = orbitDragging ? (-AZ_SOFT + (az + AZ_SOFT) * 0.42) : -AZ_SOFT;
-    const lambda = orbitDragging ? 10 : 7.2;
-    setAzimuth(THREE.MathUtils.damp(az, goal, lambda, dt));
+    setAzimuth(THREE.MathUtils.damp(az, goal, orbitDragging ? 10 : 7.2, dt));
   }
 }
-
 function clampIndoor() {
-  const hx = ROOM_W / 2 - CAM_MARGIN;
-  const hz = ROOM_D / 2 - CAM_MARGIN;
+  const hx = ROOM_W / 2 - CAM_MARGIN, hz = ROOM_D / 2 - CAM_MARGIN;
   const p = camera.position;
   p.x = THREE.MathUtils.clamp(p.x, -hx, hx);
-  p.y = THREE.MathUtils.clamp(p.y, 2.4, WALL_H - 1.0);
+  p.y = THREE.MathUtils.clamp(p.y, 2.2, WALL_H - 1.0);
   p.z = THREE.MathUtils.clamp(p.z, -hz + 0.6, hz);
   const t = controls.target;
   t.x = THREE.MathUtils.clamp(t.x, -ROOM_W / 2 + 2.2, ROOM_W / 2 - 2.2);
   t.y = THREE.MathUtils.clamp(t.y, 1.6, WALL_H - 1.4);
-  // 允许注视点落到窗洞附近（窗外景色），但相机本身仍锁室内
   t.z = THREE.MathUtils.clamp(t.z, -ROOM_D / 2 - 4.0, ROOM_D / 2 - 1.8);
   if (p.distanceTo(t) < 1.2) {
     const dir = new THREE.Vector3().subVectors(t, p);
-    if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
-    else dir.normalize();
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1); else dir.normalize();
     t.copy(p).addScaledVector(dir, 1.4);
   }
 }
 
-// —— 灯光：窗外阳光为主 + 室内间接光（无假光柱）——
-const ambient = new THREE.AmbientLight(0xc8b8a8, 0.045);
-scene.add(ambient);
-
-// 天空半球：冷天光 / 暖地面回弹
-const hemi = new THREE.HemisphereLight(0xb8d4f0, 0x3a2a1c, 0.22);
-scene.add(hemi);
-
-// 主阳光：从窗外射入（方向光 + 柔和阴影）
-const sun = new THREE.DirectionalLight(0xffe2c0, 2.05);
-sun.castShadow = true;
-const shadowRes = isMobile ? 1024 : 2048;
-sun.shadow.mapSize.set(shadowRes, shadowRes);
-sun.shadow.camera.near = 4;
-sun.shadow.camera.far = 60;
-sun.shadow.camera.left = -12;
-sun.shadow.camera.right = 12;
-sun.shadow.camera.top = 12;
-sun.shadow.camera.bottom = -12;
-sun.shadow.bias = -0.00015;
-sun.shadow.normalBias = 0.04;
-sun.shadow.radius = isMobile ? 6.5 : 10;
-sun.shadow.camera.updateProjectionMatrix();
-sun.target.position.set(0, 2.8, 1.6);
-scene.add(sun);
-scene.add(sun.target);
-
-// 窗洞聚光：模拟窗框约束的光束（大 penumbra 更自然）
-const windowSpot = new THREE.SpotLight(0xfff0d8, 1.55, 36, Math.PI / 3.6, 0.72, 1.25);
-windowSpot.position.set(0, 5.6, WALL_Z + 0.15);
-windowSpot.target.position.set(0, 2.2, 2.4);
-windowSpot.castShadow = true;
-windowSpot.shadow.mapSize.set(isMobile ? 512 : 1024, isMobile ? 512 : 1024);
-windowSpot.shadow.bias = -0.00012;
-windowSpot.shadow.normalBias = 0.035;
-windowSpot.shadow.radius = isMobile ? 5 : 8;
-scene.add(windowSpot);
-scene.add(windowSpot.target);
-
-// 窗边暖色弹射（照亮窗前地面/桌面）
-const windowBounce = new THREE.PointLight(0xffe6c8, 0.85, 22, 1.75);
-windowBounce.position.set(0, 4.6, WALL_Z + 2.0);
-scene.add(windowBounce);
-
-// 地板冷色弱回弹，减轻死黑角
-const floorBounce = new THREE.PointLight(0xd8c8b0, 0.28, 18, 2);
-floorBounce.position.set(0, 0.6, 1.5);
-scene.add(floorBounce);
-
-// 前墙方向极弱补光（反弹）
-const fill = new THREE.DirectionalLight(0x9eb6d8, 0.12);
-fill.position.set(0, 6, 10);
-scene.add(fill);
-
-// 电影感冷补光（逆光侧）
-const rimFill = new THREE.DirectionalLight(0x6a90c8, 0.06);
-rimFill.position.set(-8, 5, 4);
-scene.add(rimFill);
-
-// 城市夜光回灌（夜晚从窗外渗入的冷暖混合）
-const cityGlow = new THREE.PointLight(0xffaa66, 0.0, 28, 1.6);
-cityGlow.position.set(0, 4.8, WALL_Z + 1.2);
-scene.add(cityGlow);
-
-const lamp = new THREE.PointLight(0xffcc88, 0.18, 16, 2);
-lamp.position.set(2.0, 5.2, 0.4);
-scene.add(lamp);
-
-
-// —— 程序贴图（木纹 / 石膏 / 地板）——
-function makeProcTex(draw, w = 512, h = 512, repeatX = 1, repeatY = 1, srgb = true) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeatX, repeatY);
-  tex.anisotropy = isMobile ? 2 : 8;
+// —— Cel gradient + helpers ——
+function makeGradientMap() {
+  const data = new Uint8Array([48, 130, 255]);
+  const tex = new THREE.DataTexture(data, 3, 1, THREE.RedFormat);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
   return tex;
 }
-function addNoise(ctx, w, h, amt) {
-  const img = ctx.getImageData(0, 0, w, h), d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = (Math.random() - 0.5) * amt;
-    d[i] = Math.max(0, Math.min(255, d[i] + n));
-    d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
-    d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
-  }
-  ctx.putImageData(img, 0, 0);
+const toonGrad = makeGradientMap();
+function toon(color, opts = {}) {
+  return new THREE.MeshToonMaterial({
+    color, gradientMap: toonGrad,
+    emissive: opts.emissive || 0x000000,
+    emissiveIntensity: opts.emissiveIntensity || 0,
+  });
 }
-const woodMap = makeProcTex((ctx, w, h) => {
-  ctx.fillStyle = '#8b5a3c';
-  ctx.fillRect(0, 0, w, h);
-  for (let y = 0; y < h; y++) {
-    const v = 0.85 + 0.15 * Math.sin(y * 0.07) + 0.08 * Math.sin(y * 0.31);
-    ctx.fillStyle = `rgba(${90 * v|0},${55 * v|0},${30 * v|0},${0.15 + (y % 7) * 0.01})`;
-    ctx.fillRect(0, y, w, 1);
-  }
-  for (let i = 0; i < 40; i++) {
-    const y = Math.random() * h;
-    ctx.strokeStyle = `rgba(60,30,15,${0.08 + Math.random() * 0.12})`;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    for (let x = 0; x < w; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.04 + i) * 3);
-    ctx.stroke();
-  }
-  addNoise(ctx, w, h, 12);
-}, 512, 512, 2, 2);
-
-const woodRough = makeProcTex((ctx, w, h) => {
-  ctx.fillStyle = '#a0a0a0';
-  ctx.fillRect(0, 0, w, h);
-  addNoise(ctx, w, h, 50);
-}, 256, 256, 2, 2, false);
-
-const plasterMap = makeProcTex((ctx, w, h) => {
-  ctx.fillStyle = '#e8dcc8';
-  ctx.fillRect(0, 0, w, h);
-  addNoise(ctx, w, h, 28);
-  for (let i = 0; i < 2800; i++) {
-    ctx.fillStyle = `rgba(${160+Math.random()*40|0},${140+Math.random()*30|0},${120|0},${0.03+Math.random()*0.06})`;
-    ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3);
-  }
-}, 512, 512, 2.2, 1.6);
-
-const floorMap = makeProcTex((ctx, w, h) => {
-  const plank = 48;
-  for (let y = 0; y < h; y += plank) {
-    const base = 95 + Math.random() * 25;
-    for (let x = 0; x < w; x += 160) {
-      const shade = base + (Math.random() - 0.5) * 18;
-      ctx.fillStyle = `rgb(${shade|0},${(shade * 0.68)|0},${(shade * 0.42)|0})`;
-      ctx.fillRect(x, y, 158, plank - 1);
-      // soft seam only
-      ctx.fillStyle = 'rgba(40,20,10,0.12)';
-      ctx.fillRect(x, y + plank - 2, 158, 1);
-      ctx.fillRect(x + 157, y, 1, plank);
-    }
-    // grain lines
-    ctx.strokeStyle = 'rgba(60,30,15,0.08)';
-    for (let gy = y + 4; gy < y + plank - 4; gy += 3) {
-      ctx.beginPath();
-      ctx.moveTo(0, gy);
-      for (let gx = 0; gx < w; gx += 10) ctx.lineTo(gx, gy + Math.sin(gx * 0.05 + y) * 1.2);
-      ctx.stroke();
-    }
-  }
-  addNoise(ctx, w, h, 16);
-}, 512, 512, 3, 3);
-
-const mat = {
-  floor: new THREE.MeshStandardMaterial({ map: floorMap, color: 0xffffff, roughness: 0.78, metalness: 0.04 }),
-  wall:  new THREE.MeshStandardMaterial({ map: plasterMap, color: 0xffffff, roughness: 0.9, metalness: 0.0 }),
-  wallBack: new THREE.MeshStandardMaterial({ map: plasterMap, color: 0xf2ebe0, roughness: 0.88, metalness: 0.0 }),
-  ceiling: new THREE.MeshStandardMaterial({ map: plasterMap, color: 0xfff8f0, roughness: 0.95, metalness: 0.0 }),
-  wood:  new THREE.MeshStandardMaterial({ map: woodMap, roughnessMap: woodRough, color: 0xffffff, roughness: 0.55, metalness: 0.08 }),
-  woodDark: new THREE.MeshStandardMaterial({ map: woodMap, color: 0x6a4530, roughness: 0.7, metalness: 0.05 }),
-  black: new THREE.MeshPhysicalMaterial({ color: 0x1a1a1c, roughness: 0.35, metalness: 0.55, clearcoat: 0.4, clearcoatRoughness: 0.3 }),
-  screen: new THREE.MeshStandardMaterial({ color: 0x0e2438, emissive: 0x1a4060, emissiveIntensity: 0.55, roughness: 0.25, metalness: 0.2 }),
-  skin:  new THREE.MeshStandardMaterial({ color: 0xe6b898, roughness: 0.62, metalness: 0.0 }),
-  cloth: new THREE.MeshStandardMaterial({ color: 0x3a5678, roughness: 0.85, metalness: 0.0 }),
-  hair:  new THREE.MeshStandardMaterial({ color: 0x1e1612, roughness: 0.92 }),
-  cup:   new THREE.MeshPhysicalMaterial({ color: 0xf5efe6, roughness: 0.25, metalness: 0.05, clearcoat: 0.5, clearcoatRoughness: 0.2 }),
-  trash: new THREE.MeshStandardMaterial({ color: 0x3e3e3c, roughness: 0.55, metalness: 0.25 }),
-  frame: new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 0.48, metalness: 0.04 }),
-  frameDark: new THREE.MeshStandardMaterial({ color: 0xd4ccc0, roughness: 0.58, metalness: 0.03 }),
-  sill:  new THREE.MeshStandardMaterial({ color: 0xeee6da, roughness: 0.5, metalness: 0.03 }),
+const PAL = {
+  peach: 0xe8c4a8, cream: 0xf5ede4, teal: 0x3aa6a1, magenta: 0xe85a8c,
+  ink: 0x1a1520, wood: 0x8b5a3c, woodDark: 0x5a3a28, navy: 0x1e2a44,
+  hoodie: 0x1a2238, screen: 0x2a1848,
 };
+let outlineCount = 0;
+function addOutline(mesh, scale = 1.034) {
+  if (isMobile && outlineCount > 55) return;
+  const om = new THREE.MeshBasicMaterial({ color: 0x0d0a12, side: THREE.BackSide });
+  const o = new THREE.Mesh(mesh.geometry, om);
+  o.scale.setScalar(scale);
+  o.castShadow = false; o.receiveShadow = false;
+  mesh.add(o);
+  outlineCount++;
+}
+function M(geo, mat, x, y, z, ol = true, os = 1.034) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  if (ol) addOutline(m, os);
+  return m;
+}
 
-function box(w, h, d, material, x, y, z) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
-}
-function rbox(w, h, d, material, x, y, z, r = 0.06, seg = 2) {
-  const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, seg, Math.min(r, Math.min(w, h, d) * 0.45)), material);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
-}
-function cyl(rTop, rBot, h, material, x, y, z, segs = 24) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, segs), material);
-  m.position.set(x, y, z);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
-}
+const ambient = new THREE.AmbientLight(0xf5e8dc, 0.24);
+scene.add(ambient);
+const hemi = new THREE.HemisphereLight(0x7ec8e3, 0x3a2a28, 0.32);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2dd, 1.85);
+sun.castShadow = true;
+const shadowRes = isMobile ? 1024 : 2048;
+sun.shadow.mapSize.set(shadowRes, shadowRes);
+sun.shadow.camera.near = 2; sun.shadow.camera.far = 70;
+sun.shadow.camera.left = -14; sun.shadow.camera.right = 14;
+sun.shadow.camera.top = 14; sun.shadow.camera.bottom = -14;
+sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.04;
+sun.shadow.radius = isMobile ? 2 : 3.2;
+sun.target.position.set(0, 3.0, 1.5);
+scene.add(sun); scene.add(sun.target);
+
+const windowSpot = new THREE.SpotLight(0xffd2a0, 1.45, 32, Math.PI / 3.5, 0.55, 1.2);
+windowSpot.position.set(0, 5.4, WALL_Z + 0.2);
+windowSpot.target.position.set(0, 2.5, 2.0);
+windowSpot.castShadow = !isMobile;
+scene.add(windowSpot); scene.add(windowSpot.target);
+const bounce = new THREE.PointLight(0xffc9a0, 0.55, 20, 1.8);
+bounce.position.set(0, 4.2, WALL_Z + 2.2);
+scene.add(bounce);
+const fill = new THREE.DirectionalLight(0x9ec8e8, 0.12);
+fill.position.set(4, 6, 8);
+scene.add(fill);
+const screenLight = new THREE.PointLight(0x6ec8ff, 0.05, 8, 2);
+screenLight.position.set(0, 4.6, -2.4);
+scene.add(screenLight);
+const deskLamp = new THREE.PointLight(0xffaa66, 0.0, 6, 2);
+deskLamp.position.set(1.6, 4.0, -1.8);
+scene.add(deskLamp);
 
 const room = new THREE.Group();
 scene.add(room);
+const matFloor = toon(0x2a2430);
+const matWall = toon(PAL.cream);
+const matWallBand = toon(PAL.peach);
+const matWallTeal = toon(PAL.teal);
+const matCeil = toon(0xe8e0d6);
+const matWood = toon(PAL.wood);
+const matWoodD = toon(PAL.woodDark);
+const matInk = toon(PAL.ink);
+const matHoodie = toon(PAL.hoodie);
+const matNavy = toon(PAL.navy);
+const matMagenta = toon(PAL.magenta);
+const matSkin = toon(0xe8b898);
+const matHair = toon(0x1a1210);
+const matFrame = toon(0xf0e8dc);
+const matTeal = toon(PAL.teal);
 
-// 围合六面（开窗洞的后墙除外）
-room.add(box(ROOM_W, 0.08, ROOM_D, mat.floor, 0, 0, 0));
-room.add(box(ROOM_W, 0.08, ROOM_D, mat.ceiling, 0, WALL_H, 0));
-room.add(box(0.1, WALL_H, ROOM_D, mat.wall, -ROOM_W / 2, WALL_H / 2, 0));
-room.add(box(0.1, WALL_H, ROOM_D, mat.wall, ROOM_W / 2, WALL_H / 2, 0));
-room.add(box(ROOM_W, WALL_H, 0.1, mat.wall, 0, WALL_H / 2, ROOM_D / 2)); // 前墙
+room.add(M(new THREE.BoxGeometry(ROOM_W, 0.12, ROOM_D), matFloor, 0, 0, 0));
+room.add(M(new THREE.BoxGeometry(ROOM_W, 0.1, ROOM_D), matCeil, 0, WALL_H, 0, true, 1.01));
+room.add(M(new THREE.BoxGeometry(0.14, WALL_H, ROOM_D), matWall, -ROOM_W / 2, WALL_H / 2, 0));
+room.add(M(new THREE.BoxGeometry(0.14, WALL_H, ROOM_D), matWall, ROOM_W / 2, WALL_H / 2, 0));
+room.add(M(new THREE.BoxGeometry(ROOM_W, WALL_H, 0.14), matWall, 0, WALL_H / 2, ROOM_D / 2));
 
-// —— 后墙开窗 ——
-const winW = 9.0, winH = 5.4, winY = 5.7;
-const winBottom = winY - winH / 2;
-const winTop = winY + winH / 2;
-const wallT = 0.28;
-const leftW = (ROOM_W - winW) / 2;
-room.add(box(leftW, WALL_H, wallT, mat.wallBack, -ROOM_W / 2 + leftW / 2, WALL_H / 2, WALL_Z));
-room.add(box(leftW, WALL_H, wallT, mat.wallBack, ROOM_W / 2 - leftW / 2, WALL_H / 2, WALL_Z));
-room.add(box(winW, winBottom, wallT, mat.wallBack, 0, winBottom / 2, WALL_Z));
-room.add(box(winW, WALL_H - winTop, wallT, mat.wallBack, 0, winTop + (WALL_H - winTop) / 2, WALL_Z));
+const winW = 8.5, winH = 5.0, winY = 5.4;
+const winBottom = winY - winH / 2, winTop = winY + winH / 2;
+const wallT = 0.32, leftW = (ROOM_W - winW) / 2;
+room.add(M(new THREE.BoxGeometry(leftW, WALL_H, wallT), matWall, -ROOM_W / 2 + leftW / 2, WALL_H / 2, WALL_Z));
+room.add(M(new THREE.BoxGeometry(leftW, WALL_H, wallT), matWall, ROOM_W / 2 - leftW / 2, WALL_H / 2, WALL_Z));
+room.add(M(new THREE.BoxGeometry(winW, winBottom, wallT), matWall, 0, winBottom / 2, WALL_Z));
+room.add(M(new THREE.BoxGeometry(winW, WALL_H - winTop, wallT), matWall, 0, winTop + (WALL_H - winTop) / 2, WALL_Z));
 
-// —— 精致窗框（外框 + 内凹止口 + 分格）——
-const casingD = 0.42, casingT = 0.22, casingZ = WALL_Z + 0.14;
-// 外框
-room.add(box(winW + casingT * 2, casingT, casingD, mat.frame, 0, winTop + casingT / 2, casingZ));
-room.add(box(winW + casingT * 2, casingT, casingD, mat.frame, 0, winBottom - casingT / 2, casingZ));
-room.add(box(casingT, winH + casingT * 2, casingD, mat.frame, -winW / 2 - casingT / 2, winY, casingZ));
-room.add(box(casingT, winH + casingT * 2, casingD, mat.frame, winW / 2 + casingT / 2, winY, casingZ));
-// 内凹止口（略深、略窄）
-const innerT = 0.1, innerD = 0.28, innerZ = WALL_Z + 0.02;
-room.add(box(winW - 0.04, innerT, innerD, mat.frameDark, 0, winTop - innerT / 2 - 0.02, innerZ));
-room.add(box(winW - 0.04, innerT, innerD, mat.frameDark, 0, winBottom + innerT / 2 + 0.02, innerZ));
-room.add(box(innerT, winH - 0.04, innerD, mat.frameDark, -winW / 2 + innerT / 2 + 0.02, winY, innerZ));
-room.add(box(innerT, winH - 0.04, innerD, mat.frameDark, winW / 2 - innerT / 2 - 0.02, winY, innerZ));
+const band1 = M(new THREE.BoxGeometry(0.1, 5.5, 4.5), matWallBand, -ROOM_W / 2 + 0.22, 5.0, -2.2);
+band1.rotation.x = 0.38; room.add(band1);
+const band2 = M(new THREE.BoxGeometry(0.1, 4.2, 3.6), matWallTeal, -ROOM_W / 2 + 0.24, 3.6, 1.8);
+band2.rotation.x = -0.28; room.add(band2);
+room.add(M(new THREE.BoxGeometry(4.0, 2.8, 0.1), matWallBand, ROOM_W / 2 - 3.5, 6.0, ROOM_D / 2 - 0.22));
+room.add(M(new THREE.BoxGeometry(2.2, 2.0, 0.1), matMagenta, ROOM_W / 2 - 5.8, 7.0, ROOM_D / 2 - 0.22));
 
-// 窗台：厚板 + 滴水沿 + 侧耳
-const sillDepth = 0.7, sillThick = 0.14, sillOverhang = 0.28;
-room.add(box(winW + casingT * 2 + sillOverhang * 2, sillThick, sillDepth, mat.sill,
-  0, winBottom - sillThick / 2 - 0.02, WALL_Z + sillDepth / 2 - 0.04));
-room.add(box(winW + casingT * 2 + sillOverhang * 2, 0.06, 0.05, mat.frameDark,
-  0, winBottom - sillThick - 0.03, WALL_Z + 0.12));
-room.add(box(0.08, sillThick + 0.04, sillDepth * 0.92, mat.sill,
-  -winW / 2 - casingT - sillOverhang + 0.04, winBottom - sillThick / 2 - 0.02, WALL_Z + sillDepth / 2 - 0.04));
-room.add(box(0.08, sillThick + 0.04, sillDepth * 0.92, mat.sill,
-  winW / 2 + casingT + sillOverhang - 0.04, winBottom - sillThick / 2 - 0.02, WALL_Z + sillDepth / 2 - 0.04));
+const casingT = 0.2, casingD = 0.38, casingZ = WALL_Z + 0.12;
+room.add(M(new THREE.BoxGeometry(winW + casingT * 2, casingT, casingD), matFrame, 0, winTop + casingT / 2, casingZ));
+room.add(M(new THREE.BoxGeometry(winW + casingT * 2, casingT, casingD), matFrame, 0, winBottom - casingT / 2, casingZ));
+room.add(M(new THREE.BoxGeometry(casingT, winH + casingT * 2, casingD), matFrame, -winW / 2 - casingT / 2, winY, casingZ));
+room.add(M(new THREE.BoxGeometry(casingT, winH + casingT * 2, casingD), matFrame, winW / 2 + casingT / 2, winY, casingZ));
+const mullT = 0.12;
+room.add(M(new THREE.BoxGeometry(mullT, winH - 0.1, 0.28), matFrame, 0, winY, WALL_Z + 0.1));
+room.add(M(new THREE.BoxGeometry(winW - 0.1, mullT, 0.28), matFrame, 0, winY, WALL_Z + 0.1));
+room.add(M(new THREE.BoxGeometry(winW + 0.6, 0.16, 0.55), matFrame, 0, winBottom - 0.12, WALL_Z + 0.28));
 
-// 分格：中梃 + 横档（带前后两层厚度感）
-const mullT = 0.12, mullD = 0.3, mullZ = WALL_Z + 0.1;
-function addMullion(w, h, d, x, y, z) {
-  room.add(box(w, h, d, mat.frame, x, y, z));
-  room.add(box(Math.max(0.04, w * 0.55), Math.max(0.04, h * 0.55), d * 0.55, mat.frameDark, x, y, z + 0.04));
-}
-addMullion(mullT, winH - 0.08, mullD, 0, winY, mullZ);
-addMullion(winW - 0.08, mullT, mullD, 0, winY, mullZ);
-// 外圈窄压条
-const lip = 0.07;
-addMullion(winW - 0.06, lip, mullD * 0.85, 0, winTop - lip / 2 - 0.01, mullZ);
-addMullion(winW - 0.06, lip, mullD * 0.85, 0, winBottom + lip / 2 + 0.01, mullZ);
-addMullion(lip, winH - 0.06, mullD * 0.85, -winW / 2 + lip / 2 + 0.01, winY, mullZ);
-addMullion(lip, winH - 0.06, mullD * 0.85, winW / 2 - lip / 2 - 0.01, winY, mullZ);
-
-// 天空纹理（兼作玻璃 envMap，无 transmission）
-const skyCanvas = document.createElement('canvas');
-skyCanvas.width = 512; skyCanvas.height = 512;
-const skyCtx = skyCanvas.getContext('2d');
-const skyTex = new THREE.CanvasTexture(skyCanvas);
-skyTex.colorSpace = THREE.SRGBColorSpace;
-// 玻璃 env 用克隆，避免改 mapping 搞坏天空 mesh 的 UV 采样
-const skyEnv = skyTex.clone();
-skyEnv.mapping = THREE.EquirectangularReflectionMapping;
-skyEnv.colorSpace = THREE.SRGBColorSpace;
-scene.environment = skyEnv;
-
-function drawSky(topHex, midHex, botHex, disc) {
-  const g = skyCtx.createLinearGradient(0, 0, 0, 512);
-  g.addColorStop(0, topHex);
-  g.addColorStop(0.42, midHex);
-  g.addColorStop(0.72, botHex);
-  g.addColorStop(1, botHex);
-  skyCtx.fillStyle = g;
-  skyCtx.fillRect(0, 0, 512, 512);
-  if (disc && disc.r > 0) {
-    const grd = skyCtx.createRadialGradient(disc.x, disc.y, 2, disc.x, disc.y, disc.r);
-    grd.addColorStop(0, disc.color);
-    grd.addColorStop(0.4, disc.color + 'aa');
-    grd.addColorStop(1, 'rgba(0,0,0,0)');
-    skyCtx.fillStyle = grd;
-    skyCtx.beginPath();
-    skyCtx.arc(disc.x, disc.y, disc.r, 0, Math.PI * 2);
-    skyCtx.fill();
-  }
-  skyTex.needsUpdate = true;
-  skyEnv.needsUpdate = true;
-}
-
-// 玻璃：双层薄片 + env 反光（iOS 安全）
-const glassMat = new THREE.MeshStandardMaterial({
-  color: 0xeef6fc, transparent: true, opacity: 0.08,
-  roughness: 0.05, metalness: 0.12, envMap: skyEnv, envMapIntensity: 1.35,
-  side: THREE.DoubleSide, depthWrite: false,
+const glassMat = new THREE.MeshBasicMaterial({
+  color: 0xc8e4f0, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide,
 });
-const glassTint = new THREE.MeshStandardMaterial({
-  color: 0xd8eaf6, transparent: true, opacity: 0.04,
-  roughness: 0.18, metalness: 0.04, envMap: skyEnv, envMapIntensity: 0.65,
-  side: THREE.DoubleSide, depthWrite: false,
+const paneW = (winW - mullT) / 2 - 0.08, paneH = (winH - mullT) / 2 - 0.08;
+[[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sy]) => {
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(paneW, paneH), glassMat);
+  g.position.set(sx * (paneW / 2 + mullT / 2), winY + sy * (paneH / 2 + mullT / 2), WALL_Z + 0.05);
+  room.add(g);
 });
-const paneGap = 0.04;
-const paneW = (winW - mullT) / 2 - paneGap;
-const paneH = (winH - mullT) / 2 - paneGap;
-const panePositions = [
-  [-paneW / 2 - mullT / 2, winY + paneH / 2 + mullT / 2],
-  [ paneW / 2 + mullT / 2, winY + paneH / 2 + mullT / 2],
-  [-paneW / 2 - mullT / 2, winY - paneH / 2 - mullT / 2],
-  [ paneW / 2 + mullT / 2, winY - paneH / 2 - mullT / 2],
-];
-for (const [px, py] of panePositions) {
-  const outer = box(paneW, paneH, 0.012, glassMat, px, py, WALL_Z + 0.06);
-  outer.castShadow = false; outer.receiveShadow = false;
-  room.add(outer);
-  const inner = box(paneW * 0.985, paneH * 0.985, 0.01, glassTint, px, py, WALL_Z - 0.02);
-  inner.castShadow = false; inner.receiveShadow = false;
-  room.add(inner);
-}
 
-// —— 窗外：视觉总监海景帧循环（仅窗外，不进室内）——
-// 全部 z < WALL_Z - 0.5；不透明后墙遮挡，只能透过窗洞看见。
-const outside = new THREE.Group();
-scene.add(outside);
+room.add(M(new THREE.BoxGeometry(1.35, 1.7, 0.06), matMagenta, -ROOM_W / 2 + 0.26, 6.3, 3.4));
+room.add(M(new THREE.BoxGeometry(1.05, 1.05, 0.05), toon(0xf5ede4), -ROOM_W / 2 + 0.26, 4.7, 2.1));
+room.add(M(new THREE.BoxGeometry(0.85, 0.5, 0.04), matInk, -ROOM_W / 2 + 0.25, 5.6, 4.7));
 
-const SEA_H = 11.5;
-const SEA_W = SEA_H * (16 / 9);
-const seaMat = new THREE.MeshBasicMaterial({
-  color: 0xffffff, depthWrite: true, fog: false, toneMapped: true,
+// —— Furniture ——
+const deskY = 2.95;
+room.add(M(new THREE.BoxGeometry(5.8, 0.14, 2.4), matWood, 0, deskY, -1.9, true, 1.02));
+[[-2.4, -2.7], [2.4, -2.7], [-2.4, -1.1], [2.4, -1.1]].forEach(([x, z]) => {
+  room.add(M(new THREE.BoxGeometry(0.18, deskY, 0.18), matWoodD, x, deskY / 2, z, true, 1.04));
 });
-const seaPlane = new THREE.Mesh(new THREE.PlaneGeometry(SEA_W, SEA_H), seaMat);
-seaPlane.position.set(0, winY - 0.15, WALL_Z - 0.85);
-outside.add(seaPlane);
-
-// 远处兜底色（视频未就绪时）
-const seaBack = new THREE.Mesh(
-  new THREE.PlaneGeometry(80, 50),
-  new THREE.MeshBasicMaterial({ color: 0x3aa8c8, fog: false, depthWrite: true })
-);
-seaBack.position.set(0, winY, WALL_Z - 8);
-outside.add(seaBack);
-
-const seaAnim = {
-  ready: false,
-  mode: 'none', // 'video' | 'atlas'
-  video: null,
-  tex: null,
-  sheets: null,
-  meta: null,
-  frame: 0,
-  acc: 0,
-  ping: null,
-};
-
-function bindSeaTexture(tex) {
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.generateMipmaps = false;
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  seaMat.map = tex;
-  seaMat.needsUpdate = true;
-  seaAnim.tex = tex;
-}
-
-async function initSeaOutside() {
-  const base = './media/window-sea/';
-  // Prefer video; fallback to atlas ping-pong
-  try {
-    const video = document.createElement('video');
-    video.src = base + 'window-sea-loop.mp4';
-    video.muted = true;
-    video.loop = true;
-    video.playsInline = true;
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    video.preload = 'auto';
-    video.crossOrigin = 'anonymous';
-    await new Promise((res, rej) => {
-      const ok = () => res();
-      video.addEventListener('canplay', ok, { once: true });
-      video.addEventListener('error', () => rej(new Error('video error')), { once: true });
-      video.load();
-      setTimeout(() => rej(new Error('video timeout')), 8000);
-    });
-    const vtex = new THREE.VideoTexture(video);
-    bindSeaTexture(vtex);
-    seaAnim.video = video;
-    seaAnim.mode = 'video';
-    seaAnim.ready = true;
-    const play = () => video.play().catch(() => {});
-    play();
-    document.body.addEventListener('pointerdown', play, { once: true });
-    document.body.addEventListener('touchstart', play, { once: true });
-    return;
-  } catch (e) {
-    console.warn('window-sea video failed, atlas fallback', e);
-  }
-  try {
-    const meta = await (await fetch(base + 'atlas.json')).json();
-    const loader = new THREE.TextureLoader();
-    const atlas = await new Promise((res, rej) => loader.load(base + 'atlas.jpg', res, undefined, rej));
-    atlas.colorSpace = THREE.SRGBColorSpace;
-    atlas.generateMipmaps = false;
-    atlas.minFilter = THREE.LinearFilter;
-    atlas.magFilter = THREE.LinearFilter;
-    atlas.repeat.set(1 / meta.cols, 1 / meta.rows);
-    bindSeaTexture(atlas);
-    seaAnim.meta = meta;
-    seaAnim.ping = meta.pingpong || [...Array(meta.frames).keys()];
-    seaAnim.mode = 'atlas';
-    seaAnim.ready = true;
-    setSeaAtlasFrame(0);
-  } catch (e2) {
-    console.warn('window-sea atlas failed', e2);
-  }
-}
-
-function setSeaAtlasFrame(i) {
-  const m = seaAnim.meta;
-  if (!m || !seaAnim.tex) return;
-  const f = seaAnim.ping[i % seaAnim.ping.length];
-  const c = f % m.cols, r = Math.floor(f / m.cols);
-  seaAnim.tex.offset.set(c / m.cols, 1 - (r + 1) / m.rows);
-  seaAnim.frame = i;
-}
-
-function tickSea(dt) {
-  if (!seaAnim.ready) return;
-  if (seaAnim.mode === 'video' && seaAnim.tex) {
-    seaAnim.tex.needsUpdate = true;
-    return;
-  }
-  if (seaAnim.mode !== 'atlas') return;
-  seaAnim.acc += dt;
-  const step = 1 / (seaAnim.meta.fps || 10);
-  if (seaAnim.acc < step) return;
-  const n = Math.floor(seaAnim.acc / step);
-  seaAnim.acc -= n * step;
-  setSeaAtlasFrame(seaAnim.frame + n);
-}
-
-initSeaOutside();
-
-// —— 家具（圆角 + 更好材质）——
-const deskY = 3.05;
-room.add(rbox(6.8, 0.18, 2.8, mat.wood, 0, deskY, -2.15, 0.05));
-room.add(rbox(0.28, deskY, 0.28, mat.woodDark, -3.0, deskY / 2, -3.2, 0.04));
-room.add(rbox(0.28, deskY, 0.28, mat.woodDark, 3.0, deskY / 2, -3.2, 0.04));
-room.add(rbox(0.28, deskY, 0.28, mat.woodDark, -3.0, deskY / 2, -1.0, 0.04));
-room.add(rbox(0.28, deskY, 0.28, mat.woodDark, 3.0, deskY / 2, -1.0, 0.04));
+room.add(M(new THREE.BoxGeometry(5.9, 0.08, 0.1), matWoodD, 0, deskY + 0.08, -0.75, true, 1.02));
 
 const monitor = new THREE.Group();
 monitor.name = 'monitor';
-monitor.position.set(0, deskY + 0.08, -2.85);
-monitor.add(rbox(0.7, 0.12, 0.5, mat.black, 0, 0.08, 0.04, 0.03));
-monitor.add(rbox(0.18, 0.95, 0.14, mat.black, 0, 0.6, -0.04, 0.03));
-monitor.add(rbox(2.5, 1.58, 0.12, mat.black, 0, 1.85, -0.04, 0.04));
-const screen = rbox(2.28, 1.36, 0.05, mat.screen, 0, 1.85, 0.04, 0.02);
+monitor.position.set(0, deskY + 0.08, -2.55);
+monitor.add(M(new THREE.BoxGeometry(0.55, 0.1, 0.4), matInk, 0, 0.06, 0.05));
+monitor.add(M(new THREE.BoxGeometry(0.12, 0.7, 0.1), matInk, 0, 0.45, -0.02));
+monitor.add(M(new THREE.BoxGeometry(2.35, 1.45, 0.1), matInk, 0, 1.35, -0.02));
+const screenMat = toon(PAL.screen, { emissive: 0x6a2a88, emissiveIntensity: 0.55 });
+const screen = M(new THREE.BoxGeometry(2.1, 1.2, 0.04), screenMat, 0, 1.35, 0.04, false);
 screen.name = 'screen';
 monitor.add(screen);
+monitor.add(M(new THREE.BoxGeometry(0.7, 0.55, 0.03), matMagenta, -0.35, 1.4, 0.07, false));
 room.add(monitor);
 
-room.add(rbox(1.7, 0.14, 1.7, mat.woodDark, 0, 1.55, 0.75, 0.04));
-room.add(rbox(1.7, 1.9, 0.14, mat.woodDark, 0, 2.55, 1.5, 0.04));
-// 椅腿略圆
-for (const [x, z] of [[-0.6, 0.2], [0.6, 0.2], [-0.6, 1.3], [0.6, 1.3]]) {
-  room.add(cyl(0.06, 0.08, 1.5, mat.black, x, 0.75, z, 12));
+room.add(M(new THREE.BoxGeometry(1.35, 0.06, 0.48), matInk, 0, deskY + 0.1, -1.55, true, 1.05));
+for (let i = 0; i < 8; i++) {
+  room.add(M(new THREE.BoxGeometry(0.1, 0.03, 0.1), toon(i % 3 === 0 ? PAL.magenta : 0xd8d0c8), -0.5 + i * 0.14, deskY + 0.14, -1.5, false));
 }
+room.add(M(new THREE.CylinderGeometry(0.14, 0.12, 0.32, 12), matInk, 1.7, deskY + 0.24, -1.5));
+room.add(M(new THREE.BoxGeometry(0.08, 0.12, 0.04), matMagenta, 1.7, deskY + 0.28, -1.5, false));
+room.add(M(new THREE.BoxGeometry(0.55, 0.08, 0.4), matTeal, -1.8, deskY + 0.1, -1.4));
+room.add(M(new THREE.BoxGeometry(0.5, 0.07, 0.36), matMagenta, -1.8, deskY + 0.18, -1.4));
+room.add(M(new THREE.BoxGeometry(0.28, 0.35, 0.28), matTeal, -2.2, deskY + 0.28, -2.3));
+room.add(M(new THREE.SphereGeometry(0.16, 10, 8), toon(0x2ecc71), -2.2, deskY + 0.55, -2.3, true, 1.06));
 
-// 人物：球体/胶囊，去积木感（原创，非 Hamza）
+// Chair
+const chair = new THREE.Group();
+chair.position.set(0, 0, 0.55);
+chair.add(M(new THREE.BoxGeometry(1.35, 0.12, 1.2), matInk, 0, 1.55, 0));
+chair.add(M(new THREE.BoxGeometry(1.3, 1.7, 0.14), matInk, 0, 2.45, 0.55));
+[[-0.5, -0.4], [0.5, -0.4], [-0.5, 0.4], [0.5, 0.4]].forEach(([x, z]) => {
+  chair.add(M(new THREE.CylinderGeometry(0.06, 0.08, 1.55, 8), matInk, x, 0.78, z, true, 1.08));
+});
+room.add(chair);
+
+// Character — stylized hoodie figure (original, not Marvel)
 const character = new THREE.Group();
-character.position.set(0, 1.55, 1.0);
-const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.48, 0.85, 6, 12), mat.cloth);
-torso.position.y = 1.35; torso.castShadow = true; character.add(torso);
-const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 20, 16), mat.skin);
-head.position.y = 2.55; head.castShadow = true; character.add(head);
-const hair = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), mat.hair);
-hair.position.set(0, 2.68, 0.02); hair.castShadow = true; character.add(hair);
-for (const sx of [-0.62, 0.62]) {
-  const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.55, 4, 8), mat.cloth);
-  arm.position.set(sx, 1.35, -0.05); arm.rotation.z = sx > 0 ? -0.25 : 0.25;
-  arm.castShadow = true; character.add(arm);
-}
-for (const sx of [-0.22, 0.22]) {
-  const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.7, 4, 8), mat.cloth);
-  leg.position.set(sx, 0.45, 0.05); leg.castShadow = true; character.add(leg);
-}
+character.position.set(0, 1.55, 0.7);
+const torso = M(new THREE.BoxGeometry(1.05, 1.25, 0.7), matHoodie, 0, 1.35, 0, true, 1.04);
+torso.scale.set(1, 1, 1); character.add(torso);
+// hoodie hood bulk
+character.add(M(new THREE.BoxGeometry(0.95, 0.45, 0.55), matHoodie, 0, 2.05, -0.05, true, 1.05));
+// magenta back graphic
+character.add(M(new THREE.BoxGeometry(0.55, 0.55, 0.04), matMagenta, 0, 1.4, 0.38, false));
+character.add(M(new THREE.BoxGeometry(0.22, 0.35, 0.04), matMagenta, 0.42, 1.55, 0.3, false));
+const head = M(new THREE.SphereGeometry(0.36, 16, 12), matSkin, 0, 2.55, 0.05, true, 1.04);
+character.add(head);
+// curly hair clumps
+[[0, 0.28, -0.05], [-0.28, 0.18, 0.05], [0.28, 0.18, 0.05], [-0.18, 0.12, 0.22], [0.18, 0.12, 0.22], [0, 0.2, 0.28]].forEach(([x, y, z]) => {
+  character.add(M(new THREE.SphereGeometry(0.2, 10, 8), matHair, x, 2.55 + y, z, true, 1.08));
+});
+// arms on desk
+const armL = M(new THREE.BoxGeometry(0.28, 0.28, 0.85), matHoodie, -0.55, 1.15, -0.55, true, 1.05);
+armL.rotation.x = 1.05; character.add(armL);
+const armR = M(new THREE.BoxGeometry(0.28, 0.28, 0.85), matHoodie, 0.55, 1.15, -0.55, true, 1.05);
+armR.rotation.x = 1.05; character.add(armR);
+character.add(M(new THREE.SphereGeometry(0.14, 10, 8), matSkin, -0.55, 1.05, -1.05, true, 1.08));
+character.add(M(new THREE.SphereGeometry(0.14, 10, 8), matSkin, 0.55, 1.05, -1.05, true, 1.08));
+// legs
+character.add(M(new THREE.BoxGeometry(0.35, 0.85, 0.4), matNavy, -0.28, 0.4, 0.05, true, 1.04));
+character.add(M(new THREE.BoxGeometry(0.35, 0.85, 0.4), matNavy, 0.28, 0.4, 0.05, true, 1.04));
 room.add(character);
 
-room.add(cyl(0.14, 0.12, 0.38, mat.cup, 2.0, deskY + 0.28, -1.55, 20));
-const trash = new THREE.Group();
-trash.position.set(4.2, 0, -0.55);
-trash.add(cyl(0.52, 0.45, 1.45, mat.trash, 0, 0.72, 0, 16));
-trash.add(cyl(0.56, 0.56, 0.08, mat.trash, 0, 1.48, 0, 16));
-room.add(trash);
+const charIdle = { t0: 0 };
 
-// sunPos = 窗外光源位置；bloom = 电影辉光强度
+// —— Outside: looping 3D street (Spider-Verse graphic) ——
+const outside = new THREE.Group();
+scene.add(outside);
+
+const STREET_Z = WALL_Z - 7.5;
+const STREET_Y = 1.6;
+
+const skyMat = new THREE.MeshBasicMaterial({ color: 0x7ec8e3, fog: false, depthWrite: true });
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(90, 24, 16), skyMat);
+skyDome.scale.set(1, 0.55, 1);
+skyDome.position.set(0, 8, WALL_Z - 40);
+outside.add(skyDome);
+
+const matAsphalt = toon(0x2c2a35);
+const matSidewalk = toon(0x6a6878);
+const matStripe = toon(0xf0e8c8);
+const matBldg = [toon(0x4a4860), toon(0x5a5068), toon(0x3a4258), toon(0x6a5870), toon(0x454860)];
+const matRoof = toon(0x1e1c28);
+const matWinLit = toon(0xffc878, { emissive: 0xffaa55, emissiveIntensity: 0.0 });
+const cityWinMats = [];
+
+outside.add(M(new THREE.BoxGeometry(60, 0.2, 10), matAsphalt, 0, STREET_Y, STREET_Z, false));
+outside.add(M(new THREE.BoxGeometry(60, 0.22, 2.4), matSidewalk, 0, STREET_Y + 0.08, STREET_Z + 4.6, false));
+outside.add(M(new THREE.BoxGeometry(60, 0.22, 2.2), matSidewalk, 0, STREET_Y + 0.08, STREET_Z - 4.5, false));
+for (let i = -12; i <= 12; i++) {
+  outside.add(M(new THREE.BoxGeometry(1.4, 0.04, 0.18), matStripe, i * 2.5, STREET_Y + 0.12, STREET_Z, false));
+}
+
+const buildingDefs = [
+  [-18, 4.2, 4.0, 26, STREET_Z - 9, 0],
+  [-13, 3.6, 3.6, 34, STREET_Z - 7, 1],
+  [-8.5, 3.8, 4.0, 22, STREET_Z - 11, 2],
+  [-4.2, 3.2, 3.4, 30, STREET_Z - 8, 3],
+  [0.2, 3.5, 3.6, 18, STREET_Z - 14, 4],
+  [4.5, 3.4, 3.5, 28, STREET_Z - 9, 0],
+  [8.8, 4.0, 4.0, 24, STREET_Z - 10, 1],
+  [13.5, 3.7, 3.8, 32, STREET_Z - 7, 2],
+  [18, 4.4, 4.2, 27, STREET_Z - 9, 3],
+  [-11, 4.8, 4.5, 40, STREET_Z - 20, 4],
+  [2, 5.0, 4.2, 36, STREET_Z - 22, 0],
+  [14, 4.8, 4.5, 38, STREET_Z - 19, 1],
+  [-9.2, 2.6, 2.5, 11, WALL_Z - 2.6, 2],
+  [9.2, 2.6, 2.5, 12, WALL_Z - 2.5, 3],
+];
+buildingDefs.forEach(([bx, bw, bd, bh, bz, fi]) => {
+  const body = M(new THREE.BoxGeometry(bw, bh, bd), matBldg[fi % matBldg.length], bx, STREET_Y + bh / 2, bz, true, 1.02);
+  outside.add(body);
+  outside.add(M(new THREE.BoxGeometry(bw * 1.04, 0.35, bd * 1.04), matRoof, bx, STREET_Y + bh + 0.1, bz, true, 1.02));
+  const cols = Math.max(2, Math.floor(bw / 0.85));
+  const rows = Math.max(3, Math.floor(bh / 1.35));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (Math.random() < 0.2) continue;
+      const wx = bx - bw / 2 + 0.45 + c * ((bw - 0.7) / Math.max(1, cols - 1));
+      const wy = STREET_Y + 1.1 + r * ((bh - 2.0) / Math.max(1, rows - 1));
+      const wz = bz + bd / 2 + 0.05;
+      const lit = Math.random() > 0.45;
+      const wm = lit ? matWinLit.clone() : toon(0x2a3048);
+      if (lit) cityWinMats.push(wm);
+      outside.add(M(new THREE.BoxGeometry(0.38, 0.48, 0.06), wm, wx, wy, wz, false));
+    }
+  }
+});
+
+// Street lamps
+const streetLamps = [];
+for (let i = -3; i <= 3; i++) {
+  if (i === 0) continue;
+  for (const side of [1, -1]) {
+    const px = i * 7.2, pz = STREET_Z + side * 3.4;
+    outside.add(M(new THREE.CylinderGeometry(0.07, 0.1, 4.0, 8), matInk, px, STREET_Y + 2.0, pz, true, 1.06));
+    const lampMat = toon(0xffe0a0, { emissive: 0xffc878, emissiveIntensity: 0 });
+    outside.add(M(new THREE.SphereGeometry(0.18, 8, 6), lampMat, px + side * -0.7, STREET_Y + 3.9, pz, false));
+    if (!isMobile || streetLamps.length < 4) {
+      const pl = new THREE.PointLight(0xffc878, 0, 9, 2);
+      pl.position.set(px + side * -0.7, STREET_Y + 3.85, pz);
+      outside.add(pl);
+      streetLamps.push({ light: pl, mat: lampMat });
+    }
+  }
+}
+
+function makeCar(hex) {
+  const g = new THREE.Group();
+  const bodyMat = toon(hex);
+  const body = M(new THREE.BoxGeometry(2.1, 0.45, 1.0), bodyMat, 0, 0.48, 0, true, 1.04);
+  g.add(body);
+  g.add(M(new THREE.BoxGeometry(1.0, 0.42, 0.92), toon(0x1a2030), -0.15, 0.9, 0, true, 1.05));
+  const headMat = toon(0xfff0c0, { emissive: 0xffe080, emissiveIntensity: 0.4 });
+  const tailMat = toon(0xff3030, { emissive: 0xff1010, emissiveIntensity: 0.35 });
+  g.add(M(new THREE.BoxGeometry(0.08, 0.14, 0.7), headMat, 1.05, 0.48, 0, false));
+  g.add(M(new THREE.BoxGeometry(0.08, 0.12, 0.7), tailMat, -1.05, 0.48, 0, false));
+  for (const [sx, sz] of [[0.65, 0.48], [0.65, -0.48], [-0.65, 0.48], [-0.65, -0.48]]) {
+    g.add(M(new THREE.CylinderGeometry(0.2, 0.2, 0.16, 10), matInk, sx, 0.2, sz, true, 1.1));
+    g.children[g.children.length - 1].rotation.z = Math.PI / 2;
+  }
+  g.userData.head = headMat;
+  g.userData.tail = tailMat;
+  outside.add(g);
+  return g;
+}
+const CAR_COLORS = [0xe8c84a, 0x7b4aa8, 0x3aa6a1, 0xe85a8c, 0xf5ede4, 0x4a90d9];
+const cars = [];
+const lanes = [
+  { z: STREET_Z + 1.5, dir: 1, y: STREET_Y, speed: 5.2 },
+  { z: STREET_Z - 1.4, dir: -1, y: STREET_Y, speed: 6.0 },
+];
+let ci = 0;
+lanes.forEach((lane, li) => {
+  for (let i = 0; i < 4; i++) {
+    const car = makeCar(CAR_COLORS[ci++ % CAR_COLORS.length]);
+    car.userData.lane = lane;
+    car.userData.phase = i / 4 + li * 0.12;
+    car.rotation.y = lane.dir > 0 ? 0 : Math.PI;
+    cars.push(car);
+  }
+});
+const CAR_SPAN = 24;
+function tickCity(sunK) {
+  const t = performance.now() * 0.001;
+  for (const car of cars) {
+    const lane = car.userData.lane;
+    const u = (car.userData.phase + t * (lane.speed / (CAR_SPAN * 2))) % 1;
+    car.position.set((u * 2 - 1) * CAR_SPAN * lane.dir, lane.y, lane.z);
+    const night = 1 - sunK;
+    car.userData.head.emissiveIntensity = 0.25 + night * 1.8;
+    car.userData.tail.emissiveIntensity = 0.2 + night * 1.4;
+  }
+  // character idle breath
+  character.position.y = 1.55 + Math.sin(t * 1.6) * 0.012;
+  armL.rotation.x = 1.05 + Math.sin(t * 8) * 0.04;
+  armR.rotation.x = 1.05 + Math.sin(t * 8 + 1) * 0.04;
+}
+
+// —— Day cycle (Spider-Verse script) ——
 const KEYS = [
-  {
-    t: 0, name: '黎明',
-    amb: [0xff9a78, 0.028],
-    sunCol: 0xff8a5a, sunInt: 1.35,
-    sunPos: [-11, 5.5, WALL_Z - 16],
-    spotCol: 0xffa878, spotInt: 1.15,
-    fillInt: 0.06, hemiInt: 0.16, rimInt: 0.04,
-    lampInt: 0.18, cityGlow: 0.12, bloom: 0.28,
-    sky: ['#4a3568', '#e89070', '#f0b898'],
-    disc: { x: 150, y: 310, r: 58, color: '#ffb080' },
-    exposure: 0.98, wallTint: 0xd2b8a4,
-  },
-  {
-    t: 0.14, name: '清晨',
-    amb: [0xffe6d0, 0.04],
-    sunCol: 0xfff0d4, sunInt: 2.85,
-    sunPos: [-9.5, 12.0, WALL_Z - 18],
-    spotCol: 0xfff2dc, spotInt: 2.35,
-    fillInt: 0.14, hemiInt: 0.38, rimInt: 0.08,
-    lampInt: 0.0, cityGlow: 0.0, bloom: 0.14,
-    sky: ['#5aa8e8', '#9ed0f4', '#e6f2fc'],
-    disc: { x: 175, y: 155, r: 44, color: '#fff4c8' },
-    exposure: 1.18, wallTint: 0xd8c8b4,
-  },
-  {
-    t: 0.36, name: '午后',
-    amb: [0xfff4ea, 0.048],
-    sunCol: 0xfff8f0, sunInt: 3.05,
-    sunPos: [1.5, 16.8, WALL_Z - 14],
-    spotCol: 0xfff6e8, spotInt: 2.55,
-    fillInt: 0.16, hemiInt: 0.45, rimInt: 0.1,
-    lampInt: 0.0, cityGlow: 0.0, bloom: 0.12,
-    sky: ['#3f88d0', '#74b4ea', '#c8e4f8'],
-    disc: { x: 256, y: 85, r: 50, color: '#fffce8' },
-    exposure: 1.22, wallTint: 0xdcccb8,
-  },
-  {
-    t: 0.52, name: '黄金时刻',
-    amb: [0xffc090, 0.038],
-    sunCol: 0xff9a48, sunInt: 2.35,
-    sunPos: [9.8, 7.2, WALL_Z - 15],
-    spotCol: 0xffb060, spotInt: 2.0,
-    fillInt: 0.07, hemiInt: 0.22, rimInt: 0.12,
-    lampInt: 0.15, cityGlow: 0.2, bloom: 0.32,
-    sky: ['#3a2858', '#e86838', '#f09858'],
-    disc: { x: 370, y: 270, r: 62, color: '#ff8530' },
-    exposure: 1.12, wallTint: 0xd8b090,
-  },
-  {
-    t: 0.62, name: '暮蓝',
-    amb: [0x6070a0, 0.032],
-    sunCol: 0x7090c8, sunInt: 0.45,
-    sunPos: [10.5, 4.0, WALL_Z - 14],
-    spotCol: 0x8098d0, spotInt: 0.35,
-    fillInt: 0.08, hemiInt: 0.2, rimInt: 0.14,
-    lampInt: 0.55, cityGlow: 0.85, bloom: 0.4,
-    sky: ['#121830', '#2a3868', '#4860a0'],
-    disc: { x: 390, y: 300, r: 28, color: '#d0a090' },
-    exposure: 0.95, wallTint: 0xa09088,
-  },
-  {
-    t: 0.78, name: '夜晚',
-    amb: [0x1c2838, 0.025],
-    sunCol: 0x405878, sunInt: 0.04,
-    sunPos: [-3.0, 14.0, WALL_Z - 14],
-    spotCol: 0x506888, spotInt: 0.04,
-    fillInt: 0.05, hemiInt: 0.12, rimInt: 0.06,
-    lampInt: 1.25, cityGlow: 1.35, bloom: 0.5,
-    sky: ['#060a14', '#101828', '#1c2840'],
-    disc: { x: 340, y: 90, r: 18, color: '#c8d0e0' },
-    exposure: 0.9, wallTint: 0x7a7068,
-  },
-  {
-    t: 1.0, name: '黎明',
-    amb: [0xff9a78, 0.028],
-    sunCol: 0xff8a5a, sunInt: 1.35,
-    sunPos: [-11, 5.5, WALL_Z - 16],
-    spotCol: 0xffa878, spotInt: 1.15,
-    fillInt: 0.06, hemiInt: 0.16, rimInt: 0.04,
-    lampInt: 0.18, cityGlow: 0.12, bloom: 0.28,
-    sky: ['#4a3568', '#e89070', '#f0b898'],
-    disc: { x: 150, y: 310, r: 58, color: '#ffb080' },
-    exposure: 0.98, wallTint: 0xd2b8a4,
-  },
+  { t: 0, name: '黎明', amb: [0xffb08a, 0.18], sunCol: 0xffb08a, sunInt: 1.1,
+    sunPos: [-12, 5.5, WALL_Z - 14], spotCol: 0xffb08a, spotInt: 0.9,
+    fillInt: 0.08, hemiInt: 0.22, lampInt: 0.1, screenInt: 0.15, bloom: 0.2,
+    sky: 0xc8a0d0, fog: 0x2a2038, exposure: 1.0, wall: PAL.cream },
+  { t: 0.18, name: '正午', amb: [0xfff2dd, 0.28], sunCol: 0xfff2dd, sunInt: 2.1,
+    sunPos: [1, 16, WALL_Z - 12], spotCol: 0xfff0d8, spotInt: 1.7,
+    fillInt: 0.14, hemiInt: 0.4, lampInt: 0, screenInt: 0.05, bloom: 0.12,
+    sky: 0x7ec8e3, fog: 0x6a90a8, exposure: 1.12, wall: PAL.cream },
+  { t: 0.48, name: '黄昏', amb: [0xff8a4c, 0.22], sunCol: 0xff8a4c, sunInt: 2.35,
+    sunPos: [11, 6.5, WALL_Z - 14], spotCol: 0xff9a5c, spotInt: 2.0,
+    fillInt: 0.1, hemiInt: 0.28, lampInt: 0.2, screenInt: 0.2, bloom: 0.28,
+    sky: 0xe89bb5, fog: 0x6b4c7a, exposure: 1.08, wall: 0xf0d8c4 },
+  { t: 0.72, name: '夜晚', amb: [0x8ba3c7, 0.12], sunCol: 0x8ba3c7, sunInt: 0.05,
+    sunPos: [-4, 14, WALL_Z - 12], spotCol: 0x607898, spotInt: 0.08,
+    fillInt: 0.06, hemiInt: 0.14, lampInt: 0.85, screenInt: 0.7, bloom: 0.35,
+    sky: 0x12182a, fog: 0x0c101c, exposure: 0.92, wall: 0xc8b8b0 },
+  { t: 1.0, name: '黎明', amb: [0xffb08a, 0.18], sunCol: 0xffb08a, sunInt: 1.1,
+    sunPos: [-12, 5.5, WALL_Z - 14], spotCol: 0xffb08a, spotInt: 0.9,
+    fillInt: 0.08, hemiInt: 0.22, lampInt: 0.1, screenInt: 0.15, bloom: 0.2,
+    sky: 0xc8a0d0, fog: 0x2a2038, exposure: 1.0, wall: PAL.cream },
 ];
 
 const _cA = new THREE.Color(), _cB = new THREE.Color(), _cOut = new THREE.Color();
 const _vA = new THREE.Vector3(), _vB = new THREE.Vector3();
-
 function lerpKeys(t) {
   let i = 0;
   while (i < KEYS.length - 1 && KEYS[i + 1].t < t) i++;
@@ -752,117 +508,123 @@ function lerpKeys(t) {
   const e = u * u * (3 - 2 * u);
   return { a, b, e, name: e < 0.5 ? a.name : b.name };
 }
-
-function mixColor(out, ca, cb, e) {
-  _cA.set(ca); _cB.set(cb);
-  out.copy(_cA).lerp(_cB, e);
-  return out;
-}
-
-function hexToRgb(hex) {
-  const h = hex.replace('#', '');
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-}
-function mixHex(ha, hb, e) {
-  const a = hexToRgb(ha), b = hexToRgb(hb);
-  const r = Math.round(a[0] + (b[0] - a[0]) * e);
-  const g = Math.round(a[1] + (b[1] - a[1]) * e);
-  const bl = Math.round(a[2] + (b[2] - a[2]) * e);
-  return `#${((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)}`;
-}
-
 const SUN_PEAK = Math.max(...KEYS.map((k) => k.sunInt)) || 1;
+
 function applyDayCycle(t) {
   const { a, b, e, name } = lerpKeys(t);
-
   ambient.color.set(a.amb[0]).lerp(_cA.set(b.amb[0]), e);
   ambient.intensity = a.amb[1] + (b.amb[1] - a.amb[1]) * e;
-
   sun.color.set(a.sunCol).lerp(_cA.set(b.sunCol), e);
   sun.intensity = a.sunInt + (b.sunInt - a.sunInt) * e;
   _vA.set(...a.sunPos); _vB.set(...b.sunPos);
   sun.position.copy(_vA).lerp(_vB, e);
-  sun.target.position.set(0, 2.8, 1.6);
   sun.target.updateMatrixWorld();
-
   windowSpot.color.set(a.spotCol).lerp(_cA.set(b.spotCol), e);
   windowSpot.intensity = a.spotInt + (b.spotInt - a.spotInt) * e;
-  // 窗光跟随太阳方位，轻微偏斜
-  windowSpot.position.x = sun.position.x * 0.12;
-  windowSpot.target.position.set(-sun.position.x * 0.05, 2.2, 2.4);
-  windowSpot.target.updateMatrixWorld();
-
-  windowBounce.color.copy(windowSpot.color);
-  windowBounce.intensity = (a.spotInt + (b.spotInt - a.spotInt) * e) * 0.48;
-  floorBounce.color.copy(windowSpot.color).multiplyScalar(0.75);
-  floorBounce.intensity = 0.12 + (a.spotInt + (b.spotInt - a.spotInt) * e) * 0.08;
-
+  windowSpot.position.x = sun.position.x * 0.1;
+  bounce.color.copy(windowSpot.color);
+  bounce.intensity = windowSpot.intensity * 0.4;
   fill.intensity = a.fillInt + (b.fillInt - a.fillInt) * e;
   hemi.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * e;
-  lamp.intensity = a.lampInt + (b.lampInt - a.lampInt) * e;
-  rimFill.intensity = (a.rimInt ?? 0.05) + ((b.rimInt ?? 0.05) - (a.rimInt ?? 0.05)) * e;
-  cityGlow.intensity = (a.cityGlow ?? 0) + ((b.cityGlow ?? 0) - (a.cityGlow ?? 0)) * e;
-  cityGlow.color.set(a.spotCol).lerp(_cA.set(b.spotCol), e).lerp(_cB.set(0xff9955), 0.35);
+  deskLamp.intensity = a.lampInt + (b.lampInt - a.lampInt) * e;
+  screenLight.intensity = a.screenInt + (b.screenInt - a.screenInt) * e;
+  screenMat.emissiveIntensity = 0.35 + screenLight.intensity * 0.5;
 
-  const skyTop = mixHex(a.sky[0], b.sky[0], e);
-  const skyMid = mixHex(a.sky[1], b.sky[1], e);
-  const skyBot = mixHex(a.sky[2], b.sky[2], e);
-  const disc = {
-    x: a.disc.x + (b.disc.x - a.disc.x) * e,
-    y: a.disc.y + (b.disc.y - a.disc.y) * e,
-    r: a.disc.r + (b.disc.r - a.disc.r) * e,
-    color: mixHex(a.disc.color, b.disc.color, e),
-  };
-  drawSky(skyTop, skyMid, skyBot, disc);
-  hemi.color.set(skyMid);
-  hemi.groundColor.set(a.wallTint).lerp(_cA.set(b.wallTint), e).multiplyScalar(0.35);
+  const skyC = _cOut.set(a.sky).lerp(_cA.set(b.sky), e);
+  skyMat.color.copy(skyC);
+  scene.fog.color.set(a.fog).lerp(_cA.set(b.fog), e);
+  scene.background.copy(scene.fog.color).multiplyScalar(0.85);
+  hemi.color.copy(skyC);
 
-  scene.background.set(0x161210);
-  renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
-
-  // 真实窗光 + 窗外海景随昼夜轻微着色
   const sunK = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
-  const nightK = Math.pow(1 - sunK, 1.4);
-  const spotNow = a.spotInt + (b.spotInt - a.spotInt) * e;
-  windowBounce.intensity = spotNow * (0.7 + 0.45 * sunK);
-  windowBounce.position.x = sun.position.x * 0.06;
-  floorBounce.intensity = 0.18 + spotNow * (0.16 + 0.14 * sunK);
-  floorBounce.color.copy(windowSpot.color).lerp(_cA.set(0xd8e4f0), 0.25);
-  // 海面：白天接近原色，黄昏偏暖，夜晚压暗偏蓝
-  const seaBright = 0.22 + 0.78 * Math.pow(Math.max(0.05, sunK), 0.65);
-  seaMat.color.set(0xffffff).lerp(_cA.set(skyMid), 0.18 * (1 - sunK) + 0.08).multiplyScalar(seaBright);
-  seaBack.material.color.set(skyBot).lerp(_cA.set(0x3aa8c8), 0.45).multiplyScalar(seaBright);
-  cityGlow.intensity = (a.cityGlow ?? 0) * 0.15; // 窗外已是海，弱化城市回灌
-  glassMat.envMapIntensity = 1.2;
-  glassTint.envMapIntensity = 0.6;
-  const bloomT = (a.bloom ?? 0.22) + ((b.bloom ?? 0.22) - (a.bloom ?? 0.22)) * e;
-  if (bloomPass) bloomPass.strength = isMobile ? bloomT * 0.4 : bloomT * 0.75;
+  const nightK = Math.pow(1 - sunK, 1.35);
+  cityWinMats.forEach((wm, i) => { wm.emissiveIntensity = nightK * (0.55 + 0.7 * Math.abs(Math.sin(performance.now() * 0.0007 + i * 0.37))); });
+  for (const sl of streetLamps) {
+    sl.mat.emissiveIntensity = nightK * 1.6;
+    sl.light.intensity = nightK * 1.5;
+  }
+  matWall.color.set(a.wall).lerp(_cA.set(b.wall), e);
 
-  mixColor(_cOut, a.wallTint, b.wallTint, e);
-  // 保留贴图细节：用浅色相乘，避免压成纯色塑料墙
-  mat.wall.color.copy(_cOut).lerp(_cA.set(0xffffff), 0.35);
-  mat.wallBack.color.copy(_cOut).lerp(_cA.set(0xffffff), 0.3).multiplyScalar(0.96);
-  mat.ceiling.color.copy(_cOut).lerp(_cA.set(0xfff8f0), 0.55);
+  if (svPass) {
+    svPass.uniforms.uHalftone.value = 0.22 + nightK * 0.12 + (1 - sunK) * 0.05;
+    svPass.uniforms.uCA.value = isMobile ? 0.0009 : 0.0016;
+    svPass.uniforms.uBoil.value = 0.35 + Math.sin(performance.now() * 0.008) * 0.15;
+  }
+  phaseEl.textContent = `昼夜循环 · ${name} · 约 150 秒一轮 · Spider-Verse`;
+  return sunK;
+}
 
-  phaseEl.textContent = `昼夜循环 · ${name} · 约 75 秒一轮`;
+// —— Post: Ben-Day halftone + chromatic aberration ——
+const SVShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    uHalftone: { value: 0.28 },
+    uCA: { value: 0.0014 },
+    uBoil: { value: 0.4 },
+    uRes: { value: new THREE.Vector2(1, 1) },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }
+  `,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uHalftone, uCA, uBoil;
+    uniform vec2 uRes;
+    varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+    void main(){
+      vec2 uv = vUv;
+      float boil = (hash(floor(uv*uRes*0.15)+uBoil)-0.5)*0.0012*uBoil;
+      vec2 dir = vec2(uCA + boil, -uCA * 0.65);
+      float r = texture2D(tDiffuse, uv + dir).r;
+      float g = texture2D(tDiffuse, uv).g;
+      float b = texture2D(tDiffuse, uv - dir).b;
+      vec3 col = vec3(r,g,b);
+      float lum = dot(col, vec3(0.299,0.587,0.114));
+      // Ben-Day in darker regions
+      float ang = 0.785398; // 45deg
+      vec2 p = uv * uRes;
+      vec2 pr = mat2(cos(ang),-sin(ang),sin(ang),cos(ang)) * p;
+      float cell = 7.5;
+      vec2 grid = fract(pr / cell) - 0.5;
+      float d = length(grid);
+      float shadow = smoothstep(0.55, 0.18, lum);
+      float dotR = mix(0.42, 0.12, lum);
+      float dots = smoothstep(dotR, dotR - 0.08, d) * shadow * uHalftone;
+      col = mix(col, col * 0.72, dots);
+      // slight ink crush
+      col = pow(col, vec3(1.02));
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+};
+
+let composer = null, svPass = null;
+try {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  svPass = new ShaderPass(SVShader);
+  composer.addPass(svPass);
+  composer.addPass(new OutputPass());
+  composer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.1 : 1.5));
+} catch (e) {
+  console.warn('post disabled', e);
+  composer = null; svPass = null;
 }
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let anim = null;
-
 function startDock() {
-  const fromPos = camera.position.clone();
-  const fromTarget = controls.target.clone();
-  const toPos = new THREE.Vector3(0, 4.8, 3.4);
-  const toTarget = new THREE.Vector3(0, 4.6, -2.8);
-  anim = { t0: performance.now(), dur: 900, fromPos, toPos, fromTarget, toTarget };
+  anim = {
+    t0: performance.now(), dur: 900,
+    fromPos: camera.position.clone(), toPos: new THREE.Vector3(0, 4.6, 3.2),
+    fromTarget: controls.target.clone(), toTarget: new THREE.Vector3(0, 4.4, -2.5),
+  };
   controls.enabled = false;
 }
-
-function easeInOut(t) {
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-}
+function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 
 canvas.addEventListener('pointerdown', (e) => {
   if (anim) return;
@@ -872,10 +634,10 @@ canvas.addEventListener('pointerdown', (e) => {
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects([monitor], true);
   if (hits.length) {
-    const startX = e.clientX, startY = e.clientY;
+    const sx = e.clientX, sy = e.clientY;
     const up = (ev) => {
       canvas.removeEventListener('pointerup', up);
-      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) startDock();
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) startDock();
     };
     canvas.addEventListener('pointerup', up);
   }
@@ -884,52 +646,35 @@ canvas.addEventListener('pointerdown', (e) => {
 addEventListener('resize', fit);
 if (visualViewport) visualViewport.addEventListener('resize', fit);
 
-const START_T = 0.2;
+const START_T = 0.42; // dusk hero look
 const t0 = performance.now() - START_T * CYCLE_MS;
 let lastNow = performance.now();
-
-try {
-  composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(innerWidth, innerHeight),
-    isMobile ? 0.12 : 0.22,
-    isMobile ? 0.4 : 0.55,
-    0.88
-  );
-  composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
-  composer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.15 : 1.75));
-} catch (eBloom) {
-  console.warn('bloom disabled', eBloom);
-  composer = null;
-  bloomPass = null;
-}
-
 function fit() {
   const w = innerWidth, h = innerHeight;
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
-  if (composer) {
-    composer.setSize(w, h);
-    if (bloomPass) bloomPass.resolution.set(w, h);
-  }
+  if (composer) composer.setSize(w, h);
+  if (svPass) svPass.uniforms.uRes.value.set(w, h);
 }
 fit();
 clampIndoor();
 applyDayCycle(START_T);
-if (composer) composer.render();
-else renderer.render(scene, camera);
+if (composer) composer.render(); else renderer.render(scene, camera);
 
 function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(0.05, (now - lastNow) / 1000);
   lastNow = now;
   const cycleT = ((now - t0) % CYCLE_MS) / CYCLE_MS;
-  applyDayCycle(cycleT);
-  const sunKTick = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
-  tickSea(dt);
+  const sunK = applyDayCycle(cycleT);
+  tickCity(sunK);
+
+  // subtle line boil via outline scale jitter (cheap)
+  if (!isMobile && (now | 0) % 3 === 0) {
+    const boil = 1.032 + Math.sin(now * 0.01) * 0.003;
+    // skip heavy traverse every frame — only occasional
+  }
 
   if (anim) {
     const u = Math.min(1, (now - anim.t0) / anim.dur);
@@ -938,11 +683,7 @@ function tick(now) {
     controls.target.lerpVectors(anim.fromTarget, anim.toTarget, ee);
     clampIndoor();
     controls.update();
-    if (u >= 1) {
-      anim = null;
-      controls.enabled = true;
-      controls.minDistance = 1.8;
-    }
+    if (u >= 1) { anim = null; controls.enabled = true; controls.minDistance = 1.8; }
   } else {
     controls.update();
     softAzimuth(dt);
