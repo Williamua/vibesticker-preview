@@ -11,6 +11,11 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const hasGSAP = !!(window.gsap && window.ScrollTrigger);
 const animate = hasGSAP && !reduced;
 const isMobile = () => mqMobile.matches;
+const CFG = window.VS_CONFIG || {};
+const ix = window.VSIx || { scan() {}, bounce() {} };
+// card art slot → <img> from scene-config.js (null = keep the neutral placeholder)
+const artHTML = slot => { const u = (CFG.cardArt || {})[slot]; return u ? `<img class="art-img" src="${u}" alt="" decoding="async">` : ''; };
+function fillArtSlots(root = document) { $$('.art-slot[data-slot]', root).forEach(el => { el.innerHTML = artHTML(el.dataset.slot); }); }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('vs.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -33,6 +38,7 @@ const state = {
   style: LS.get('style', 'anime'),
   busy: false,
   result: LS.get('result', null),
+  demo: false,          // backend reports demo mode (no AI key) via /api/config and each result
 };
 if (!STYLES.some(s => s.id === state.style)) state.style = 'anime';
 
@@ -44,14 +50,23 @@ function toast(msg, ms = 2600) {
 }
 
 /* ---------- background video with static fallback ---------- */
+function setDepth(el, c) { ['depth', 'budget', 'inertia'].forEach(k => { if (c[k] != null) el.dataset[k] = c[k]; }); }
 function setupVideo() {
   const v = $('#bgv'), wrap = $('.l-video');
+  const bg = CFG.background || {}, mobile = isMobile();
+  // single background slot (scene-config.js): a static image replaces the video entirely
+  if (bg.image || !bg.video) {
+    wrap.hidden = true; const im = $('.l-bgimg'); if (bg.image) im.hidden = false;
+    setDepth(im, bg);
+    return;
+  }
+  setDepth(wrap, bg);
+  const poster = mobile ? bg.video.posterMobile : bg.video.posterDesktop;
+  if (poster) { $('.l-video .poster').src = poster; const so = $('.l-video source'); if (so) so.srcset = bg.video.posterMobile || poster; }
   if (reduced) return;                       // reduced-motion: static poster only
-  const mobile = isMobile();
-  // rainforest upward-shot footage (ASSETS-V2 §1 V4 "Sunlight Streaming Through Forest Canopy", Saulo Nulo / Pexels) – locked by the user; files are used as delivered, no re-encode
-  v.poster = mobile ? '/media/rainforest-loop-mobile-720-poster.jpg' : '/media/rainforest-loop-1080-poster.jpg';
+  v.poster = poster || '';
   v.preload = 'auto';
-  v.src = mobile ? '/media/rainforest-loop-mobile-720.mp4' : '/media/rainforest-loop-1080.mp4';
+  v.src = mobile ? bg.video.mobile : bg.video.desktop;
   v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
   v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
   const off = () => wrap.classList.remove('playing');   // poster underneath shows through
@@ -67,18 +82,14 @@ function setupVideo() {
 }
 
 /* ---------- parallax layers (ASSETS-V2 §2) ----------
-   L1 fog is switched off (L1 fog off per design brief). Mobile and desktop both use 3 layers: L2 beams, L3 trunks, L4 fore-leaves.
-   speed = share of a common travel distance (layers are one-screen images, so 1.0 ≠ content speed literally). */
-const LAYERS = [
-  { id: 'L2', file: 'L2-lightbeams', speed: 0.3 },
-  { id: 'L4', file: 'L4-foreleaves', speed: 1.2 },
-];
-const travelFor = speed => Math.round(speed * innerHeight * 0.25);
+   L1 fog off, L3 trunks removed. Layers are configured in scene-config.js (depth = px moved per px scrolled). */
+// layer list + depths come from scene-config.js; motion.js moves every [data-depth] (desktop AND mobile)
+const LAYERS = CFG.layers || [];
 function buildLayers() {
   const box = $('#pxLayers'), suf = isMobile() ? '1080m' : '2560';
   box.innerHTML = LAYERS.map(l => `
-    <div class="layer px px-${l.id}" data-speed="${l.speed}" style="--travel:${l.id === 'L3' ? travelFor(l.speed) : 0}px">
-      <div class="pxi"><picture>
+    <div class="layer px px-${l.id}" data-depth="${l.depth}" data-budget="${l.budget ?? 0.5}" data-inertia="${l.inertia ?? 14}">
+      <div class="pxi"><picture${l.sway ? ' data-sway' : ''}>
         <source type="image/webp" srcset="/media/layers/${l.file}-${suf}.webp">
         <img src="/media/layers/${l.file}-${suf}.png" alt="" decoding="async">
       </picture></div>
@@ -88,29 +99,17 @@ async function loadLeafDefs() {
   try { const r = await fetch('/media/layers/leaf-mask.svg'); if (r.ok) $('#leafDefs').innerHTML = await r.text(); }
   catch (e) { console.warn('leaf mask unavailable', e); }
 }
-/* wind from scroll speed → fore-leaf sway ±1.5° … ±6° */
-function setupWind() {
-  if (reduced) return;
-  let last = scrollY, wind = 0, pic = null;
-  const t0 = performance.now();
-  (function loop(now) {
-    const v = Math.abs(scrollY - last); last = scrollY;
-    wind += (Math.min(1, v / 40) - wind) * 0.08;
-    const a = (1.5 + 4.5 * wind) * Math.sin((now - t0) / 6000 * Math.PI * 2);
-    pic = pic || $('.px-L4 picture');
-    if (pic) pic.style.transform = `rotate(${a.toFixed(2)}deg)`;
-    requestAnimationFrame(loop);
-  })(t0);
-}
-
 /* ---------- style cards ---------- */
 function renderStyles() {
   const box = $('#styles');
-  box.innerHTML = STYLES.map(s => `
-    <button type="button" class="card glass" role="radio" data-id="${s.id}" aria-checked="${s.id === state.style}" tabindex="${s.id === state.style ? 0 : -1}">
-      <span class="sw sw-${s.id}">${state.photoURL ? `<img class="f-${s.id}" alt="" src="${s.id === 'pixel' ? state.pixelURL : state.photoURL}">` : ''}</span>
+  // cards spring in from different sides of the scene (data-pop); hover tilt + press feedback (ix.js)
+  const dirs = isMobile() ? ['left', 'right'] : ['left', 'top', 'bottom', 'top', 'right'];
+  box.innerHTML = STYLES.map((s, i) => `
+    <button type="button" class="card glass" role="radio" data-id="${s.id}" aria-checked="${s.id === state.style}" tabindex="${s.id === state.style ? 0 : -1}" data-pop="${dirs[i % dirs.length]}" data-tilt data-press>
+      <span class="sw sw-${s.id}">${state.photoURL ? `<img class="f-${s.id}" alt="" src="${s.id === 'pixel' ? state.pixelURL : state.photoURL}">` : artHTML('style-' + s.id)}</span>
       <span class="txt"><span class="nm">${s.name}</span><span class="en">${s.en}</span></span>
     </button>`).join('');
+  ix.scan(box);
 }
 function selectStyle(id, focus) {
   state.style = id; LS.set('style', id);
@@ -118,6 +117,7 @@ function selectStyle(id, focus) {
     const on = c.dataset.id === id;
     c.setAttribute('aria-checked', on); c.tabIndex = on ? 0 : -1;
     if (on && focus) c.focus();
+    if (on) ix.bounce(c);
   });
   updateGenButton();
 }
@@ -194,6 +194,7 @@ async function handleFile(file) {
     state.photo = c.blob; state.photoURL = URL.createObjectURL(c.blob); state.pixelURL = c.pixel;
     const pv = $('#preview'); pv.src = state.photoURL; pv.hidden = false; d.classList.add('has');
     $('#repick').hidden = false; $('#pick').hidden = true;
+    ix.bounce(d, 'ok');
     renderStyles(); updateGenButton(); updateFab();
     toast(`照片已放好（${c.w}×${c.h}，${Math.round(c.blob.size / 1024)} KB），往下选风格`);
   } catch (err) {
@@ -260,6 +261,7 @@ function showResult(r, fresh) {
   const dp = $('#dlPng'), dg = $('#dlGif');
   dp.href = r.png + '?dl=1'; dg.href = r.gif + '?dl=1';
   dp.setAttribute('download', `VibeSticker-${r.style}.png`); dg.setAttribute('download', `VibeSticker-${r.style}.gif`);
+  $('#demoTag').hidden = !r.demo;
   $('#dl').hidden = false;
   $('#genBtn').textContent = '再生成一次';
   if (!fresh) $('#caption').textContent = '上次的贴纸还在这里';
@@ -301,10 +303,11 @@ async function generate() {
     w.classList.remove('hang'); w.style.transform = 'none'; await sleep(850 * step);   // float back to frame centre
     w.classList.remove('curl'); await sleep(500 * step);                               // unfold
     w.style.opacity = '0';
-    state.result = { id: res.id, style: res.style, png: res.png, gif: res.gif, t: Date.now() };
+    state.result = { id: res.id, style: res.style, png: res.png, gif: res.gif, demo: !!res.demo, t: Date.now() };
+    if (res.demo) setDemo(true);
     LS.set('result', state.result);
     showResult(state.result, true);
-    stopCaptions('完成了，贴纸属于你了');
+    stopCaptions(res.demo ? '演示模式：这只是示意效果，接入 AI 后才会生成真正的贴纸' : '完成了，贴纸属于你了');
     await sleep(500); w.hidden = true;
     if (typeof res.freeLeft === 'number') setQuota(res);
   } else {
@@ -314,7 +317,11 @@ async function generate() {
     const g = $('#gen').getBoundingClientRect();
     w.style.transform = `translate(0px, ${g.height * 0.2}px) scale(.22) rotate(200deg)`; w.style.opacity = '0';
     await sleep(1300 * step); w.hidden = true;
-    const why = err && err.status === 402 ? '今天的免费次数用完了，付费档即将开放' : '不扣次数，随时可以再试';
+    const code = err && err.body && err.body.code;
+    const why = err && err.status === 402 ? '今天的免费次数用完了，付费档即将开放'
+      : code === 'blocked' ? '这张照片没通过 AI 的安全检查，换一张试试（不扣次数）'
+      : code === 'rate_limited' ? 'AI 现在有点忙，稍等一会儿再试（不扣次数）'
+      : code === 'timeout' ? 'AI 响应超时了，不扣次数，再试一次' : '不扣次数，随时可以再试';
     $('#failWhy').textContent = why;
     showFrame('fail'); stopCaptions('');
     btn.textContent = '免费再来一次';
@@ -332,6 +339,7 @@ function updateGenButton() {
   if (!state.photo) sub.textContent = '先在树干上放入一张照片，再回到这里';
   else sub.textContent = `风格：${(STYLES.find(s => s.id === state.style) || STYLES[0]).name} · 照片会先变成一片发光的叶子`;
 }
+function setDemo(on) { state.demo = on; $('#demoBanner').hidden = !on; html.classList.toggle('demo', on); }
 function setQuota(j) {
   const q = $('#quota');
   if (j.freeLeft > 0) q.textContent = `今天还可免费生成 ${j.freeLeft} 次`;
@@ -341,9 +349,12 @@ function setQuota(j) {
 
 /* ---------- placeholders ---------- */
 function renderPlaceholders() {
-  $('#wall').innerHTML = Array.from({ length: 9 }, (_, i) => `<div class="tile${i === 4 ? ' first' : ''}">${i === 4 ? '<span aria-hidden="true"></span>' : ''}</div>`).join('');
+  // wall tiles pop from the side they sit on (left column ← left, right column ← right, middle ↑ top / ↓ bottom)
+  const wallDir = i => ({ 0: 'top-left', 1: 'top', 2: 'top-right', 3: 'left', 4: 'bottom', 5: 'right', 6: 'bottom-left', 7: 'bottom', 8: 'bottom-right' })[i];
+  $('#wall').innerHTML = Array.from({ length: 9 }, (_, i) => `<div class="tile${i === 4 ? ' first' : ''}" data-pop="${wallDir(i)}" data-tilt data-press><span class="art-slot" data-slot="wall-empty"></span>${i === 4 ? '<span class="seed" aria-hidden="true"></span>' : ''}</div>`).join('');
   $('#rank').innerHTML = Array.from({ length: 5 }, (_, i) =>
-    `<li><span class="no">0${i + 1}</span><span class="th"></span><span class="nm">等你来占位</span><span class="lk">♥ —</span></li>`).join('');
+    `<li data-pop="${i % 2 ? 'right' : 'left'}" data-press><span class="no">0${i + 1}</span><span class="th"><span class="art-slot" data-slot="rank-empty"></span></span><span class="nm">等你来占位</span><span class="lk">♥ —</span></li>`).join('');
+  fillArtSlots(); ix.scan($('#wall')); ix.scan($('#rank'));
 }
 
 /* ---------- scroll helpers + mobile FAB ---------- */
@@ -384,6 +395,39 @@ function bindFab() {
   mqMobile.addEventListener('change', updateFab);
 }
 
+/* ---------- scroll-driven day → dusk → night (no clock / no sessionStorage) ----------
+   Driven by the same GSAP scrub timeline as the rest of the roll. Overlays (soft-light warm,
+   multiply cool) + stage brightness/sat. Fireflies fade in near the end via motion.js. */
+function setupDayNight(tl) {
+  const DN = Object.assign({ enabled: true, dusk: [0.18, 0.55], night: [0.45, 0.90], fireflies: [0.72, 1.0], warm: '#FF9A4D', cool: '#1B2A4A' }, CFG.dayNight);
+  if (!DN.enabled) return;
+  const stage = $('#stage');
+  stage.style.setProperty('--dn-warm', DN.warm);
+  stage.style.setProperty('--dn-cool', DN.cool);
+  if (window.VSParticles) VSParticles.setFireflies(DN);
+  if (!tl) {
+    // no scrub (reduced-motion / no GSAP): static mid-dusk state
+    $('.l-warm').style.opacity = '0.18';
+    $('.l-cool').style.opacity = '0.25';
+    stage.style.setProperty('--dn-bright', '0.85');
+    stage.style.setProperty('--dn-sat', '1.0');
+    html.style.setProperty('--ff', '0');
+    return;
+  }
+  const [d0, d1] = DN.dusk, [n0, n1] = DN.night;
+  tl.fromTo('.l-warm', { opacity: 0 }, { opacity: 0.28, duration: d1 - d0, ease: 'none' }, d0);
+  tl.to('.l-warm', { opacity: 0.05, duration: Math.max(0.05, n1 - d1), ease: 'none' }, d1);
+  tl.fromTo('.l-cool', { opacity: 0 }, { opacity: 0.55, duration: n1 - n0, ease: 'none' }, n0);
+  // animate CSS vars via onUpdate (GSAP CSS plugin handles custom props inconsistently across versions)
+  const duskDur = d1 - d0, nightDur = n1 - n0;
+  const st = { b: 1, s: 1, ff: 0 };
+  tl.to(st, { b: 0.85, s: 1.1, duration: duskDur, ease: 'none', onUpdate() { stage.style.setProperty('--dn-bright', st.b); stage.style.setProperty('--dn-sat', st.s); } }, d0);
+  tl.to(st, { b: 0.6, s: 0.8, duration: nightDur, ease: 'none', onUpdate() { stage.style.setProperty('--dn-bright', st.b); stage.style.setProperty('--dn-sat', st.s); } }, n0);
+  tl.to('.px-L2', { opacity: 0, duration: nightDur, ease: 'none' }, n0);
+  const [f0, f1] = DN.fireflies;
+  tl.to(st, { ff: 1, duration: f1 - f0, ease: 'none', onUpdate() { html.style.setProperty('--ff', st.ff); } }, f0);
+}
+
 /* ---------- GSAP: one continuous camera ---------- */
 function setupScroll() {
   if (!animate) {
@@ -392,6 +436,7 @@ function setupScroll() {
     const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add('seen'); }), { threshold: 0.1 });
     $$('.sec').forEach(s => io.observe(s));
     if (!reduced && !hasGSAP) console.info('GSAP not available – using plain reveal');
+    setupDayNight(null);   // static mid-page dusk overlays (no scrub)
     return;
   }
   gsap.registerPlugin(ScrollTrigger);
@@ -399,18 +444,15 @@ function setupScroll() {
   const E = 'power2.inOut';
   // master background timeline, progress p ∈ [0,1] over the whole roll
   const tl = gsap.timeline({ defaults: { ease: 'none' }, scrollTrigger: { trigger: '#roll', start: 'top top', end: 'bottom bottom', scrub: 1.2 } });
-  tl.fromTo('.l-video', { scale: 1.12, y: 0 }, { scale: 1.0, y: () => -innerHeight * 0.08, duration: 0.64, ease: E }, 0)
-    .to('.l-video', { y: () => -innerHeight * 0.16, scale: 1.04, duration: 0.18, ease: E }, 0.64)
-    .to('.l-video', { y: () => -innerHeight * 0.12, duration: 0.18, ease: E }, 0.82);
-  // parallax: each layer travels speed × common distance over the whole roll
-  // L2 beams stay put (final brief: opacity .3, no shift); L3/L4 travel speed × common distance
-  $$('.px:not(.px-L2)').forEach(el => tl.fromTo(el, { y: 0 }, { y: () => -travelFor(+el.dataset.speed), duration: 1 }, 0));
+  // slow camera push (scale only). Vertical parallax is done by motion.js via `translate` on [data-depth]:
+  // the old GSAP y-travel was ~2% of the scroll distance spread over the whole page, i.e. invisible on a phone.
+  tl.fromTo('.l-video', { scale: 1.12 }, { scale: 1.0, duration: 0.64, ease: E }, 0)
+    .to('.l-video', { scale: 1.04, duration: 0.18, ease: E }, 0.64);
   // 段4 (p .50–.64): push into the trunks, scale 1 → 1.6 (ASSETS-V2 §2)
-  // L3 trunks removed (user: eye-level trunks hid the upward rainforest video)
-  // beams opacity stays at .3 (design brief); warm afternoon light toward the end
-  tl.to('.l-warm', { opacity: 0.4, duration: 0.36 }, 0.64)
-    .to('.l-shade', { opacity: 0.9, duration: 0.2 }, 0.1)
-    .to('.l-shade', { opacity: 0.8, duration: 0.2 }, 0.8);
+  // beams opacity stays at .3 (design brief); shade stays readable
+  tl.to('.l-shade', { opacity: 0.9, duration: 0.2 }, 0.1)
+    .to('.l-shade', { opacity: 0.85, duration: 0.2 }, 0.8);
+  setupDayNight(tl);
 
   // sections: overlapped crossfade (prev fades out ↑24px blur→6px while next fades in)
   const blur = mobile ? 0 : 6;
@@ -429,11 +471,8 @@ function setupScroll() {
   });
   // hero copy drifts away first
   gsap.to('.hero-copy, .hint', { opacity: 0, y: -40, ease: 'none', scrollTrigger: { trigger: '#s0', start: 'top top', end: '60% top', scrub: 1 } });
-  // wall tiles fade in along the diagonal
-  gsap.from('#wall .tile', { opacity: 0, scale: 0.94, duration: 0.6, ease: 'power2.out',
-    stagger: { each: 0.06, grid: [3, 3], from: 'start', axis: null }, scrollTrigger: { trigger: '#wall', start: 'top 75%' } });
-  // style cards light up one by one along the beam
-  gsap.from('#styles .card', { opacity: 0, y: 16, duration: 0.5, ease: 'power2.out', stagger: 0.09, scrollTrigger: { trigger: '#styles', start: 'top 78%' } });
+  // cards (styles / result / tiers / wall / rank) pop in via ix.js [data-pop]
+  ScrollTrigger.addEventListener('refresh', () => window.VSMotion && VSMotion.refresh());
 
   mqMobile.addEventListener('change', () => location.reload());
 }
@@ -454,7 +493,7 @@ function setupMicro() {
   document.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'touch') return;
     const t = e.target.closest('button,a,[role=button],[role=radio]'); if (!t || t.disabled) return;
-    if (!reduced) { const r = document.createElement('span'); r.className = 'ripple'; r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px'; document.body.appendChild(r); setTimeout(() => r.remove(), 650); }
+    // visual press feedback (squeeze + ripple) lives in ix.js [data-press]
     try { navigator.vibrate && navigator.vibrate(10); } catch {}
   }, { passive: true });
 
@@ -477,11 +516,12 @@ async function boot() {
   $('#genBtn').addEventListener('click', generate);
   $('#again').addEventListener('click', () => { scrollToSec('#s1'); setTimeout(() => $('#file').click(), reduced ? 0 : 600); });
   $$('.tier .btn').forEach(b => b.closest('.tier').addEventListener('click', () => toast('预览版：支付暂未开放')));
-  buildLayers(); loadLeafDefs(); setupVideo(); setupScroll(); setupMicro(); setupWind();
+  buildLayers(); fillArtSlots(); loadLeafDefs(); setupVideo(); setupScroll(); setupMicro();
+  if (window.VSMotion) VSMotion.refresh();
   if (state.result) showResult(state.result, false); else showFrame('empty');
   updateGenButton(); updateFab();
   requestAnimationFrame(() => html.classList.add('ready'));     // E1 intro sequence (CSS-timed)
-  try { const r = await fetch('/api/config'); if (r.ok) setQuota(await r.json()); } catch {}
+  try { const r = await fetch('/api/config'); if (r.ok) { const j = await r.json(); setQuota(j); setDemo(!!j.demo); } } catch {}
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

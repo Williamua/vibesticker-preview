@@ -11,18 +11,23 @@
 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/ix.css">
+<script src="/scene-config.js"></script>
 <script>document.documentElement.classList.replace('no-js','js')</script>
 </head>
 <body>
 
 <!-- ===== fixed background stage (far → near). Parallax image layers are injected by app.js (WebP first, PNG fallback; desktop -2560, mobile -1080m) ===== -->
 <div id="stage" aria-hidden="true">
-  <div class="layer l-video">
+  <div class="layer l-bgimg" data-depth="0.06" hidden></div>
+  <div class="layer l-video" data-depth="0.06">
     <picture><source media="(max-width: 768px)" srcset="/media/rainforest-loop-mobile-720-poster.jpg"><img class="poster" src="/media/rainforest-loop-1080-poster.jpg" alt=""></picture>
     <video id="bgv" muted playsinline loop preload="none" disablepictureinpicture></video>
   </div>
   <div id="pxLayers"></div>
+  <div id="fxSlot" class="layer"></div>
   <div class="layer l-warm"></div>
+  <div class="layer l-cool"></div>
   <div class="layer l-shade"></div>
   <div class="layer l-black"></div>
 </div>
@@ -45,19 +50,20 @@
     <div class="out"><div class="in">
       <p class="logo rv">VibeSticker</p>
       <p class="sub rv">树干上有一块磨砂玻璃，把照片放进去</p>
-      <div class="drop rv" id="drop" role="button" tabindex="0" aria-label="放入一张照片：点击选择、拖拽，或拍照" aria-describedby="dropHelp">
+      <div class="drop" id="drop" data-pop="bottom" data-tilt="4" role="button" tabindex="0" aria-label="放入一张照片：点击选择、拖拽，或拍照" aria-describedby="dropHelp">
         <div class="drop-empty">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg>
           <p class="drop-t">放入一张照片</p>
           <p class="drop-s" id="dropHelp">点击选择 · 拖拽到这里 · JPG / PNG / HEIC</p>
         </div>
         <img id="preview" alt="已选择的照片预览" hidden>
+        <span class="ok-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>
         <div class="drop-busy" hidden><span class="spin"></span><span id="busyT">正在整理照片…</span></div>
       </div>
       <div class="drop-actions rv">
-        <button class="link" id="pick" type="button">选择照片</button>
-        <button class="link" id="camBtn" type="button">拍照</button>
-        <button class="link" id="repick" type="button" hidden>重新选择</button>
+        <button class="link" id="pick" type="button" data-press data-lift>选择照片</button>
+        <button class="link" id="camBtn" type="button" data-press data-lift>拍照</button>
+        <button class="link" id="repick" type="button" data-press data-lift hidden>重新选择</button>
       </div>
       <p class="err" id="upErr" role="alert" hidden></p>
       <input type="file" id="file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
@@ -70,7 +76,7 @@
     <div class="out"><div class="in">
       <h2 class="rv">选一种风格</h2>
       <p class="sub rv">沿着光柱，一种光一种样子</p>
-      <div class="styles" id="styles" role="radiogroup" aria-label="贴纸风格"></div>
+      <div class="styles" id="styles" role="radiogroup" aria-label="贴纸风格" data-pop-group></div>
     </div></div>
   </section>
 
@@ -78,12 +84,13 @@
   <section id="s3" class="sec" data-fab="">
     <div class="out"><div class="in">
       <h2 class="rv">让光把它长出来</h2>
+      <p class="demo-banner" id="demoBanner" role="note" hidden>演示模式（未接入 AI，仅示意效果）</p>
       <p class="sub rv" id="genSub">照片会先变成一片发光的叶子，挂上树枝</p>
-      <div class="gen rv" id="gen">
+      <div class="gen" id="gen" data-pop="top">
         <svg class="branch" viewBox="0 0 300 120" aria-hidden="true"><path d="M300 18 C230 24 190 40 150 62 C120 78 96 84 60 86" /><path d="M210 30 C214 18 224 10 238 6"/><path d="M160 58 C150 46 150 34 156 22"/></svg>
-        <div class="frame glass" id="frame" aria-live="polite">
-          <div class="f-empty" id="fEmpty"><span class="dot-glow"></span><p>贴纸会在这里展开</p></div>
-          <figure class="sticker" id="sticker" hidden><img id="stickerImg" alt="生成的贴纸"></figure>
+        <div class="frame glass" id="frame" aria-live="polite" data-tilt="6">
+          <div class="f-empty" id="fEmpty"><span class="art-slot" data-slot="result-frame"></span><span class="dot-glow"></span><p>贴纸会在这里展开</p></div>
+          <figure class="sticker" id="sticker" hidden><img id="stickerImg" alt="生成的贴纸"><figcaption class="demo-tag" id="demoTag" hidden>演示模式（未接入 AI，仅示意效果）</figcaption></figure>
           <div class="failcard" id="failCard" hidden><svg viewBox="0 0 200 300" aria-hidden="true"><rect width="200" height="300" fill="#c9a24a" mask="url(#vs-leaf-mask)"/><use href="#vs-leaf-outline"/><use href="#vs-leaf-veins" style="stroke:#7a5a1c"/></svg><p>这次没长好，<br>免费再来一次</p><small id="failWhy"></small></div>
         </div>
         <div class="leafwrap" id="leafWrap" hidden aria-hidden="true">
@@ -105,12 +112,11 @@
       </div>
       <p class="caption" id="caption" aria-live="polite"></p>
       <div class="gen-actions rv">
-        <button class="btn primary breathe" id="genBtn" type="button" disabled>生成贴纸</button>
+        <button class="btn primary breathe" id="genBtn" type="button" data-press data-lift disabled>生成贴纸</button>
         <div class="dl" id="dl" hidden>
-          <a class="btn" id="dlPng" download>下载 PNG</a>
-          <!-- GIF download hidden in preview: server makeGif() currently outputs a single-frame 512×12288 strip (sharp 0.33 raw input has no pageHeight) -->
-          <a class="btn ghost" id="dlGif" download hidden>下载动图 GIF</a>
-          <button class="link" id="again" type="button">换一张照片</button>
+          <a class="btn" id="dlPng" download data-press data-lift>下载 PNG</a>
+          <a class="btn ghost" id="dlGif" download data-press data-lift>下载动图 GIF</a>
+          <button class="link" id="again" type="button" data-press data-lift>换一张照片</button>
         </div>
       </div>
       <p class="meta rv" id="quota"></p>
@@ -122,10 +128,10 @@
     <div class="out"><div class="in">
       <h2 class="rv">带走更多贴纸</h2>
       <p class="sub rv">预览版：支付暂未开放，以下为版式占位</p>
-      <div class="tiers rv">
-        <div class="tier"><p class="price">$1</p><div class="mid"><p class="tn">单张</p><p class="td">1 枚高清贴纸</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
-        <div class="tier rec"><span class="tag">推荐</span><p class="price">$4.99</p><div class="mid"><p class="tn">一小包</p><p class="td">8 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
-        <div class="tier"><p class="price">$8.99</p><div class="mid"><p class="tn">一整片林子</p><p class="td">20 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
+      <div class="tiers" data-pop-group>
+        <div class="tier" data-pop="left" data-tilt data-press><span class="art-slot" data-slot="tier-single"></span><p class="price">$1</p><div class="mid"><p class="tn">单张</p><p class="td">1 枚高清贴纸</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
+        <div class="tier rec" data-pop="bottom" data-tilt data-press><span class="art-slot" data-slot="tier-pack"></span><span class="tag">推荐</span><p class="price">$4.99</p><div class="mid"><p class="tn">一小包</p><p class="td">8 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
+        <div class="tier" data-pop="right" data-tilt data-press><span class="art-slot" data-slot="tier-pro"></span><p class="price">$8.99</p><div class="mid"><p class="tn">一整片林子</p><p class="td">20 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
       </div>
     </div></div>
   </section>
@@ -135,7 +141,7 @@
     <div class="out"><div class="in">
       <h2 class="rv">林间展示墙</h2>
       <p class="sub rv">第一张贴纸会长在这里</p>
-      <div class="wall rv" id="wall"></div>
+      <div class="wall" id="wall" data-pop-group></div>
     </div></div>
   </section>
 
@@ -144,19 +150,21 @@
     <div class="out"><div class="in">
       <h2 class="rv">点赞榜</h2>
       <p class="sub rv">树枝上还空着，等你来占位</p>
-      <ol class="rank rv" id="rank"></ol>
+      <ol class="rank" id="rank" data-pop-group></ol>
       <p class="foot">© VibeSticker · 预览版 · Powered by AI</p>
       <p class="credit">Video: <a href="https://www.pexels.com/video/sunlight-streaming-through-forest-canopy-37218116/" target="_blank" rel="noopener">Saulo Nulo / Pexels</a></p>
     </div></div>
   </section>
 </main>
 
-<button class="fab btn primary" id="fab" type="button" hidden></button>
+<button class="fab btn primary" id="fab" type="button" data-press hidden></button>
 <div id="cursor" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/motion.js"></script>
+<script src="/ix.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
