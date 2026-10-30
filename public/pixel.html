@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/pixel.css">
 </head>
 <body>
-  <a class="skip" href="#panel">跳到设计面板</a>
+  <a class="skip" href="#surface-desk">跳到设计面板</a>
   <div id="demo-banner" class="demo-banner" hidden role="status">演示模式 · 未配置 Gemini 密钥</div>
 
   <header class="px-bar">
@@ -29,48 +29,49 @@
   </div>
 
   <div class="stage" id="stage" data-state="FAR" data-sky="evening">
-    <p class="far-claim" id="far-claim">傍晚的高楼窗外。<em>拖或滚</em>靠近设计台。</p>
-    <p class="drag-hint" id="drag-hint">拖动或滚动靠近 · 按住可绕电脑转</p>
+    <p class="far-claim" id="far-claim">傍晚的高楼窗外。<em>拖动环视</em> · 点击电脑靠近。</p>
+    <p class="drag-hint" id="drag-hint">按住拖动环视 · 点击显示器进入</p>
 
-    <div class="cam" id="cam" aria-hidden="true">
-      <div class="layer room" id="layer-room">
-        <!-- 30s sky cycle: full-scene lighting variants (r5-aligned) -->
-        <div class="sky-stack" id="sky-stack" aria-hidden="true">
-          <img class="sky-img is-on" id="sky-a" src="/art/rebuild/pixel-desk/sky-evening.jpg" alt="" width="1280" height="720" decoding="async" fetchpriority="high">
-          <img class="sky-img" id="sky-b" src="/art/rebuild/pixel-desk/sky-night.jpg" alt="" width="1280" height="720" decoding="async">
-        </div>
-        <!-- headless underpaint so rotating head has clean neck; masked under skies via blend -->
-        <img class="hero-base" id="hero-base"
-          src="/art/rebuild/pixel-desk/hero-wide-r4-headless.jpg"
-          alt="" width="1280" height="720" decoding="async">
-        <img class="head-erase-patch" id="head-erase"
-          src="/art/rebuild/pixel-desk/head-erase-patch.jpg" alt="" aria-hidden="true"
-          style="position:absolute;left:19.5%;top:33.3%;width:13.3%;height:25%;object-fit:cover;z-index:3;pointer-events:none">
-        <div class="head-wrap" id="head-wrap">
-          <img class="head-layer" id="head-layer"
-            src="/art/rebuild/pixel-desk/layer-head-back.png"
-            alt="" width="150" height="160" decoding="async">
-        </div>
-        <img class="monitor-glow-img" id="monitor-glow"
-          src="/art/rebuild/pixel-desk/layer-monitor-glow.png" alt="" aria-hidden="true">
-        <img class="hero-near" id="hero-near"
-          src="/art/rebuild/pixel-desk/hero-near-desk.jpg" alt="" width="1280" height="720" decoding="async">
-        <img class="char-stretch" id="char-stretch"
-          src="/art/rebuild/pixel-desk/char-stretch.png" alt="" hidden>
-        <img class="prop coffee" id="prop-coffee"
-          src="/art/rebuild/pixel-desk/prop-coffee-cup.png" alt="">
-        <img class="prop pen-cup" id="pen-cup"
-          src="/art/rebuild/pixel-desk/ui-pen-cup-closed.png" alt="" data-open="0">
-        <img class="prop printer" id="prop-printer"
-          src="/art/rebuild/pixel-desk/prop-printer.png" alt="">
-        <img class="sticker-fly" id="sticker-fly"
-          src="/art/rebuild/pixel-desk/layer-sticker-fly.png" alt="" hidden>
-        <button type="button" class="monitor-hit" id="monitor-hit" aria-label="靠近电脑屏幕"></button>
-        <div class="trash-hot" id="trash-hot" title="垃圾桶">
-          <img class="trash-img" id="trash-img" src="/art/rebuild/pixel-desk/ui-trash-closed.png" alt="">
+    <!-- Room camera: CSS 3D orbit around monitor pivot (Hamza orbit feel, 2D locked art) -->
+    <div class="room-view" id="room-view" aria-hidden="true">
+      <div class="cam" id="cam">
+        <div class="layer room" id="layer-room">
+          <div class="sky-stack" id="sky-stack" aria-hidden="true">
+            <img class="sky-img is-on" id="sky-a" src="/art/rebuild/pixel-desk/sky-evening.jpg" alt="" width="1280" height="720" decoding="async" fetchpriority="high">
+            <img class="sky-img" id="sky-b" src="/art/rebuild/pixel-desk/sky-night.jpg" alt="" width="1280" height="720" decoding="async">
+          </div>
+          <!-- Headless underpaint for rotating head neck -->
+          <img class="hero-base" id="hero-base"
+            src="/art/rebuild/pixel-desk/hero-wide-r4-headless.jpg"
+            alt="" width="1280" height="720" decoding="async">
+          <img class="head-erase-patch" id="head-erase"
+            src="/art/rebuild/pixel-desk/head-erase-patch.jpg" alt="" aria-hidden="true">
+          <div class="head-wrap" id="head-wrap">
+            <img class="head-layer" id="head-layer"
+              src="/art/rebuild/pixel-desk/layer-head-back.png"
+              alt="" width="150" height="160" decoding="async">
+          </div>
+          <img class="monitor-glow-img" id="monitor-glow"
+            src="/art/rebuild/pixel-desk/layer-monitor-glow.png" alt="" aria-hidden="true">
+          <img class="char-stretch" id="char-stretch"
+            src="/art/rebuild/pixel-desk/char-stretch.png" alt="" hidden>
+          <img class="prop coffee" id="prop-coffee"
+            src="/art/rebuild/pixel-desk/prop-coffee-cup.png" alt="">
+          <img class="prop pen-cup" id="pen-cup"
+            src="/art/rebuild/pixel-desk/ui-pen-cup-closed.png" alt="" data-open="0">
+          <img class="prop printer" id="prop-printer"
+            src="/art/rebuild/pixel-desk/prop-printer.png" alt="">
+          <img class="sticker-fly" id="sticker-fly"
+            src="/art/rebuild/pixel-desk/layer-sticker-fly.png" alt="" hidden>
+          <button type="button" class="hotspot monitor-hit" id="monitor-hit" data-hotspot="monitor" aria-label="打开电脑屏幕"></button>
+          <div class="trash-hot" id="trash-hot" title="垃圾桶 · 拖入删除">
+            <img class="trash-img" id="trash-img" src="/art/rebuild/pixel-desk/ui-trash-closed.png" alt="">
+          </div>
         </div>
       </div>
     </div>
+
+    <div class="room-dim" id="room-dim" aria-hidden="true"></div>
 
     <div class="boot-seq" id="boot-seq" hidden aria-hidden="true">
       <div class="boot-inner">
@@ -80,12 +81,13 @@
       </div>
     </div>
 
-    <section class="panel" id="panel" aria-label="设计面板" data-locked="true" data-layer="0">
+    <!-- Surface: Hamza-style overlay panel (~80% viewport), not a scrolled page -->
+    <section class="surface desk" id="surface-desk" aria-label="设计面板" hidden data-layer="0">
       <div class="panel-chrome">
         <div class="panel-top">
           <span class="scan"></span>
           <div class="panel-clock" id="panel-clock">00:00</div>
-          <button type="button" class="btn-undock" id="undock" hidden>← 回房间</button>
+          <button type="button" class="btn-undock" id="undock">← 回房间</button>
         </div>
 
         <div class="walker-dock" id="walker-dock">
@@ -101,7 +103,7 @@
           <article class="ply is-active" data-layer="0" id="ply-0">
             <div class="ply-body">
               <h2 class="ply-title">总览</h2>
-              <p class="ply-lede">滚轮切层，或点底栏模块。小人会走到对应位置。</p>
+              <p class="ply-lede">点底栏模块，或点卡片跳转。小人会走到对应位置。</p>
               <div class="overview-grid">
                 <button type="button" class="ov-card" data-goto="1"><span>1</span>上传</button>
                 <button type="button" class="ov-card" data-goto="2"><span>2</span>风格</button>
@@ -172,7 +174,7 @@
           <article class="ply" data-layer="5" id="ply-5" hidden>
             <div class="ply-body">
               <h2 class="ply-title">帮助</h2>
-              <p class="ply-lede">推近镜头 → 开机 → 面板内滚轮切层。可拖图到垃圾桶删除。</p>
+              <p class="ply-lede">拖动环视房间 · 点击显示器推近。可拖图到垃圾桶删除。</p>
               <ul class="help-list">
                 <li>底栏切换模块，小人走到落点</li>
                 <li>「回房间」退出面板</li>
@@ -184,15 +186,6 @@
         <div class="layer-ticks" id="layer-ticks" aria-hidden="true"></div>
       </div>
     </section>
-
-    <div class="push-dock" id="push-dock">
-      <div class="push-track" id="push-track">
-        <div class="push-fill" id="push-fill"></div>
-        <button type="button" class="push-knob" id="push-knob" role="slider"
-          aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="镜头远近"></button>
-      </div>
-      <p class="push-tip" id="push-tip">推近</p>
-    </div>
 
     <nav class="modbar" id="modbar" aria-label="模块">
       <button type="button" class="modbar-item is-on" data-layer="0" data-mod="overview">总览</button>

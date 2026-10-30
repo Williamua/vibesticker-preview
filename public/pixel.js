@@ -1,4 +1,4 @@
-/** Pixel Desk — r4-headless + head-back FAR; sky; orbit; glow; dock; trash delete; idle fx */
+/** Pixel Desk — Hamza orbit/dock/surface state machine + VibeSticker locked art */
 (function () {
   'use strict';
   const $ = (s, r = document) => r.querySelector(s);
@@ -12,19 +12,31 @@
     { id: 'watercolor', name: '水彩', blurb: '湿画法晕染。' },
   ];
   const LAYERS = [0, 1, 2, 3, 4, 5];
-  const DOCK_AT = 0.92, UNLOCK = 0.72, FAR_SNAP = 0.08;
-  const HEAD_MAX = 12;
-  const ORBIT_MAX = 14;
 
-  let progress = 0, state = 'FAR', layer = 0;
+  /* Hamza-style: mouse ~6px / touch ~12px before drag counts */
+  const DRAG_THRESH_MOUSE = 6;
+  const DRAG_THRESH_TOUCH = 12;
+  const HEAD_MAX = 12;
+  const YAW_MAX = 16;
+  const PITCH_MAX = 7;
+  const DOCK_SCALE = 2.35;
+  const DOCK_TX = 2;   /* % nudge toward monitor */
+  const DOCK_TY = 4;
+
+  let state = 'FAR'; /* FAR | ORBIT | DOCKING | DOCKED | PANEL */
+  let layer = 0;
   let selectedStyle = localStorage.getItem('vibe-style') || 'pixel';
   let photoFile = null, photoUrl = null, bootedOnce = false;
   let walking = false, walkGen = 0, walkTween = null, wheelAcc = 0, wheelLock = false;
-  let headTarget = 0, headCurrent = 0, orbitX = 0, orbitY = 0, orbitTX = 0, orbitTY = 0;
-  let orbitDrag = false, orbitMoved = false, pushDragging = false;
   let rafId = 0;
 
+  /* orbit targets + smoothed (Hamza ll/sx lerp) */
+  let yawT = 0, pitchT = 0, yaw = 0, pitch = 0;
+  let headT = 0, head = 0;
+  let zoomT = 1, zoom = 1, camTX = 0, camTY = 0, camTXT = 0, camTYT = 0;
+
   const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isFine = () => matchMedia('(pointer: fine)').matches;
 
   async function boot() {
     try { await VibeAPI.loadConfig(); } catch (_) {}
@@ -32,19 +44,17 @@
     updateQuota();
     forceClose($('#overlay')); forceClose($('#detail-overlay'));
     applySky();
-    const hero = $('#hero-base');
-    if (hero) hero.addEventListener('error', () => {
-      hero.src = ART + '/hero-wide-r5.jpg';
-    });
     buildStyles(); buildTicks();
-    bindPush(); bindOrbit(); bindHead(); bindMonitor(); bindTrash();
+    bindPointerRoom(); bindHead(); bindMonitor(); bindTrash();
     bindPanelWheel(); bindModbar(); bindUpload(); bindGenerate(); bindPricing();
     bindOverlay(); bindUndock(); bindIdleFx();
     $('#layers')?.addEventListener('click', (e) => {
       const g = e.target.closest('[data-goto]'); if (g) requestLayer(+g.dataset.goto);
     });
     tickClock(); setInterval(tickClock, 15000);
-    playIntro(); applyProgress(0); setState('FAR'); goLayer(0, { instant: true, silent: true });
+    playIntro();
+    setState('FAR');
+    goLayer(0, { instant: true, silent: true });
     startRaf();
   }
 
@@ -59,15 +69,14 @@
     el.textContent = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
+  /* —— Sky 30s five-stage cycle —— */
   const SKY_LABELS = { dawn: '清晨', morning: '上午', afternoon: '下午', evening: '傍晚', night: '夜晚' };
   let skyCfg = {
-    periodSec: 30, stages: ['dawn','morning','afternoon','evening','night'],
-    files: { dawn:'sky-dawn.jpg', morning:'sky-morning.jpg', afternoon:'sky-afternoon.jpg', evening:'sky-evening.jpg', night:'sky-night.jpg' },
+    periodSec: 30, stages: ['dawn', 'morning', 'afternoon', 'evening', 'night'],
+    files: { dawn: 'sky-dawn.jpg', morning: 'sky-morning.jpg', afternoon: 'sky-afternoon.jpg', evening: 'sky-evening.jpg', night: 'sky-night.jpg' },
     perStageSec: 6,
   };
-  let skyIdx = 3; // evening first
-  let skyFrontIsA = true;
-  let skyTimer = 0;
+  let skyIdx = 3, skyFrontIsA = true, skyTimer = 0;
 
   async function loadSkyCycle() {
     try {
@@ -75,30 +84,25 @@
       if (r.ok) skyCfg = Object.assign(skyCfg, await r.json());
     } catch (_) {}
     const stages = skyCfg.stages || ['evening'];
-    // start near local hour if possible
-    const h = new Date().getHours();
-    let prefer = 'evening';
-    if (h >= 5 && h < 8) prefer = 'dawn';
-    else if (h >= 8 && h < 12) prefer = 'morning';
-    else if (h >= 12 && h < 17) prefer = 'afternoon';
-    else if (h >= 17 && h < 20) prefer = 'evening';
-    else prefer = 'night';
-    skyIdx = Math.max(0, stages.indexOf(prefer));
+    skyIdx = Math.max(0, stages.indexOf('evening'));
     if (skyIdx < 0) skyIdx = 0;
     const a = $('#sky-a'), b = $('#sky-b');
     const file = skyCfg.files[stages[skyIdx]] || 'sky-evening.jpg';
     if (a) { a.src = ART + '/' + file; a.classList.add('is-on'); }
-    if (b) { b.src = ART + '/' + (skyCfg.files[stages[(skyIdx+1)%stages.length]] || file); b.classList.remove('is-on'); }
+    if (b) {
+      b.src = ART + '/' + (skyCfg.files[stages[(skyIdx + 1) % stages.length]] || file);
+      b.classList.remove('is-on');
+    }
     paintSkyClaim(stages[skyIdx]);
     if (!reduce()) startSkyLoop();
   }
-
   function paintSkyClaim(stage) {
     const st = $('#stage'); if (st) st.dataset.sky = stage;
     const claim = $('#far-claim');
-    if (claim) claim.innerHTML = (SKY_LABELS[stage] || stage) + '的高楼窗外。<em>拖或滚</em>靠近设计台。';
+    if (claim && !document.body.classList.contains('docked')) {
+      claim.innerHTML = (SKY_LABELS[stage] || stage) + '的高楼窗外。<em>拖动环视</em> · 点击电脑靠近。';
+    }
   }
-
   function startSkyLoop() {
     clearInterval(skyTimer);
     const stages = skyCfg.stages || [];
@@ -112,7 +116,6 @@
       const back = skyFrontIsA ? $('#sky-b') : $('#sky-a');
       if (!front || !back) return;
       back.src = ART + '/' + file;
-      // force reflow then crossfade
       back.classList.remove('is-on');
       void back.offsetWidth;
       back.classList.add('is-on');
@@ -122,7 +125,6 @@
       paintSkyClaim(stages[skyIdx]);
     }, per);
   }
-
   function applySky() { loadSkyCycle(); }
 
   function playIntro() {
@@ -134,211 +136,205 @@
     }
     gsap.to(words, {
       opacity: 1, y: 0, duration: 0.5, stagger: 0.1, ease: 'power3.out',
-      onComplete: () => gsap.to(wrap, { opacity: 0, duration: 0.35, delay: 0.25, onComplete: () => { wrap.style.display = 'none'; } }),
+      onComplete: () => gsap.to(wrap, {
+        opacity: 0, duration: 0.35, delay: 0.25,
+        onComplete: () => { wrap.style.display = 'none'; },
+      }),
     });
   }
 
+  /* —— State machine —— */
   function setState(next) {
     state = next;
     const stage = $('#stage');
     if (stage) stage.dataset.state = state;
-    const docked = state === 'DOCKED' || state === 'PANEL';
+    const docked = state === 'DOCKED' || state === 'PANEL' || state === 'DOCKING';
+    document.body.classList.toggle('docked', docked);
     document.body.classList.toggle('is-docked', docked);
     stage?.classList.toggle('is-docked', docked);
-    const panel = $('#panel');
-    if (panel) panel.dataset.locked = docked ? 'false' : 'true';
-    const undock = $('#undock');
-    if (undock) undock.hidden = !docked;
-    if (docked) {
-      stage?.classList.add('is-explored');
-      stage?.classList.add('is-near');
-    } else if (state === 'FAR' && progress < 0.4) {
-      stage?.classList.remove('is-near');
-    }
+    if (docked) stage?.classList.add('is-explored');
   }
 
-  function applyProgress(p) {
-    progress = Math.max(0, Math.min(1, p));
-    paintPush(progress); paintCam(progress); paintPanelVis(progress);
-    // near desk art kicks in as we push toward dock (~55%+)
-    const stage = $('#stage');
-    if (stage) {
-      const near = progress >= 0.55 || state === 'DOCKED' || state === 'PANEL';
-      stage.classList.toggle('is-near', near);
-    }
-  }
-  function paintPush(p) {
-    const fill = $('#push-fill'), knob = $('#push-knob'), tip = $('#push-tip');
-    if (fill) fill.style.transform = `scaleX(${Math.max(0.04, p)})`;
-    if (knob) { knob.style.left = (p * 100) + '%'; knob.setAttribute('aria-valuenow', String(Math.round(p * 100))); }
-    if (tip) tip.textContent = p < FAR_SNAP ? '推近' : p < DOCK_AT ? '继续…' : '已停靠';
-  }
-  function paintCam(p) {
+  function paintCam() {
     const cam = $('#cam');
-    const scale = 1 + p * 2.6;
-    const y = p * 6;
-    const ox = orbitX * (1 - p * 0.85);
-    const oy = orbitY * (1 - p * 0.85);
-    if (cam) {
-      cam.style.transform = `translate(${ox}%, ${y + oy * 0.35}%) scale(${scale}) rotateY(${ox * 0.9}deg) rotateX(${-oy * 0.5}deg)`;
-    }
+    if (!cam) return;
+    /* orbit around monitor pivot; dock = push-in scale */
+    cam.style.transform =
+      `translate(${camTX}%, ${camTY}%) scale(${zoom}) rotateY(${yaw}deg) rotateX(${-pitch}deg)`;
   }
-  function paintPanelVis(p) {
-    const panel = $('#panel'); if (!panel) return;
-    const t = p < UNLOCK ? 0 : (p - UNLOCK) / (1 - UNLOCK);
-    if (typeof gsap !== 'undefined') gsap.set(panel, { opacity: t, scale: 0.94 + t * 0.06 });
-    else { panel.style.opacity = String(t); panel.style.transform = `scale(${0.94 + t * 0.06})`; }
-  }
-  function snap() { animateTo(progress >= DOCK_AT * 0.55 ? 1 : 0); }
-  function animateTo(target) {
-    const finish = async () => {
-      applyProgress(target);
-      if (target >= DOCK_AT) { setState('DOCKED'); await runBootThenPanel(); }
-      else setState('FAR');
+
+  function startRaf() {
+    cancelAnimationFrame(rafId);
+    const tick = () => {
+      const k = reduce() ? 1 : 0.12;
+      const ko = reduce() ? 1 : 0.1;
+      head += (headT - head) * k;
+      yaw += (yawT - yaw) * ko;
+      pitch += (pitchT - pitch) * ko;
+      zoom += (zoomT - zoom) * (reduce() ? 1 : 0.08);
+      camTX += (camTXT - camTX) * (reduce() ? 1 : 0.08);
+      camTY += (camTYT - camTY) * (reduce() ? 1 : 0.08);
+      const wrap = $('#head-wrap');
+      if (wrap) {
+        wrap.style.transform = reduce()
+          ? 'none'
+          : `rotateY(${head}deg) rotateZ(${head * 0.18}deg)`;
+      }
+      paintCam();
+      rafId = requestAnimationFrame(tick);
     };
-    if (typeof gsap === 'undefined' || reduce()) { finish(); return; }
-    const obj = { p: progress };
-    gsap.to(obj, {
-      p: target, duration: 0.55, ease: 'power3.inOut',
-      onUpdate: () => { applyProgress(obj.p); if (obj.p > FAR_SNAP && obj.p < DOCK_AT) setState('DOLLY'); },
-      onComplete: finish,
+    rafId = requestAnimationFrame(tick);
+  }
+
+  /* —— Hamza pointer: threshold separates drag (orbit) from click (dock) —— */
+  function bindPointerRoom() {
+    const stage = $('#stage');
+    if (!stage) return;
+
+    let ptrId = null, x0 = 0, y0 = 0, yaw0 = 0, pitch0 = 0;
+    let dragging = false, moved = false;
+    let downOnMonitor = false;
+
+    const thresh = () => (isFine() ? DRAG_THRESH_MOUSE : DRAG_THRESH_TOUCH);
+
+    stage.addEventListener('pointerdown', (e) => {
+      if (document.body.classList.contains('docked')) return;
+      if (e.target.closest('.surface,.modbar,a,button:not(.monitor-hit),input,.trash-hot,.overlay')) return;
+      ptrId = e.pointerId;
+      x0 = e.clientX; y0 = e.clientY;
+      yaw0 = yawT; pitch0 = pitchT;
+      dragging = true; moved = false;
+      downOnMonitor = !!e.target.closest('.monitor-hit');
+      stage.classList.add('is-dragging');
+      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    stage.addEventListener('pointermove', (e) => {
+      if (!dragging || e.pointerId !== ptrId) return;
+      if (document.body.classList.contains('docked')) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (!moved && Math.hypot(dx, dy) >= thresh()) moved = true;
+      if (!moved) return;
+      /* horizontal → yaw, vertical → mild pitch (orbit around monitor) */
+      yawT = Math.max(-YAW_MAX, Math.min(YAW_MAX, yaw0 + dx / Math.max(1, innerWidth) * YAW_MAX * 2.4));
+      pitchT = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch0 + dy / Math.max(1, innerHeight) * PITCH_MAX * 1.6));
+      if (state === 'FAR') setState('ORBIT');
+      /* head also tracks while orbiting */
+      if (!reduce()) {
+        const nx = (e.clientX / Math.max(1, innerWidth)) * 2 - 1;
+        headT = nx * HEAD_MAX;
+      }
+    });
+
+    const end = (e) => {
+      if (!dragging || (e && e.pointerId !== ptrId)) return;
+      dragging = false;
+      stage.classList.remove('is-dragging');
+      ptrId = null;
+      if (document.body.classList.contains('docked')) return;
+
+      if (!moved && downOnMonitor) {
+        /* click on monitor → dock */
+        dock();
+        return;
+      }
+      if (!moved) return;
+
+      /* release: soft settle toward center (natural default) */
+      yawT *= 0.28;
+      pitchT *= 0.28;
+      setState(Math.abs(yawT) + Math.abs(pitchT) > 0.4 ? 'ORBIT' : 'FAR');
+    };
+
+    stage.addEventListener('pointerup', end);
+    stage.addEventListener('pointercancel', end);
+    stage.addEventListener('lostpointercapture', end);
+  }
+
+  function bindHead() {
+    const stage = $('#stage');
+    stage?.addEventListener('pointermove', (e) => {
+      if (reduce() || document.body.classList.contains('docked')) return;
+      /* idle head look when not actively dragging threshold-cross yet */
+      const nx = (e.clientX / Math.max(1, innerWidth)) * 2 - 1;
+      headT = nx * HEAD_MAX;
+    });
+    stage?.addEventListener('pointerleave', () => { if (!reduce()) headT = 0; });
+  }
+
+  function bindMonitor() {
+    const hit = $('#monitor-hit'), stage = $('#stage');
+    hit?.addEventListener('pointerenter', () => {
+      if (!document.body.classList.contains('docked')) stage?.classList.add('is-monitor-hover');
+    });
+    hit?.addEventListener('pointerleave', () => stage?.classList.remove('is-monitor-hover'));
+    /* click handled via pointer threshold in bindPointerRoom; also allow keyboard */
+    hit?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dock(); }
     });
   }
+
+  async function dock() {
+    if (state === 'DOCKING' || state === 'DOCKED' || state === 'PANEL') return;
+    setState('DOCKING');
+    $('#stage')?.classList.remove('is-monitor-hover');
+    /* camera push-in toward monitor; surface reveals at ~80% */
+    yawT = 0; pitchT = 0;
+    zoomT = DOCK_SCALE;
+    camTXT = DOCK_TX;
+    camTYT = DOCK_TY;
+    const surface = $('#surface-desk');
+    if (surface) surface.hidden = false;
+
+    const waitMs = reduce() ? 40 : 520;
+    await wait(waitMs);
+    setState('DOCKED');
+    await runBootThenPanel();
+  }
+
+  function undock() {
+    forceClose($('#overlay')); forceClose($('#detail-overlay')); hideBoot();
+    zoomT = 1; camTXT = 0; camTYT = 0;
+    yawT = 0; pitchT = 0;
+    const surface = $('#surface-desk');
+    setState('FAR');
+    /* hide surface after brief fade */
+    setTimeout(() => { if (state === 'FAR' && surface) surface.hidden = true; }, reduce() ? 0 : 380);
+  }
+
   async function runBootThenPanel() {
-    if (reduce() || bootedOnce) { hideBoot(); setState('PANEL'); goLayer(layer, { instant: true, silent: true }); return; }
+    if (reduce() || bootedOnce) {
+      hideBoot(); setState('PANEL');
+      goLayer(layer, { instant: true, silent: true });
+      return;
+    }
     const seq = $('#boot-seq'), fill = $('#boot-fill'), msg = $('#boot-msg');
     if (!seq) { setState('PANEL'); return; }
     seq.hidden = false;
     if (fill) fill.style.width = '0%';
     if (typeof gsap !== 'undefined') {
       await new Promise((res) => gsap.to(fill, {
-        width: '100%', duration: 0.7, ease: 'power1.inOut',
-        onUpdate: () => { const w = parseFloat(fill.style.width) || 0; if (msg) msg.textContent = w > 60 ? '就绪' : '启动中…'; },
+        width: '100%', duration: 0.65, ease: 'power1.inOut',
+        onUpdate: () => {
+          const w = parseFloat(fill.style.width) || 0;
+          if (msg) msg.textContent = w > 60 ? '就绪' : '启动中…';
+        },
         onComplete: res,
       }));
     } else { if (fill) fill.style.width = '100%'; await wait(400); }
-    bootedOnce = true; hideBoot(); setState('PANEL'); goLayer(0, { instant: false, silent: true });
+    bootedOnce = true; hideBoot(); setState('PANEL');
+    goLayer(0, { instant: false, silent: true });
   }
   function hideBoot() { const s = $('#boot-seq'); if (s) s.hidden = true; }
   function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
-  function undock() {
-    forceClose($('#overlay')); forceClose($('#detail-overlay')); hideBoot();
-    orbitTX = orbitTY = 0;
-    animateTo(0);
-  }
-
-  function bindPush() {
-    const stage = $('#stage'), track = $('#push-track'), knob = $('#push-knob');
-    stage?.addEventListener('wheel', (e) => {
-      if (state === 'DOCKED' || state === 'PANEL') return;
-      e.preventDefault();
-      applyProgress(progress + e.deltaY * 0.0012);
-      setState(progress > FAR_SNAP ? 'DOLLY' : 'FAR');
-      clearTimeout(bindPush._t); bindPush._t = setTimeout(snap, 140);
-    }, { passive: false });
-    function fromX(cx) {
-      const r = track.getBoundingClientRect();
-      applyProgress((cx - r.left) / Math.max(1, r.width));
-      setState(progress > FAR_SNAP ? 'DOLLY' : 'FAR');
-    }
-    let scrub = false;
-    const down = (e) => {
-      if (state === 'DOCKED' || state === 'PANEL') return;
-      scrub = true; pushDragging = true;
-      try { knob.setPointerCapture(e.pointerId); } catch (_) {}
-      fromX(e.clientX); e.preventDefault();
-    };
-    knob?.addEventListener('pointerdown', down);
-    track?.addEventListener('pointerdown', (e) => { if (e.target !== knob) down(e); });
-    knob?.addEventListener('pointermove', (e) => { if (scrub) fromX(e.clientX); });
-    const up = () => { if (!scrub) return; scrub = false; pushDragging = false; snap(); };
-    knob?.addEventListener('pointerup', up); knob?.addEventListener('pointercancel', up);
-  }
   function bindUndock() { $('#undock')?.addEventListener('click', undock); }
 
-  function bindOrbit() {
-    const stage = $('#stage');
-    let x0 = 0, y0 = 0, ox0 = 0, oy0 = 0;
-    stage?.addEventListener('pointerdown', (e) => {
-      if (state === 'DOCKED' || state === 'PANEL') return;
-      if (e.target.closest('.push-dock,.panel,a,button,input,.modbar,.trash-hot,.monitor-hit')) return;
-      orbitDrag = true; orbitMoved = false;
-      x0 = e.clientX; y0 = e.clientY; ox0 = orbitTX; oy0 = orbitTY;
-      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    stage?.addEventListener('pointermove', (e) => {
-      if (!orbitDrag) return;
-      const dx = e.clientX - x0, dy = e.clientY - y0;
-      if (Math.abs(dx) + Math.abs(dy) > 6) orbitMoved = true;
-      // horizontal drag = orbit around desk; vertical = dolly
-      orbitTX = Math.max(-ORBIT_MAX, Math.min(ORBIT_MAX, ox0 + dx / innerWidth * ORBIT_MAX * 2.2));
-      orbitTY = Math.max(-ORBIT_MAX * 0.5, Math.min(ORBIT_MAX * 0.5, oy0 + dy / innerHeight * ORBIT_MAX));
-      applyProgress(Math.max(0, Math.min(1, progress + (-dy) / (innerHeight * 1.4) * 0.002))); // subtle
-      // better: map vertical drag to progress from start
-      const p0 = bindOrbit._p0 != null ? bindOrbit._p0 : progress;
-      if (bindOrbit._p0 == null) bindOrbit._p0 = progress;
-      applyProgress(bindOrbit._p0 + (y0 - e.clientY) / (innerHeight * 0.75));
-      if (progress > FAR_SNAP) setState('DOLLY');
-    });
-    const end = () => {
-      if (!orbitDrag) return;
-      orbitDrag = false; bindOrbit._p0 = null;
-      // release: ease orbit back toward center (default), snap dolly
-      orbitTX *= 0.35; orbitTY *= 0.35;
-      if (!orbitMoved && progress < FAR_SNAP) return;
-      snap();
-    };
-    stage?.addEventListener('pointerup', end);
-    stage?.addEventListener('pointercancel', end);
-  }
-
-  function bindHead() {
-    const stage = $('#stage');
-    stage?.addEventListener('pointermove', (e) => {
-      if (reduce() || state === 'DOCKED' || state === 'PANEL') return;
-      const nx = (e.clientX / Math.max(1, innerWidth)) * 2 - 1;
-      headTarget = nx * HEAD_MAX;
-    });
-    stage?.addEventListener('pointerleave', () => { headTarget = 0; });
-  }
-
-  function bindMonitor() {
-    const hit = $('#monitor-hit'), stage = $('#stage');
-    hit?.addEventListener('pointerenter', () => stage?.classList.add('is-monitor-hover'));
-    hit?.addEventListener('pointerleave', () => stage?.classList.remove('is-monitor-hover'));
-    hit?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (state === 'FAR' || state === 'DOLLY') animateTo(1);
-    });
-  }
-
-  function startRaf() {
-    cancelAnimationFrame(rafId);
-    const tick = () => {
-      const lerp = reduce() ? 1 : 0.12;
-      headCurrent += (headTarget - headCurrent) * lerp;
-      orbitX += (orbitTX - orbitX) * (reduce() ? 1 : 0.14);
-      orbitY += (orbitTY - orbitY) * (reduce() ? 1 : 0.14);
-      const wrap = $('#head-wrap');
-      if (wrap && !reduce()) {
-        wrap.style.transform = `rotateY(${headCurrent}deg) rotateZ(${headCurrent * 0.18}deg)`;
-      } else if (wrap && reduce()) {
-        wrap.style.transform = 'none';
-      }
-      paintCam(progress);
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-  }
-
+  /* —— Idle FX —— */
   function bindIdleFx() {
     if (reduce()) return;
-    const stage = () => $('#stage');
-    const stretchEl = () => $('#char-stretch');
     const doStretch = () => {
-      if (state !== 'FAR' && state !== 'DOLLY') return;
-      if (progress > 0.45) return;
-      const el = stretchEl(), st = stage();
+      if (document.body.classList.contains('docked')) return;
+      const el = $('#char-stretch'), st = $('#stage');
       if (!el || !st) return;
       el.hidden = false;
       st.classList.add('is-stretching');
@@ -354,11 +350,9 @@
     };
     setTimeout(stretchLoop, 6000);
 
-    // pen cup open/close
     const cup = $('#pen-cup');
     const toggleCup = () => {
-      if (!cup) return;
-      if (state === 'PANEL' || progress > 0.7) return;
+      if (!cup || document.body.classList.contains('docked')) return;
       const open = cup.dataset.open === '1';
       cup.dataset.open = open ? '0' : '1';
       cup.src = ART + (open ? '/ui-pen-cup-closed.png' : '/ui-pen-cup-open.png');
@@ -398,11 +392,13 @@
   function buildTicks() {
     const root = $('#layer-ticks'); if (!root) return;
     root.innerHTML = LAYERS.map((i) => `<span data-layer="${i}"></span>`).join('');
-    root.addEventListener('click', (e) => { const s = e.target.closest('span'); if (s) requestLayer(+s.dataset.layer); });
+    root.addEventListener('click', (e) => {
+      const s = e.target.closest('span'); if (s) requestLayer(+s.dataset.layer);
+    });
   }
   function bindPanelWheel() {
     $('.panel-chrome')?.addEventListener('wheel', (e) => {
-      if (state !== 'DOCKED' && state !== 'PANEL') return;
+      if (!document.body.classList.contains('docked')) return;
       const ply = $('.ply.is-active');
       if (ply && ply.scrollHeight > ply.clientHeight + 4) {
         const atTop = ply.scrollTop <= 0 && e.deltaY < 0;
@@ -422,12 +418,13 @@
     $('#modbar')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.modbar-item'); if (!btn) return;
       const i = +btn.dataset.layer;
-      if (state === 'FAR' || state === 'DOLLY') {
-        animateTo(1);
-        const t = setInterval(() => {
-          if (state === 'PANEL' || state === 'DOCKED') { clearInterval(t); requestLayer(i); }
-        }, 120);
-        setTimeout(() => clearInterval(t), 3500);
+      if (!document.body.classList.contains('docked')) {
+        dock().then(() => {
+          const t = setInterval(() => {
+            if (state === 'PANEL' || state === 'DOCKED') { clearInterval(t); requestLayer(i); }
+          }, 100);
+          setTimeout(() => clearInterval(t), 3500);
+        });
         return;
       }
       requestLayer(i);
@@ -439,7 +436,7 @@
   }
   function goLayer(i, { instant = false, silent = false } = {}) {
     layer = i;
-    const panel = $('#panel'); if (panel) panel.dataset.layer = String(i);
+    const surface = $('#surface-desk'); if (surface) surface.dataset.layer = String(i);
     $$('.ply').forEach((el) => {
       const on = +el.dataset.layer === i;
       el.classList.toggle('is-active', on); el.hidden = !on;
@@ -543,7 +540,6 @@
       setTimeout(() => { printer.src = ART + '/prop-printer.png'; }, 1400);
     }
     if (!fly || reduce()) return;
-    // prefer design sticker-fly sheet; fall back to generated png
     fly.src = ART + '/layer-sticker-fly.png';
     if (src) fly.dataset.gen = src;
     fly.hidden = false;
@@ -603,7 +599,7 @@
       if (e.key !== 'Escape') return;
       if ($('#overlay')?.classList.contains('is-open')) return forceClose($('#overlay'));
       if ($('#detail-overlay')?.classList.contains('is-open')) return forceClose($('#detail-overlay'));
-      if (state === 'PANEL' || state === 'DOCKED') undock();
+      if (document.body.classList.contains('docked')) undock();
     });
   }
 
