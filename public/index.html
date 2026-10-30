@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body class="skin-roof">
+<div id="cursor" class="cursor" aria-hidden="true"><span class="cursor-dot"></span><span class="cursor-label">查看</span></div>
 <a class="skip" href="#main">跳到内容</a>
 <div id="demo-banner" class="demo-banner" hidden role="status">演示模式 · 未配置 Gemini 密钥，生成为本地滤镜预览</div>
 
@@ -51,35 +52,44 @@
     </div>
     <div class="shell hero-copy">
       <h1>把照片做成<br>有手工感的贴纸</h1>
-      <p class="lede">上传、选风格、生成冲切边缘的卡通贴纸。选一种风格，开始制作。</p>
+      <p class="lede">上传照片，点作品区选风格，开始制作。</p>
       <a class="btn btn-primary" href="#make">免费做一张</a>
     </div>
   </section>
 
-  <section id="work" class="work shell">
-    <h2>五种风格</h2>
-    <p class="section-lede">大图案例叙事——点选一种，再去制作。</p>
-    <div class="cases" id="cases">
-      <article class="case" data-style="anime" tabindex="0" role="button" aria-pressed="false">
-        <div class="case-media diecut"><img src="/art/rebuild/roof/style-anime.png" alt="日漫" width="320" height="400" loading="lazy"></div>
-        <div class="case-copy"><h3>日漫</h3><p>赛璐璐线与亮色块。</p></div>
-      </article>
-      <article class="case" data-style="chibi" tabindex="0" role="button" aria-pressed="false">
-        <div class="case-media diecut"><img src="/art/rebuild/roof/style-chibi.png" alt="Q版" width="320" height="400" loading="lazy"></div>
-        <div class="case-copy"><h3>Q 版</h3><p>大头短身，软软的。</p></div>
-      </article>
-      <article class="case" data-style="toy3d" tabindex="0" role="button" aria-pressed="false">
-        <div class="case-media diecut"><img src="/art/rebuild/roof/style-toy3d.png" alt="潮玩" width="320" height="400" loading="lazy"></div>
-        <div class="case-copy"><h3>3D 潮玩</h3><p>乙烯基玩具质感。</p></div>
-      </article>
-      <article class="case" data-style="pixel" tabindex="0" role="button" aria-pressed="false">
-        <div class="case-media diecut"><img src="/art/rebuild/roof/style-pixel.png" alt="像素" width="320" height="400" loading="lazy"></div>
-        <div class="case-copy"><h3>像素</h3><p>16-bit 精灵感。</p></div>
-      </article>
-      <article class="case" data-style="watercolor" tabindex="0" role="button" aria-pressed="false">
-        <div class="case-media diecut"><img src="/art/rebuild/roof/style-watercolor.png" alt="水彩" width="320" height="400" loading="lazy"></div>
-        <div class="case-copy"><h3>水彩</h3><p>湿画法晕染，纸纹还在。</p></div>
-      </article>
+    <section id="work" class="work">
+    <div class="work-pin" id="work-pin">
+      <div class="work-stage shell">
+        <p class="work-kicker">作品</p>
+        <div class="work-slides" id="work-slides">
+          <article class="work-slide is-active" data-style="anime" data-i="0">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-anime.png" alt="日漫"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>日漫</h3><p>赛璐璐线与亮色块。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="0">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="chibi" data-i="1">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-chibi.png" alt="Q版"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>Q 版</h3><p>大头短身，软软的。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="1">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="toy3d" data-i="2">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-toy3d.png" alt="潮玩"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>3D 潮玩</h3><p>乙烯基玩具质感。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="2">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="pixel" data-i="3">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-pixel.png" alt="像素"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>像素</h3><p>16-bit 精灵感。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="3">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="watercolor" data-i="4">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-watercolor.png" alt="水彩"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>水彩</h3><p>湿画法晕染，纸纹还在。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="4">偷看一眼</button></div>
+          </article>
+        </div>
+        <div class="work-ticks" id="work-ticks" aria-hidden="true"></div>
+      </div>
     </div>
   </section>
 
@@ -143,8 +153,14 @@
   </section>
 </main>
 
+<div id="sneak" class="sneak" hidden>
+  <button type="button" class="sneak-close btn btn-primary" id="sneak-close">关闭</button>
+  <div class="sneak-grid" id="sneak-grid"></div>
+</div>
+
 <footer class="foot"><div class="shell"><p>VibeSticker · Roof 预览</p><p class="hint"><a href="/hamza.html">切换到 Hamza 单屏预览</a></p></div></footer>
 
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 <script src="/js/api.js"></script>

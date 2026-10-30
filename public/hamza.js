@@ -22,6 +22,8 @@
     updateQuota();
     document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+    // Hard-close overlay on load (CSS display:grid was overriding [hidden])
+    forceCloseOverlay();
 
     bindProjects();
     bindSlider();
@@ -155,7 +157,7 @@
   function bindGenerate() {
     const btn = $('#gen-btn'); if (!btn) return;
     btn.addEventListener('click', async () => {
-      if (!photoFile || !selectedStyle) return;
+      if (btn.disabled || !photoFile || !selectedStyle) return;
       btn.disabled = true;
       openSheet(`<h2>绘制中</h2><p>${NAMES[selectedStyle]} 风格生成中…</p>`);
       try {
@@ -197,17 +199,32 @@
 
   function openSheet(html) {
     const overlay = $('#overlay'), body = $('#sheet-body');
+    if (!overlay || !body) return;
+    if (!html || !String(html).trim()) return; // never open empty
     body.innerHTML = html;
     overlay.hidden = false;
+    overlay.classList.add('is-open');
     if (typeof gsap !== 'undefined') {
       gsap.fromTo('#sheet', { scale: 0.9, opacity: 0, y: 24 }, { scale: 1, opacity: 1, y: 0, duration: 0.32, ease: 'power3.out' });
     }
   }
+  function forceCloseOverlay() {
+    const overlay = $('#overlay');
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.classList.remove('is-open');
+    const body = $('#sheet-body');
+    if (body) body.innerHTML = '';
+  }
   function closeSheet() {
     const overlay = $('#overlay');
-    if (typeof gsap !== 'undefined') {
-      gsap.to('#sheet', { scale: 0.94, opacity: 0, duration: 0.18, onComplete: () => { overlay.hidden = true; } });
-    } else overlay.hidden = true;
+    if (!overlay) return;
+    if (typeof gsap !== 'undefined' && overlay.classList.contains('is-open')) {
+      gsap.to('#sheet', {
+        scale: 0.94, opacity: 0, duration: 0.18,
+        onComplete: () => forceCloseOverlay(),
+      });
+    } else forceCloseOverlay();
     $$('.project').forEach((b) => b.setAttribute('aria-expanded', 'false'));
   }
   function bindOverlay() {
