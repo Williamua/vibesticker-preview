@@ -21,7 +21,7 @@ app.post('/webhook',express.raw({type:'application/json'}),(req,res)=>{
  res.sendStatus(200)});
 app.use(express.json());app.use(express.static(path.join(__dirname,'public')));
 const status=ip=>({freeLeft:Math.max(0,FREE-(db.ipUsed[ip]||0)),credits:db.credits[ip]||0});
-app.get('/api/config',(req,res)=>res.json({styles:STYLES.map(({id,name})=>({id,name})),tiers:TIERS,provider:provider.name(),stripeMock:STRIPE_MOCK,...status(ipOf(req))}));
+app.get('/api/config',(req,res)=>{const pname=provider.name();res.json({styles:STYLES.filter(s=>!s.hidden).map(({id,name})=>({id,name})),tiers:TIERS,provider:pname,demoMode:pname==='mock',stripeMock:STRIPE_MOCK,...status(ipOf(req))});});
 app.post('/api/generate',upload.single('photo'),async(req,res)=>{
  try{ if(!req.file)return res.status(400).json({error:'JPG/PNG/HEIC only'});
   const style=STYLES.find(s=>s.id===req.body.style)||STYLES[0], ip=ipOf(req), st=status(ip);
