@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>VibeSticker · Hamza 预览</title>
+<title>VibeSticker · Hamza 单屏</title>
 <meta name="description" content="单屏点拖贴纸工房">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,97 +12,81 @@
 <link rel="stylesheet" href="/hamza.css">
 </head>
 <body class="skin-hamza">
-<a class="skip" href="#stage">跳到舞台</a>
+<a class="skip" href="#island">跳到控件</a>
 <div id="demo-banner" class="demo-banner" hidden role="status">演示模式 · 未配置 Gemini 密钥</div>
 
-<div id="stage" class="stage" aria-label="单屏工房">
-  <!-- Huge title — left / top whitespace -->
-  <header class="hz-top">
+<div class="field" aria-hidden="true">
+  <picture>
+    <source media="(max-width:720px)" srcset="/art/rebuild/hamza/hero-field-1080m.jpg">
+    <img src="/art/rebuild/hamza/hero-field-2560.jpg" alt="" width="2560" height="1440">
+  </picture>
+</div>
+
+<div class="screen">
+  <header class="hz-bar">
     <a class="logo" href="/">VibeSticker</a>
-    <a class="link-roof" href="/">Roof 预览</a>
+    <a class="to-roof" href="/">Roof 预览</a>
   </header>
 
   <h1 class="hz-title">照片<br>变贴纸</h1>
-  <p class="hz-lede">同屏点开 · 拖一拖换风格 · 不靠长页滚动</p>
+  <p class="hz-lede">同屏点开 · 拖一拖 · 不靠长页滚动</p>
 
-  <!-- Expandable project / style chips — click to open panel -->
-  <div class="chip-rail" id="chip-rail" role="list">
-    <button type="button" class="chip" data-panel="styles" aria-expanded="false">风格</button>
-    <button type="button" class="chip" data-panel="upload" aria-expanded="false">上传</button>
-    <button type="button" class="chip" data-panel="result" aria-expanded="false">结果</button>
-    <button type="button" class="chip" data-panel="pricing" aria-expanded="false">价格</button>
-  </div>
-
-  <!-- Style drag strip -->
-  <div class="style-dock" id="style-dock" aria-label="拖动切换风格">
-    <div class="style-track" id="style-track">
-      <button type="button" class="style-tile" data-style="anime" aria-pressed="false"><img src="/art/rebuild/hamza/style-anime.png" alt="日漫"><span>日漫</span></button>
-      <button type="button" class="style-tile" data-style="chibi" aria-pressed="false"><img src="/art/rebuild/hamza/style-chibi.png" alt="Q版"><span>Q版</span></button>
-      <button type="button" class="style-tile" data-style="toy3d" aria-pressed="false"><img src="/art/rebuild/hamza/style-toy3d.png" alt="潮玩"><span>潮玩</span></button>
-      <button type="button" class="style-tile" data-style="pixel" aria-pressed="false"><img src="/art/rebuild/hamza/style-pixel.png" alt="像素"><span>像素</span></button>
-      <button type="button" class="style-tile" data-style="watercolor" aria-pressed="false"><img src="/art/rebuild/hamza/style-watercolor.png" alt="水彩"><span>水彩</span></button>
+  <!-- Control island -->
+  <div id="island" class="island">
+    <!-- Project cards: click to expand in place -->
+    <div class="projects" id="projects" role="list">
+      <button type="button" class="project" data-project="1" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-01.png" alt="作品 1" width="960" height="640">
+      </button>
+      <button type="button" class="project" data-project="2" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-02.png" alt="作品 2" width="960" height="640">
+      </button>
+      <button type="button" class="project" data-project="3" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-03.png" alt="作品 3" width="960" height="640">
+      </button>
+      <button type="button" class="project" data-project="4" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-04.png" alt="作品 4" width="960" height="640">
+      </button>
     </div>
-    <p class="dock-hint">按住拖动切换 · 或点选</p>
+
+    <!-- Style slider: track + knob -->
+    <div class="slider-wrap" id="style-slider" aria-label="拖动切换风格">
+      <img class="slider-track" src="/art/rebuild/hamza/ui-slider-track.png" alt="" width="640" height="48" draggable="false">
+      <div class="slider-fill" id="slider-fill"></div>
+      <button type="button" class="slider-knob" id="slider-knob" aria-valuemin="0" aria-valuemax="4" aria-valuenow="4" aria-label="风格滑块">
+        <img src="/art/rebuild/hamza/ui-slider-knob.png" alt="" width="96" height="96" draggable="false">
+      </button>
+      <p class="slider-label" id="style-label">水彩</p>
+    </div>
+
+    <!-- Drag upload zone -->
+    <div class="drag-zone" id="upload-zone" tabindex="0" role="button" aria-label="拖拽或点击上传照片">
+      <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
+      <img class="drag-plate" src="/art/rebuild/hamza/ui-drag-zone.png" alt="" draggable="false">
+      <span class="drag-hint" id="upload-hint">把照片拖到这里</span>
+      <img id="upload-thumb" alt="" hidden>
+    </div>
+
+    <div class="island-actions">
+      <button type="button" class="btn btn-primary" id="gen-btn" disabled>生成贴纸</button>
+      <button type="button" class="btn btn-ghost" id="open-pricing">价格</button>
+    </div>
+    <p class="hint" id="quota"></p>
   </div>
 
-  <!-- Accents: squirrel corner (away from hero if any) -->
+  <!-- Accents -->
   <div id="squirrel" class="hz-squirrel" title="点我">
     <img src="/art/rebuild/hamza/layer-squirrel.png" alt="" draggable="false">
   </div>
   <img class="hz-leaf" data-surface="leaf" src="/art/rebuild/hamza/layer-leaves-01.png" alt="" aria-hidden="true">
   <img class="hz-leaf hz-leaf-b" data-surface="leaf" src="/art/rebuild/hamza/layer-leaves-02.png" alt="" aria-hidden="true">
+</div>
 
-  <!-- Expand panels (overlay, same screen) -->
-  <div class="panels" id="panels">
-    <section class="panel-sheet" id="panel-styles" hidden>
-      <button type="button" class="panel-close" data-close>×</button>
-      <h2>选风格</h2>
-      <p>点一张，或关掉后拖底下的轨道。</p>
-      <div class="panel-styles-grid" id="panel-styles-grid"></div>
-    </section>
-
-    <section class="panel-sheet" id="panel-upload" hidden>
-      <button type="button" class="panel-close" data-close>×</button>
-      <h2>上传照片</h2>
-      <div class="drop" id="upload-zone" tabindex="0" role="button" aria-label="上传或拖入照片">
-        <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
-        <img class="plate" src="/art/rebuild/hamza/ui-upload-plate.png" alt="">
-        <span id="upload-hint">拖进来，或点这里</span>
-        <img id="upload-thumb" alt="" hidden>
-      </div>
-      <p class="hint" id="upload-meta">JPG / PNG / HEIC</p>
-    </section>
-
-    <section class="panel-sheet" id="panel-result" hidden>
-      <button type="button" class="panel-close" data-close>×</button>
-      <h2>生成</h2>
-      <p class="hint" id="style-label">当前：水彩</p>
-      <div class="result-box" id="result-frame">
-        <img class="frame" src="/art/rebuild/hamza/result-frame.png" alt="">
-        <img id="result-img" alt="结果" hidden>
-        <div id="result-empty">还没有贴纸</div>
-        <div id="gen-loader" hidden>绘制中…</div>
-      </div>
-      <button type="button" class="btn btn-primary" id="gen-btn" disabled>生成贴纸</button>
-      <div class="result-actions" id="result-actions" hidden>
-        <a class="btn btn-primary" id="dl-png" download>PNG</a>
-        <a class="btn btn-ghost" id="dl-gif" download>GIF</a>
-      </div>
-      <p class="hint" id="quota"></p>
-    </section>
-
-    <section class="panel-sheet" id="panel-pricing" hidden>
-      <button type="button" class="panel-close" data-close>×</button>
-      <h2>价格</h2>
-      <p>左右拖卡片切换档位，或点选。</p>
-      <div class="tier-drag" id="tier-drag">
-        <div class="tier-track" id="tier-track">
-          <article class="tier-card" data-tier="single"><img src="/art/rebuild/hamza/tier-single.png" alt=""><h3>单张 $1</h3><button type="button" class="btn btn-ghost buy" data-tier="single">买</button></article>
-          <article class="tier-card featured" data-tier="pack"><img src="/art/rebuild/hamza/tier-pack.png" alt=""><h3>小包 $4.99</h3><button type="button" class="btn btn-primary buy" data-tier="pack">买</button></article>
-          <article class="tier-card" data-tier="pro"><img src="/art/rebuild/hamza/tier-pro.png" alt=""><h3>大包 $8.99</h3><button type="button" class="btn btn-ghost buy" data-tier="pro">买</button></article>
-        </div>
-      </div>
-    </section>
+<!-- Expand overlay for projects / result / pricing -->
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <button type="button" class="sheet-close" id="sheet-close" aria-label="关闭">×</button>
+    <div id="sheet-body"></div>
   </div>
 </div>
 
