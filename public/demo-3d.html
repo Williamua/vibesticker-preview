@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VibeSticker · 简单 3D 房间演示</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#1a1210;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  #hud{
+    position:fixed;top:0;left:0;right:0;z-index:10;
+    padding:14px 18px;text-align:center;
+    color:#fff8f0;font-size:15px;letter-spacing:.04em;
+    background:linear-gradient(180deg,rgba(26,18,16,.72),rgba(26,18,16,0));
+    pointer-events:none;user-select:none;
+  }
+  #c{display:block;width:100%;height:100%}
+</style>
+</head>
+<body>
+<div id="hud">拖动环视 · 滚轮缩放 · 点击显示器靠近</div>
+<canvas id="c"></canvas>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a1a14);
+scene.fog = new THREE.Fog(0x2a1a14, 12, 28);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 80);
+camera.position.set(0, 1.55, 4.2);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 1.05, -0.2);
+controls.minDistance = 1.2;
+controls.maxDistance = 8;
+controls.maxPolarAngle = Math.PI * 0.48;
+controls.minPolarAngle = 0.15;
+controls.update();
+
+// —— lights (warm evening) ——
+scene.add(new THREE.AmbientLight(0xffc9a0, 0.35));
+const sun = new THREE.DirectionalLight(0xffb070, 1.15);
+sun.position.set(-3.5, 4.2, 2.5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 20;
+sun.shadow.camera.left = -6;
+sun.shadow.camera.right = 6;
+sun.shadow.camera.top = 6;
+sun.shadow.camera.bottom = -6;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xff8a5c, 0.35);
+fill.position.set(2.5, 2.5, -1);
+scene.add(fill);
+const lamp = new THREE.PointLight(0xffcc88, 0.55, 8, 2);
+lamp.position.set(0.55, 1.55, 0.15);
+scene.add(lamp);
+
+const mat = {
+  floor: new THREE.MeshStandardMaterial({ color: 0x5c3d2e, roughness: 0.85 }),
+  wall:  new THREE.MeshStandardMaterial({ color: 0xd4c4b0, roughness: 0.92 }),
+  wallBack: new THREE.MeshStandardMaterial({ color: 0xc9b8a0, roughness: 0.9 }),
+  wood:  new THREE.MeshStandardMaterial({ color: 0x8b5a3c, roughness: 0.7 }),
+  woodDark: new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.75 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.45, metalness: 0.2 }),
+  screen: new THREE.MeshStandardMaterial({ color: 0x2a4a6a, emissive: 0x1a4060, emissiveIntensity: 0.55, roughness: 0.35 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0xa8d4e8, transparent: true, opacity: 0.35, roughness: 0.15, metalness: 0.1 }),
+  sky:   new THREE.MeshBasicMaterial({ color: 0xe8945a }),
+  skin:  new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.7 }),
+  cloth: new THREE.MeshStandardMaterial({ color: 0x3d5a80, roughness: 0.8 }),
+  hair:  new THREE.MeshStandardMaterial({ color: 0x2a1f18, roughness: 0.9 }),
+  cup:   new THREE.MeshStandardMaterial({ color: 0xf0e6d8, roughness: 0.4 }),
+  trash: new THREE.MeshStandardMaterial({ color: 0x4a4a48, roughness: 0.65, metalness: 0.15 }),
+  frame: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 }),
+};
+
+function box(w, h, d, material, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+function cyl(rTop, rBot, h, material, x, y, z, segs = 24) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, segs), material);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+const room = new THREE.Group();
+scene.add(room);
+
+// floor
+room.add(box(6, 0.08, 5, mat.floor, 0, 0, 0));
+// back wall
+room.add(box(6, 3, 0.08, mat.wallBack, 0, 1.5, -2.5));
+// left / right walls
+room.add(box(0.08, 3, 5, mat.wall, -3, 1.5, 0));
+room.add(box(0.08, 3, 5, mat.wall, 3, 1.5, 0));
+
+// window on back wall + sky plane outside
+const winW = 2.2, winH = 1.4, winY = 1.7;
+const frameT = 0.06;
+room.add(box(winW + frameT * 2, frameT, 0.1, mat.frame, 0, winY + winH / 2, -2.45));
+room.add(box(winW + frameT * 2, frameT, 0.1, mat.frame, 0, winY - winH / 2, -2.45));
+room.add(box(frameT, winH, 0.1, mat.frame, -winW / 2, winY, -2.45));
+room.add(box(frameT, winH, 0.1, mat.frame, winW / 2, winY, -2.45));
+room.add(box(frameT, winH, 0.1, mat.frame, 0, winY, -2.45));
+const glass = box(winW - 0.04, winH - 0.04, 0.02, mat.glass, 0, winY, -2.46);
+glass.castShadow = false;
+room.add(glass);
+const sky = new THREE.Mesh(new THREE.PlaneGeometry(winW - 0.1, winH - 0.1), mat.sky);
+sky.position.set(0, winY, -2.55);
+room.add(sky);
+
+// desk
+const deskY = 0.78;
+room.add(box(1.8, 0.06, 0.75, mat.wood, 0, deskY, -0.55));
+room.add(box(0.08, deskY, 0.08, mat.woodDark, -0.8, deskY / 2, -0.85));
+room.add(box(0.08, deskY, 0.08, mat.woodDark, 0.8, deskY / 2, -0.85));
+room.add(box(0.08, deskY, 0.08, mat.woodDark, -0.8, deskY / 2, -0.25));
+room.add(box(0.08, deskY, 0.08, mat.woodDark, 0.8, deskY / 2, -0.25));
+
+// monitor (clickable)
+const monitor = new THREE.Group();
+monitor.name = 'monitor';
+monitor.position.set(0, deskY + 0.03, -0.75);
+const stand = box(0.18, 0.12, 0.14, mat.black, 0, 0.06, 0.02);
+const neck = box(0.06, 0.28, 0.05, mat.black, 0, 0.28, -0.02);
+const bezel = box(0.72, 0.46, 0.05, mat.black, 0, 0.55, -0.02);
+const screen = box(0.64, 0.38, 0.02, mat.screen, 0, 0.55, 0.01);
+screen.name = 'screen';
+monitor.add(stand, neck, bezel, screen);
+room.add(monitor);
+
+// chair + character (back to camera, facing desk/window)
+const chair = new THREE.Group();
+chair.position.set(0, 0, 0.35);
+room.add(box(0.48, 0.06, 0.48, mat.woodDark, 0, 0.42, 0.35)); // seat
+room.add(box(0.48, 0.55, 0.06, mat.woodDark, 0, 0.72, 0.56)); // back
+room.add(box(0.05, 0.42, 0.05, mat.black, -0.18, 0.21, 0.18));
+room.add(box(0.05, 0.42, 0.05, mat.black, 0.18, 0.21, 0.18));
+room.add(box(0.05, 0.42, 0.05, mat.black, -0.18, 0.21, 0.52));
+room.add(box(0.05, 0.42, 0.05, mat.black, 0.18, 0.21, 0.52));
+
+const character = new THREE.Group();
+character.position.set(0, 0.45, 0.38);
+// torso
+character.add(box(0.32, 0.42, 0.18, mat.cloth, 0, 0.42, 0));
+// head
+character.add(box(0.2, 0.22, 0.2, mat.skin, 0, 0.74, 0));
+// hair (back of head)
+character.add(box(0.21, 0.12, 0.08, mat.hair, 0, 0.8, 0.08));
+// arms
+character.add(box(0.08, 0.28, 0.08, mat.cloth, -0.22, 0.38, -0.05));
+character.add(box(0.08, 0.28, 0.08, mat.cloth, 0.22, 0.38, -0.05));
+// legs
+character.add(box(0.1, 0.32, 0.12, mat.cloth, -0.09, 0.08, 0.02));
+character.add(box(0.1, 0.32, 0.12, mat.cloth, 0.09, 0.08, 0.02));
+room.add(character);
+
+// cup on desk (cylinder)
+room.add(cyl(0.045, 0.04, 0.12, mat.cup, 0.55, deskY + 0.09, -0.4));
+
+// trash can beside desk (cylinder + rim thickness)
+const trash = new THREE.Group();
+trash.position.set(1.15, 0, -0.15);
+const trashBody = cyl(0.16, 0.14, 0.42, mat.trash, 0, 0.21, 0);
+const trashRim = cyl(0.175, 0.175, 0.035, mat.trash, 0, 0.43, 0);
+trash.add(trashBody, trashRim);
+room.add(trash);
+
+// click → camera push toward monitor
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let anim = null; // {t0, dur, fromPos, toPos, fromTarget, toTarget}
+
+function startDock() {
+  const fromPos = camera.position.clone();
+  const fromTarget = controls.target.clone();
+  const toPos = new THREE.Vector3(0, 1.25, 0.55);
+  const toTarget = new THREE.Vector3(0, 1.2, -0.75);
+  anim = { t0: performance.now(), dur: 900, fromPos, toPos, fromTarget, toTarget };
+  controls.enabled = false;
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (anim) return;
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects([monitor], true);
+  if (hits.length) {
+    // only treat as click if little movement (OrbitControls also listens)
+    const startX = e.clientX, startY = e.clientY;
+    const up = (ev) => {
+      canvas.removeEventListener('pointerup', up);
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) startDock();
+    };
+    canvas.addEventListener('pointerup', up);
+  }
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (anim) {
+    const u = Math.min(1, (now - anim.t0) / anim.dur);
+    const e = easeInOut(u);
+    camera.position.lerpVectors(anim.fromPos, anim.toPos, e);
+    controls.target.lerpVectors(anim.fromTarget, anim.toTarget, e);
+    controls.update();
+    if (u >= 1) {
+      anim = null;
+      controls.enabled = true;
+      controls.minDistance = 0.8;
+    }
+  } else {
+    controls.update();
+  }
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
