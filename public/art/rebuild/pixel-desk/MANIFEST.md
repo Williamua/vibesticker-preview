@@ -15,3 +15,11 @@ Do not wire `layer-character-body.png`.
 ## Sky cycle (~30s)
 - sky-dawn/morning/afternoon/evening/night.jpg
 - sky-cycle.json — crossfade_loop periodSec 30
+
+## Motion stills
+- char-stretch.png
+- ui-pen-cup-closed/open.png
+- prop-printer.png / prop-printer-eject.png
+- layer-sticker-fly.png
+- prop-coffee-cup.png
+- hero-near-desk.jpg

@@ -149,12 +149,23 @@
     if (panel) panel.dataset.locked = docked ? 'false' : 'true';
     const undock = $('#undock');
     if (undock) undock.hidden = !docked;
-    if (docked) stage?.classList.add('is-explored');
+    if (docked) {
+      stage?.classList.add('is-explored');
+      stage?.classList.add('is-near');
+    } else if (state === 'FAR' && progress < 0.4) {
+      stage?.classList.remove('is-near');
+    }
   }
 
   function applyProgress(p) {
     progress = Math.max(0, Math.min(1, p));
     paintPush(progress); paintCam(progress); paintPanelVis(progress);
+    // near desk art kicks in as we push toward dock (~55%+)
+    const stage = $('#stage');
+    if (stage) {
+      const near = progress >= 0.55 || state === 'DOCKED' || state === 'PANEL';
+      stage.classList.toggle('is-near', near);
+    }
   }
   function paintPush(p) {
     const fill = $('#push-fill'), knob = $('#push-knob'), tip = $('#push-tip');
@@ -310,7 +321,6 @@
       orbitY += (orbitTY - orbitY) * (reduce() ? 1 : 0.14);
       const wrap = $('#head-wrap');
       if (wrap && !reduce()) {
-        const stretch = wrap.classList.contains('is-stretch') ? '' : '';
         wrap.style.transform = `rotateY(${headCurrent}deg) rotateZ(${headCurrent * 0.18}deg)`;
       } else if (wrap && reduce()) {
         wrap.style.transform = 'none';
@@ -323,20 +333,40 @@
 
   function bindIdleFx() {
     if (reduce()) return;
-    const stretch = () => {
+    const stage = () => $('#stage');
+    const stretchEl = () => $('#char-stretch');
+    const doStretch = () => {
       if (state !== 'FAR' && state !== 'DOLLY') return;
-      const wrap = $('#head-wrap');
-      if (!wrap) return;
-      wrap.classList.remove('is-stretch');
-      void wrap.offsetWidth;
-      wrap.classList.add('is-stretch');
-      setTimeout(() => wrap.classList.remove('is-stretch'), 1000);
+      if (progress > 0.45) return;
+      const el = stretchEl(), st = stage();
+      if (!el || !st) return;
+      el.hidden = false;
+      st.classList.add('is-stretching');
+      requestAnimationFrame(() => el.classList.add('is-on'));
+      setTimeout(() => {
+        el.classList.remove('is-on');
+        st.classList.remove('is-stretching');
+        setTimeout(() => { el.hidden = true; }, 400);
+      }, 1600);
     };
-    const loop = () => {
-      const waitMs = 8000 + Math.random() * 12000;
-      setTimeout(() => { stretch(); loop(); }, waitMs);
+    const stretchLoop = () => {
+      setTimeout(() => { doStretch(); stretchLoop(); }, 9000 + Math.random() * 14000);
     };
-    setTimeout(loop, 5000);
+    setTimeout(stretchLoop, 6000);
+
+    // pen cup open/close
+    const cup = $('#pen-cup');
+    const toggleCup = () => {
+      if (!cup) return;
+      if (state === 'PANEL' || progress > 0.7) return;
+      const open = cup.dataset.open === '1';
+      cup.dataset.open = open ? '0' : '1';
+      cup.src = ART + (open ? '/ui-pen-cup-closed.png' : '/ui-pen-cup-open.png');
+    };
+    const cupLoop = () => {
+      setTimeout(() => { toggleCup(); cupLoop(); }, 5000 + Math.random() * 7000);
+    };
+    setTimeout(cupLoop, 4000);
   }
 
   function clearPhoto() {
@@ -506,23 +536,24 @@
   function syncGen() { const b = $('#gen-btn'); if (b) b.disabled = !(photoFile && selectedStyle); }
 
   function flyPrint(src) {
-    const el = $('#print-sticker'); if (!el || reduce()) return;
-    el.hidden = false; el.src = src;
-    el.style.opacity = '1';
-    el.style.left = '46%'; el.style.top = '46%';
-    el.style.transform = 'translate(-50%,-50%) scale(.4)';
-    if (typeof gsap === 'undefined') {
-      setTimeout(() => { el.hidden = true; }, 900); return;
+    const printer = $('#prop-printer');
+    const fly = $('#sticker-fly');
+    if (printer) {
+      printer.src = ART + '/prop-printer-eject.png';
+      setTimeout(() => { printer.src = ART + '/prop-printer.png'; }, 1400);
     }
-    gsap.fromTo(el,
-      { opacity: 0, scale: 0.3, xPercent: -50, yPercent: -50, left: '48%', top: '50%' },
-      {
-        opacity: 1, scale: 1, left: '72%', top: '28%', duration: 0.85, ease: 'power2.out',
-        onComplete: () => gsap.to(el, {
-          opacity: 0, y: -40, duration: 0.35, delay: 0.2,
-          onComplete: () => { el.hidden = true; },
-        }),
-      });
+    if (!fly || reduce()) return;
+    // prefer design sticker-fly sheet; fall back to generated png
+    fly.src = ART + '/layer-sticker-fly.png';
+    if (src) fly.dataset.gen = src;
+    fly.hidden = false;
+    fly.classList.remove('is-fly');
+    void fly.offsetWidth;
+    fly.classList.add('is-fly');
+    setTimeout(() => {
+      fly.classList.remove('is-fly');
+      fly.hidden = true;
+    }, 1200);
   }
 
   function bindGenerate() {
