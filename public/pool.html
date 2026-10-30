@@ -91,6 +91,8 @@ renderer.setClearColor(0x87a8c4, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
+renderer.shadowMap.enabled = !isMobile;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9eb8d0);
@@ -121,6 +123,16 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff2e0, 1.55);
 sun.position.set(2, 12, -14);
 sun.target.position.set(0, 1.0, 0);
+sun.castShadow = !isMobile;
+if (sun.castShadow) {
+  const res = 2048;
+  sun.shadow.mapSize.set(res, res);
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
+  sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
+  sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10;
+  sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.035;
+  sun.shadow.radius = 2.5;
+}
 scene.add(sun); scene.add(sun.target);
 const fill = new THREE.DirectionalLight(0xb8d4ff, 0.28);
 fill.position.set(6, 5, 8);
@@ -181,9 +193,62 @@ for (let i = 0; i < 4; i++) {
   outdoor.add(car); cars.push(car);
 }
 
+/* ========== Procedural sky dome (real-time, no bake) ========== */
+const skyUniforms = {
+  uSunDir: { value: new THREE.Vector3(0.2, 0.8, -0.5).normalize() },
+  uZenith: { value: new THREE.Color(0x4a90d9) },
+  uHorizon: { value: new THREE.Color(0xc8dff0) },
+  uGround: { value: new THREE.Color(0x3a4038) },
+  uSunColor: { value: new THREE.Color(0xfff2dd) },
+  uSunSize: { value: 0.035 },
+  uSunIntensity: { value: 1.2 },
+  uNightGlow: { value: 0.0 },
+};
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: skyUniforms,
+  side: THREE.BackSide,
+  depthWrite: false,
+  fog: false,
+  vertexShader: `
+    varying vec3 vDir;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vDir = normalize(wp.xyz);
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uSunDir, uZenith, uHorizon, uGround, uSunColor;
+    uniform float uSunSize, uSunIntensity, uNightGlow;
+    varying vec3 vDir;
+    void main() {
+      vec3 d = normalize(vDir);
+      float h = d.y;
+      // atmosphere gradient
+      vec3 col = mix(uHorizon, uZenith, smoothstep(-0.05, 0.65, h));
+      col = mix(uGround, col, smoothstep(-0.35, 0.02, h));
+      // horizon warm haze
+      float haze = exp(-abs(h) * 6.0) * 0.25;
+      col += uHorizon * haze;
+      // sun disc + bloom
+      float sunDot = max(dot(d, normalize(uSunDir)), 0.0);
+      float disc = smoothstep(1.0 - uSunSize, 1.0, sunDot);
+      float glow = pow(sunDot, 32.0) * 0.55 + pow(sunDot, 8.0) * 0.2;
+      col += uSunColor * (disc * 2.2 + glow) * uSunIntensity;
+      // night stars sprinkle
+      float stars = step(0.997, fract(sin(dot(d.xy, vec2(12.9898,78.233))) * 43758.5453));
+      col += vec3(0.85, 0.9, 1.0) * stars * uNightGlow;
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16), skyMat);
+skyDome.renderOrder = -10;
+scene.add(skyDome);
+
 /* ========== Daylight cycle through the window (slow loop) ========== */
 // timeOfDay 0–24; one full day ≈ 210s (偏慢、一直循环)
-const DAY_CYCLE_MS = 210000;
+const DAY_CYCLE_MS = 240000;
 const DAY_START_H = 7.5; // start mid-morning
 const DAY_KEYS = [
   { h: 0,  name: '深夜', amb: [0x6a7f9e, 0.10], sunCol: 0x8ba3c7, sunInt: 0.04,
@@ -252,16 +317,33 @@ function applyDayCycle(hour) {
   hemi.groundColor.set(a.hemiGround).lerp(_cA.set(b.hemiGround), e);
 
   const skyC = _cOut.set(a.sky).lerp(_cA.set(b.sky), e);
-  scene.background.copy(skyC);
+  scene.background = null; // sky dome provides background
   scene.fog.color.set(a.fog).lerp(_cA.set(b.fog), e);
   renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
   renderer.setClearColor(skyC.getHex(), 1);
 
-  // drive jelly light from sun
-  waterUniforms.uLightDir.value.copy(sun.position).normalize();
+  const sunDir = sun.position.clone().normalize();
+  skyUniforms.uSunDir.value.copy(sunDir);
+  skyUniforms.uZenith.value.copy(skyC);
+  skyUniforms.uHorizon.value.set(a.hemiSky).lerp(_cA.set(b.hemiSky), e);
+  skyUniforms.uGround.value.set(a.hemiGround).lerp(_cA.set(b.hemiGround), e);
+  skyUniforms.uSunColor.value.copy(sun.color);
+  skyUniforms.uSunIntensity.value = Math.max(0.05, sun.intensity / SUN_PEAK);
+  // wider softer sun near horizon
+  const elev = Math.max(0, sunDir.y);
+  skyUniforms.uSunSize.value = 0.018 + (1 - elev) * 0.04;
+
+  // drive jelly light / env from sun + sky
+  waterUniforms.uLightDir.value.copy(sunDir);
+  waterUniforms.uSunColor.value.copy(sun.color);
+  waterUniforms.uSunIntensity.value = sun.intensity;
+  waterUniforms.uSkyZenith.value.copy(skyC);
+  waterUniforms.uSkyHorizon.value.copy(skyUniforms.uHorizon.value);
+  waterUniforms.uGroundColor.value.copy(skyUniforms.uGround.value);
 
   const sunK = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
   const nightK = Math.pow(1 - sunK, 1.35);
+  skyUniforms.uNightGlow.value = nightK * 0.85;
   cityWinMats.forEach((wm, i) => {
     wm.emissiveIntensity = 0.05 + nightK * (0.55 + 0.7 * Math.abs(Math.sin(performance.now() * 0.0007 + i * 0.37)));
   });
@@ -290,10 +372,15 @@ const waterUniforms = {
   uFlow: { value: new THREE.Vector2(0.18, 0.07) },
   uSurge: { value: new THREE.Vector2(0, 0) },
   uFlowAmp: { value: 0.04 },
-  uJellyColor: { value: new THREE.Color(0x5ec4c8) },
-  uJellyDeep: { value: new THREE.Color(0x1a6f7a) },
-  uJellyScatter: { value: new THREE.Color(0xb8fff0) },
+  uJellyColor: { value: new THREE.Color(0x4eb8c4) },
+  uJellyDeep: { value: new THREE.Color(0x0e4f5c) },
+  uJellyScatter: { value: new THREE.Color(0xc8fff4) },
   uLightDir: { value: new THREE.Vector3(0.35, 0.85, 0.4).normalize() },
+  uSunColor: { value: new THREE.Color(0xfff2dd) },
+  uSunIntensity: { value: 1.5 },
+  uSkyZenith: { value: new THREE.Color(0x4a90d9) },
+  uSkyHorizon: { value: new THREE.Color(0xc8dff0) },
+  uGroundColor: { value: new THREE.Color(0x3a4038) },
   uCamPos: { value: new THREE.Vector3() },
 };
 
@@ -369,6 +456,11 @@ uniform vec3 uJellyColor;
 uniform vec3 uJellyDeep;
 uniform vec3 uJellyScatter;
 uniform vec3 uLightDir;
+uniform vec3 uSunColor;
+uniform float uSunIntensity;
+uniform vec3 uSkyZenith;
+uniform vec3 uSkyHorizon;
+uniform vec3 uGroundColor;
 uniform vec3 uCamPos;
 uniform float uTime;
 varying vec3 vWorldPos;
@@ -376,41 +468,88 @@ varying vec3 vNormalW;
 varying float vThick;
 varying vec2 vLocal;
 
+vec3 sampleSky(vec3 rd) {
+  float h = rd.y;
+  vec3 col = mix(uSkyHorizon, uSkyZenith, smoothstep(-0.05, 0.7, h));
+  col = mix(uGroundColor, col, smoothstep(-0.4, 0.02, h));
+  // sun reflection disc
+  vec3 L = normalize(uLightDir);
+  float sd = max(dot(rd, L), 0.0);
+  float disc = smoothstep(0.997, 1.0, sd);
+  float glow = pow(sd, 48.0) * 0.7 + pow(sd, 12.0) * 0.25;
+  col += uSunColor * (disc * 2.5 + glow) * max(uSunIntensity * 0.35, 0.02);
+  return col;
+}
+
+// GGX helpers
+float D_GGX(float NoH, float rough) {
+  float a = rough * rough;
+  float a2 = a * a;
+  float d = (NoH * a2 - NoH) * NoH + 1.0;
+  return a2 / (3.14159265 * d * d + 1e-5);
+}
+float G_Schlick(float NoV, float NoL, float rough) {
+  float k = (rough + 1.0);
+  k = (k * k) / 8.0;
+  float gV = NoV / (NoV * (1.0 - k) + k);
+  float gL = NoL / (NoL * (1.0 - k) + k);
+  return gV * gL;
+}
+
 void main() {
   vec3 N = normalize(vNormalW);
   vec3 V = normalize(uCamPos - vWorldPos);
   vec3 L = normalize(uLightDir);
-  float ndv = max(dot(N, V), 0.0);
-  float fres = pow(1.0 - ndv, 2.8);
+  float NoV = max(dot(N, V), 0.001);
+  float NoL = max(dot(N, L), 0.0);
 
-  // fake refraction / transmission: view-dependent deep vs shallow + normal warp
-  float warp = N.x * 0.35 + N.z * 0.25;
-  float depthMix = clamp(vThick * 4.5 + warp * 0.4 + (1.0 - ndv) * 0.35, 0.0, 1.0);
-  vec3 transmit = mix(uJellyColor, uJellyDeep, depthMix);
+  // Schlick fresnel (F0 ~ 0.02 water / jelly ~0.04)
+  vec3 F0 = vec3(0.045);
+  vec3 F = F0 + (1.0 - F0) * pow(1.0 - NoV, 5.0);
 
-  // subsurface jelly scatter (glow when light wraps)
+  // analytical environment reflection (synced with sky dome / sun)
+  vec3 R = reflect(-V, N);
+  // ripple-warped reflection for jelly
+  R = normalize(R + N * 0.08);
+  vec3 env = sampleSky(R);
+
+  // jelly body / transmission look
+  float warp = N.x * 0.3 + N.z * 0.2;
+  float depthMix = clamp(vThick * 5.0 + warp * 0.35 + (1.0 - NoV) * 0.3, 0.0, 1.0);
+  vec3 body = mix(uJellyColor, uJellyDeep, depthMix);
+
+  // subsurface wrap
   float wrap = max(dot(N, L) * 0.5 + 0.5, 0.0);
-  float sss = pow(wrap, 1.4) * (0.35 + vThick * 3.0);
-  transmit += uJellyScatter * sss * 0.35;
+  float sss = pow(wrap, 1.35) * (0.4 + vThick * 3.2);
+  body += uJellyScatter * sss * 0.4;
+  body += uSunColor * NoL * 0.08 * max(uSunIntensity * 0.25, 0.0);
 
-  // specular (wet jelly highlight)
+  // GGX sun specular — follows sun tightly
   vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), 96.0) * 0.85;
-  float spec2 = pow(max(dot(N, H), 0.0), 24.0) * 0.18;
+  float NoH = max(dot(N, H), 0.0);
+  float rough = 0.085 + vThick * 0.15;
+  float D = D_GGX(NoH, rough);
+  float G = G_Schlick(NoV, max(NoL, 0.001), rough);
+  vec3 spec = (D * G * F) / max(4.0 * NoV * max(NoL, 0.001), 1e-4);
+  spec *= uSunColor * max(uSunIntensity * 0.55, 0.02) * NoL;
 
-  // chromatic rim (jelly edge)
-  vec3 rim = vec3(0.55, 0.95, 1.0) * fres * 0.65;
-  rim += vec3(1.0, 0.75, 0.9) * pow(fres, 1.5) * 0.18;
+  // soft wide lobe for jelly gloss
+  float soft = pow(NoH, 28.0) * 0.22 * max(uSunIntensity * 0.4, 0.05);
 
-  // internal caustic-ish shimmer
-  float cau = sin(vLocal.x * 9.0 + uTime * 1.7 + N.x * 4.0) * sin(vLocal.y * 7.0 - uTime * 1.3);
-  transmit += uJellyScatter * cau * 0.04 * ndv;
+  // caustic shimmer inside body
+  float cau = sin(vLocal.x * 10.0 + uTime * 1.6 + N.x * 5.0)
+            * sin(vLocal.y * 8.0 - uTime * 1.25);
+  body += uJellyScatter * cau * 0.035 * NoV;
 
-  vec3 col = transmit + rim + vec3(spec + spec2);
-  // thicker jelly → slightly higher opacity, still see-through
-  float alpha = clamp(0.55 + vThick * 2.8 + fres * 0.25, 0.48, 0.88);
+  // compose: body * (1-F) + env * F + specular
+  vec3 col = body * (1.0 - F) + env * F + spec + uSunColor * soft;
+  // rim boost
+  col += env * pow(1.0 - NoV, 3.0) * 0.15;
+
+  float alpha = clamp(0.52 + vThick * 2.6 + F.x * 0.35, 0.45, 0.92);
   gl_FragColor = vec4(col, alpha);
 }
+
 `;
 
 const waterMat = new THREE.ShaderMaterial({
@@ -572,7 +711,7 @@ window.addEventListener('resize', () => {
 });
 
 function placeJellyWater(wbCenter, wbSize) {
-  const segs = isMobile ? [48, 28] : [80, 48];
+  const segs = isMobile ? [56, 34] : [96, 56];
   const geo = new THREE.PlaneGeometry(wbSize.x * 0.985, wbSize.z * 0.985, segs[0], segs[1]);
   waterMesh = new THREE.Mesh(geo, waterMat);
   waterMesh.rotation.x = -Math.PI / 2;
@@ -595,8 +734,16 @@ loader.load(
     const root = gltf.scene;
     root.traverse((o) => {
       if (!o.isMesh) return;
+      o.castShadow = !isMobile;
+      o.receiveShadow = !isMobile;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      mats.forEach((m) => { if (m && m.map) m.map.colorSpace = THREE.SRGBColorSpace; });
+      mats.forEach((m) => {
+        if (!m) return;
+        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+        // slightly bump env response on room materials for live light
+        if ('envMapIntensity' in m) m.envMapIntensity = 0.35;
+        if ('roughness' in m && m.roughness > 0.9) m.roughness = 0.85;
+      });
     });
     scene.add(root);
 
