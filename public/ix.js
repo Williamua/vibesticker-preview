@@ -13,7 +13,7 @@
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 const CFG = (window.VS_CONFIG && window.VS_CONFIG.pop) || {};
-const DIST = CFG.distance || 90, DUR = CFG.duration || 520;
+const DIST = CFG.distance || 64, DUR = CFG.duration || 680;
 document.documentElement.style.setProperty('--pop-dur', DUR + 'ms');
 const VEC = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1], 'top-left': [-0.8, -0.8], 'top-right': [0.8, -0.8], 'bottom-left': [-0.8, 0.8], 'bottom-right': [0.8, 0.8] };
 const AUTO = ['left', 'bottom', 'right', 'top'];
@@ -27,7 +27,7 @@ function preparePop(el, idx) {
   const [vx, vy] = VEC[dir];
   el.style.setProperty('--pop-x', (vx * DIST).toFixed(0) + 'px');
   el.style.setProperty('--pop-y', (vy * DIST).toFixed(0) + 'px');
-  el.style.setProperty('--pop-r', (vx ? vx * 6 : (idx % 2 ? 4 : -4)) + 'deg');
+  el.style.setProperty('--pop-r', (vx ? vx * 3.5 : (idx % 2 ? 2.5 : -2.5)) + 'deg');
   const group = el.closest('[data-pop-group]');
   const delay = el.dataset.popDelay != null ? +el.dataset.popDelay : group ? [...group.querySelectorAll('[data-pop]')].indexOf(el) * 60 : 0;
   el.style.setProperty('--pop-delay', delay + 'ms');

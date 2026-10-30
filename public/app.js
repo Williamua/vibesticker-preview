@@ -54,10 +54,16 @@ function setDepth(el, c) { ['depth', 'budget', 'inertia'].forEach(k => { if (c[k
 function setupVideo() {
   const v = $('#bgv'), wrap = $('.l-video');
   const bg = CFG.background || {}, mobile = isMobile();
+  // resolve still: explicit image, or imageDesktop/imageMobile (G watercolor)
+  const still = bg.image || bg._resolvedImage || (mobile ? bg.imageMobile : bg.imageDesktop) || null;
+  if (still) {
+    html.style.setProperty('--scene-bg-image', `url("${still}")`);
+    bg._resolvedImage = still;
+  }
   // single background slot (scene-config.js): a static image replaces the video entirely
-  if (bg.image || !bg.video) {
-    wrap.hidden = true; const im = $('.l-bgimg'); if (bg.image) im.hidden = false;
-    setDepth(im, bg);
+  if (still || !bg.video) {
+    wrap.hidden = true; const im = $('.l-bgimg');
+    if (still) { im.hidden = false; setDepth(im, bg); }
     return;
   }
   setDepth(wrap, bg);
@@ -86,14 +92,25 @@ function setupVideo() {
 // layer list + depths come from scene-config.js; motion.js moves every [data-depth] (desktop AND mobile)
 const LAYERS = CFG.layers || [];
 function buildLayers() {
-  const box = $('#pxLayers'), suf = isMobile() ? '1080m' : '2560';
-  box.innerHTML = LAYERS.map(l => `
-    <div class="layer px px-${l.id}" data-depth="${l.depth}" data-budget="${l.budget ?? 0.5}" data-inertia="${l.inertia ?? 14}">
-      <div class="pxi"><picture${l.sway ? ' data-sway' : ''}>
+  const box = $('#pxLayers'), suf = isMobile() ? '1080m' : '2560', mob = isMobile();
+  box.innerHTML = LAYERS.map(l => {
+    const cls = ['layer', 'px', `px-${l.id}`, l.className || ''].filter(Boolean).join(' ');
+    const op = l.opacity != null ? `opacity:${l.opacity}` : '';
+    const blend = l.blend ? `mix-blend-mode:${l.blend}` : '';
+    const style = [op, blend].filter(Boolean).join(';');
+    let inner;
+    if (l.kind === 'art' || l.src) {
+      const src = (mob && l.srcMobile) ? l.srcMobile : (l.src || l.srcDesktop);
+      inner = `<div class="pxi"><img${l.sway ? ' data-sway' : ''} src="${src}" alt="" decoding="async" draggable="false"></div>`;
+    } else {
+      // pair naming under /media/layers/
+      inner = `<div class="pxi"><picture${l.sway ? ' data-sway' : ''}>
         <source type="image/webp" srcset="/media/layers/${l.file}-${suf}.webp">
         <img src="/media/layers/${l.file}-${suf}.png" alt="" decoding="async">
-      </picture></div>
-    </div>`).join('');
+      </picture></div>`;
+    }
+    return `<div class="${cls}" data-depth="${l.depth}" data-budget="${l.budget ?? 0.5}" data-inertia="${l.inertia ?? 14}"${style ? ` style="${style}"` : ''}>${inner}</div>`;
+  }).join('');
 }
 async function loadLeafDefs() {
   try { const r = await fetch('/media/layers/leaf-mask.svg'); if (r.ok) $('#leafDefs').innerHTML = await r.text(); }
@@ -102,13 +119,17 @@ async function loadLeafDefs() {
 /* ---------- style cards ---------- */
 function renderStyles() {
   const box = $('#styles');
-  // cards spring in from different sides of the scene (data-pop); hover tilt + press feedback (ix.js)
-  const dirs = isMobile() ? ['left', 'right'] : ['left', 'top', 'bottom', 'top', 'right'];
-  box.innerHTML = STYLES.map((s, i) => `
-    <button type="button" class="card glass" role="radio" data-id="${s.id}" aria-checked="${s.id === state.style}" tabindex="${s.id === state.style ? 0 : -1}" data-pop="${dirs[i % dirs.length]}" data-tilt data-press>
+  // CARDS.md pop dirs: anime←left canopy, chibi←grass, toy3d←right trunk, pixel←crown, watercolor←bottom-right (staggered)
+  const SP = CFG.stylePop || {};
+  const fallback = { anime:{dir:'left',delay:0}, chibi:{dir:'bottom',delay:80}, toy3d:{dir:'right',delay:40}, pixel:{dir:'top',delay:120}, watercolor:{dir:'bottom-right',delay:200} };
+  box.innerHTML = STYLES.map((s) => {
+    const pop = SP[s.id] || fallback[s.id] || { dir: 'bottom', delay: 0 };
+    return `
+    <button type="button" class="card glass" role="radio" data-id="${s.id}" aria-checked="${s.id === state.style}" tabindex="${s.id === state.style ? 0 : -1}" data-pop="${pop.dir}" data-pop-delay="${pop.delay}" data-tilt data-press>
       <span class="sw sw-${s.id}">${state.photoURL ? `<img class="f-${s.id}" alt="" src="${s.id === 'pixel' ? state.pixelURL : state.photoURL}">` : artHTML('style-' + s.id)}</span>
       <span class="txt"><span class="nm">${s.name}</span><span class="en">${s.en}</span></span>
-    </button>`).join('');
+    </button>`;
+  }).join('');
   ix.scan(box);
 }
 function selectStyle(id, focus) {
@@ -443,7 +464,7 @@ function setupScroll() {
   const mobile = isMobile();
   const E = 'power2.inOut';
   // master background timeline, progress p ∈ [0,1] over the whole roll
-  const tl = gsap.timeline({ defaults: { ease: 'none' }, scrollTrigger: { trigger: '#roll', start: 'top top', end: 'bottom bottom', scrub: 1.2 } });
+  const tl = gsap.timeline({ defaults: { ease: 'none' }, scrollTrigger: { trigger: '#roll', start: 'top top', end: 'bottom bottom', scrub: (CFG.scrub != null ? CFG.scrub : 1.7) } });
   // slow camera push (scale only). Vertical parallax is done by motion.js via `translate` on [data-depth]:
   // the old GSAP y-travel was ~2% of the scroll distance spread over the whole page, i.e. invisible on a phone.
   tl.fromTo('.l-video', { scale: 1.12 }, { scale: 1.0, duration: 0.64, ease: E }, 0)
@@ -460,9 +481,9 @@ function setupScroll() {
     const inEl = $('.in', sec), outEl = $('.out', sec);
     if (inEl && i > 0) {
       gsap.fromTo(inEl, { opacity: 0, y: 24, filter: `blur(${blur}px)` }, { opacity: 1, y: 0, filter: 'blur(0px)', ease: 'none',
-        scrollTrigger: { trigger: sec, start: 'top 88%', end: 'top 38%', scrub: 1 } });
+        scrollTrigger: { trigger: sec, start: 'top 88%', end: 'top 38%', scrub: 1.4 } });
       gsap.fromTo(outEl, { opacity: 1, y: 0, filter: 'blur(0px)' }, { opacity: 0, y: -24, filter: `blur(${blur}px)`, ease: 'none', immediateRender: false,
-        scrollTrigger: { trigger: sec, start: 'bottom 62%', end: 'bottom 12%', scrub: 1 } });
+        scrollTrigger: { trigger: sec, start: 'bottom 62%', end: 'bottom 12%', scrub: 1.4 } });
     }
     // E1.4: title → body → meta, 80ms apart, 12px rise
     const rv = $$('.rv', sec);
@@ -470,7 +491,7 @@ function setupScroll() {
       scrollTrigger: { trigger: sec, start: i === 0 ? 'top bottom' : 'top 70%', toggleActions: 'play none none none' } });
   });
   // hero copy drifts away first
-  gsap.to('.hero-copy, .hint', { opacity: 0, y: -40, ease: 'none', scrollTrigger: { trigger: '#s0', start: 'top top', end: '60% top', scrub: 1 } });
+  gsap.to('.hero-copy, .hint', { opacity: 0, y: -40, ease: 'none', scrollTrigger: { trigger: '#s0', start: 'top top', end: '60% top', scrub: 1.4 } });
   // cards (styles / result / tiers / wall / rank) pop in via ix.js [data-pop]
   ScrollTrigger.addEventListener('refresh', () => window.VSMotion && VSMotion.refresh());
 
@@ -508,6 +529,20 @@ function setupMicro() {
   }, { passive: true });
   document.addEventListener('pointerleave', () => { on = false; html.classList.remove('cc'); });
   (function loop() { cx += (x - cx) * 0.35; cy += (y - cy) * 0.35; c.style.transform = `translate3d(${cx}px,${cy}px,0)`; requestAnimationFrame(loop); })();
+}
+
+
+/* ---------- hero scroll/drag hint (thin double arrow; fades after scroll) ---------- */
+function setupScrollHint() {
+  const H = Object.assign({ enabled: true, fadeAfter: 80 }, CFG.scrollHint);
+  const el = $('#scrollHint');
+  if (!H.enabled || !el) return;
+  if (reduced) { el.hidden = true; return; }
+  let gone = false;
+  const hide = () => { if (gone) return; gone = true; el.classList.add('gone'); setTimeout(() => { el.hidden = true; }, 700); };
+  const onScroll = () => { if (scrollY > H.fadeAfter) hide(); };
+  addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
 }
 
 /* ---------- boot ---------- */
