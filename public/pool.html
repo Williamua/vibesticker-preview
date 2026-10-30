@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VibeSticker · 室内泳池预览</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#1a2332;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  #hud{position:fixed;top:0;left:0;right:0;z-index:10;padding:14px 18px;text-align:center;color:#f5faf8;font-size:14px;letter-spacing:.04em;background:linear-gradient(180deg,rgba(20,30,42,.78),rgba(20,30,42,0));pointer-events:none;user-select:none}
+  #hint{position:fixed;bottom:16px;left:0;right:0;z-index:10;text-align:center;color:rgba(245,250,248,.68);font-size:12px;pointer-events:none;user-select:none;letter-spacing:.06em}
+  #c{display:block;width:100%;height:100%;touch-action:none}
+  #err{display:none;position:fixed;inset:0;z-index:30;align-items:center;justify-content:center;padding:24px;background:rgba(20,30,42,.94);color:#f5faf8;font-size:15px;line-height:1.6;text-align:center;white-space:pre-wrap}
+  #err.show{display:flex}
+  #panel{
+    display:none;position:fixed;z-index:20;right:max(18px,4vw);top:50%;transform:translateY(-50%);
+    width:min(320px,86vw);padding:22px 22px 18px;border-radius:16px;
+    background:rgba(18,26,36,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    color:#f5faf8;box-shadow:0 16px 48px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.1);
+  }
+  #panel.show{display:block}
+  #panel h2{font-size:20px;font-weight:650;margin-bottom:8px;letter-spacing:.02em}
+  #panel p{font-size:13.5px;line-height:1.55;color:rgba(245,250,248,.82);margin-bottom:16px}
+  #panel button{
+    appearance:none;border:0;border-radius:999px;padding:9px 18px;cursor:pointer;
+    background:#7ec8c4;color:#102028;font-weight:600;font-size:13px;
+  }
+  #panel button:hover{filter:brightness(1.06)}
+  #loading{position:fixed;inset:0;z-index:25;display:flex;align-items:center;justify-content:center;background:#1a2332;color:#cfe8e4;font-size:14px;letter-spacing:.08em}
+  #loading.hide{opacity:0;pointer-events:none;transition:opacity .35s}
+  #orientBtn{
+    display:none;position:fixed;z-index:18;left:50%;bottom:52px;transform:translateX(-50%);
+    border:0;border-radius:999px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;
+    background:rgba(126,200,196,.95);color:#102028;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  }
+  #orientBtn.show{display:block}
+</style>
+</head>
+<body>
+<div id="loading">加载泳池场景…</div>
+<div id="hud">拖动环视 · 滚轮缩放 · 点击躺椅靠近 · 水面滑动推浪</div>
+<div id="hint">低模预览 · VibeSticker</div>
+<button type="button" id="orientBtn">开启陀螺仪控水</button>
+<div id="err" role="alert"></div>
+<aside id="panel" aria-live="polite">
+  <h2>VibeSticker</h2>
+  <p>欢迎来到室内泳池场景。这是交互入口占位——之后可换成贴纸定制、下单或品牌故事。</p>
+  <button type="button" id="panelClose">关闭 · 退回远景</button>
+</aside>
+<canvas id="c"></canvas>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const errEl = document.getElementById('err');
+const loadingEl = document.getElementById('loading');
+const panelEl = document.getElementById('panel');
+const panelClose = document.getElementById('panelClose');
+const orientBtn = document.getElementById('orientBtn');
+const hudEl = document.getElementById('hud');
+
+function showErr(msg) {
+  console.error(msg);
+  errEl.textContent = '泳池场景加载失败\n' + msg + '\n\n可刷新重试；请确认 /models/pool/Swiming%20Pool.gltf 可访问。';
+  errEl.classList.add('show');
+  loadingEl.classList.add('hide');
+}
+
+try {
+
+const canvas = document.getElementById('c');
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+const hasFinePointer = window.matchMedia && window.matchMedia('(pointer:fine)').matches;
+const desktopWater = hasFinePointer || !isMobile;
+
+if (isMobile) {
+  hudEl.textContent = '拖动环视 · 双指缩放 · 点躺椅靠近 · 倾斜手机涌浪';
+}
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({
+    canvas, antialias: !isMobile, alpha: false,
+    powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false,
+  });
+} catch (e1) {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'default' });
+}
+if (!renderer.getContext()) throw new Error('WebGL 不可用（当前设备/浏览器不支持）');
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.25 : 1.75));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.setClearColor(0x87a8c4, 1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9eb8d0);
+scene.fog = new THREE.Fog(0x9eb8d0, 18, 55);
+
+const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.08, 120);
+camera.position.set(1.2, 3.4, 7.2);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.075;
+controls.enablePan = false;
+controls.target.set(0.4, 1.2, 0);
+controls.minDistance = 2.2;
+controls.maxDistance = 14;
+controls.minPolarAngle = 0.55;
+controls.maxPolarAngle = Math.PI * 0.48;
+const AZ_MIN = -0.72;
+const AZ_MAX = 0.72;
+controls.minAzimuthAngle = AZ_MIN;
+controls.maxAzimuthAngle = AZ_MAX;
+controls.update();
+
+const hemi = new THREE.HemisphereLight(0xdfefff, 0x6a5a48, 1.15);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2e0, 1.35);
+sun.position.set(4, 10, 6);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xb8d4ff, 0.45);
+fill.position.set(-6, 4, -4);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffe8c8, 0.35);
+rim.position.set(2, 3, -8);
+scene.add(rim);
+
+const outdoor = new THREE.Group();
+scene.add(outdoor);
+const buildingMats = [
+  new THREE.MeshStandardMaterial({ color: 0x6d7f92, roughness: 0.85, metalness: 0.05 }),
+  new THREE.MeshStandardMaterial({ color: 0x8a7b6a, roughness: 0.9, metalness: 0 }),
+  new THREE.MeshStandardMaterial({ color: 0x5a6a78, roughness: 0.8, metalness: 0.08 }),
+  new THREE.MeshStandardMaterial({ color: 0x9aa8b5, roughness: 0.75, metalness: 0.05 }),
+];
+function makeBuilding(x, z, w, d, h, mat) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  mesh.position.set(x, h * 0.5 - 0.2, z);
+  outdoor.add(mesh);
+  const win = new THREE.Mesh(
+    new THREE.BoxGeometry(w * 0.72, h * 0.55, 0.05),
+    new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0x223344, emissiveIntensity: 0.25, roughness: 0.35 })
+  );
+  win.position.set(x, h * 0.42, z + d * 0.5 + 0.02);
+  outdoor.add(win);
+}
+const rnd = (() => { let a = 42; return () => { a = (a * 16807) % 2147483647; return (a - 1) / 2147483646; }; })();
+for (let i = 0; i < 10; i++) {
+  makeBuilding(-8 + i * 2.1 + (rnd() - 0.5) * 0.6, -6.5 - rnd() * 4.5, 1.1 + rnd() * 1.4, 1.0 + rnd() * 1.2, 2.5 + rnd() * 6.5, buildingMats[i % buildingMats.length]);
+}
+for (let i = 0; i < 5; i++) {
+  makeBuilding(-8.5 - rnd() * 3, -2 + i * 1.8 + (rnd() - 0.5), 1.2 + rnd(), 1.1 + rnd(), 3 + rnd() * 5, buildingMats[(i + 2) % buildingMats.length]);
+}
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 30), new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.set(-2, -0.25, -10);
+outdoor.add(ground);
+
+const cars = [];
+const carColors = [0xe85d4c, 0xf0c14a, 0x4aa3e0, 0x3d3d3d, 0xffffff];
+function makeCar(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.32, 0.42), new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.2 }));
+  body.position.y = 0.22; g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.24, 0.38), new THREE.MeshStandardMaterial({ color: 0xa8c8e8, roughness: 0.3, metalness: 0.1 }));
+  cabin.position.set(-0.05, 0.42, 0); g.add(cabin);
+  return g;
+}
+for (let i = 0; i < 4; i++) {
+  const car = makeCar(carColors[i % carColors.length]);
+  car.position.set(-10 + i * 4.5, 0, -5.2 - (i % 2) * 1.1);
+  car.userData.speed = 1.4 + (i % 3) * 0.55;
+  car.userData.laneZ = car.position.z;
+  outdoor.add(car);
+  cars.push(car);
+}
+
+const MAX_WAKES = 10;
+const wakeData = [];
+for (let i = 0; i < MAX_WAKES; i++) wakeData.push({ x: 0, z: 0, dirX: 1, dirZ: 0, amp: 0, born: 0, life: 1.6 });
+
+const waterUniforms = {
+  uTime: { value: 0 },
+  uColorDeep: { value: new THREE.Color(0x3a8fa8) },
+  uColorShallow: { value: new THREE.Color(0x8fd0d8) },
+  uWakes: { value: new Array(MAX_WAKES).fill(0).map(() => new THREE.Vector4()) },
+  uWakeDir: { value: new Array(MAX_WAKES).fill(0).map(() => new THREE.Vector2()) },
+  uFlow: { value: new THREE.Vector2(0.15, 0.05) },
+  uSurge: { value: new THREE.Vector2(0, 0) },
+  uFlowAmp: { value: 0.035 },
+};
+
+const waterMat = new THREE.ShaderMaterial({
+  uniforms: waterUniforms,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+  vertexShader: `
+    uniform float uTime;
+    uniform vec4 uWakes[${MAX_WAKES}];
+    uniform vec2 uWakeDir[${MAX_WAKES}];
+    uniform vec2 uFlow;
+    uniform vec2 uSurge;
+    uniform float uFlowAmp;
+    varying float vH;
+    void main() {
+      vec3 p = position;
+      float h = 0.0;
+      // continuous flow (mobile + ambient)
+      vec2 flowUv = vec2(p.x, p.y) * 2.4 - uFlow * uTime;
+      h += sin(flowUv.x * 3.1 + flowUv.y * 1.7) * uFlowAmp;
+      h += sin(flowUv.y * 4.2 - uTime * 1.3) * uFlowAmp * 0.7;
+      // tilt surge: water piles toward surge direction
+      float surgeDot = p.x * uSurge.x + p.y * uSurge.y;
+      h += surgeDot * 0.045 + sin(surgeDot * 5.0 - uTime * 3.0) * length(uSurge) * 0.04;
+      for (int i = 0; i < ${MAX_WAKES}; i++) {
+        vec4 w = uWakes[i];
+        if (w.z <= 0.001) continue;
+        vec2 dlt = vec2(p.x, p.y) - w.xy;
+        float dist = length(dlt);
+        float age = w.w;
+        float life = 1.7;
+        float fade = 1.0 - clamp(age / life, 0.0, 1.0);
+        fade *= fade;
+        vec2 dir = uWakeDir[i];
+        float along = dist > 0.001 ? dot(normalize(dlt), dir) : 0.0;
+        float direct = 0.55 + 0.45 * along;
+        float wave = sin(dist * 14.0 - age * 9.0) * exp(-dist * dist * 3.8);
+        float shove = exp(-dist * dist * 9.0) * direct;
+        h += (wave * 0.55 + shove) * w.z * fade * 0.22;
+      }
+      p.z += h;
+      vH = h;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColorDeep;
+    uniform vec3 uColorShallow;
+    varying float vH;
+    void main() {
+      vec3 col = mix(uColorDeep, uColorShallow, clamp(0.45 + vH * 6.0, 0.0, 1.0));
+      float alpha = 0.72 + clamp(abs(vH) * 4.0, 0.0, 0.2);
+      gl_FragColor = vec4(col, alpha);
+    }
+  `,
+});
+
+let waterMesh = null;
+let waterHit = null;
+const clock = new THREE.Clock();
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let prevWaterHit = null;
+let wakeWrite = 0;
+let focused = false;
+let focusT = 0;
+const camFar = new THREE.Vector3();
+const tgtFar = new THREE.Vector3();
+const camNear = new THREE.Vector3();
+const tgtNear = new THREE.Vector3();
+
+function pushWake(x, z, dirX, dirZ, speed) {
+  const w = wakeData[wakeWrite % MAX_WAKES];
+  wakeWrite++;
+  const len = Math.hypot(dirX, dirZ) || 1;
+  w.x = x; w.z = z;
+  w.dirX = dirX / len; w.dirZ = dirZ / len;
+  w.amp = Math.min(1.35, 0.25 + speed * 1.8);
+  w.born = clock.getElapsedTime();
+  w.life = 1.5 + Math.min(0.6, speed * 0.4);
+}
+
+function syncWakeUniforms(t) {
+  for (let i = 0; i < MAX_WAKES; i++) {
+    const w = wakeData[i];
+    const age = t - w.born;
+    const live = w.amp > 0 && age < w.life;
+    waterUniforms.uWakes.value[i].set(live ? w.x : 0, live ? w.z : 0, live ? w.amp : 0, live ? age : 0);
+    waterUniforms.uWakeDir.value[i].set(w.dirX, w.dirZ);
+  }
+}
+
+const hotspotGroup = new THREE.Group();
+scene.add(hotspotGroup);
+const hotspotMeshes = [];
+function addHotspot(x, y, z, sx, sy, sz) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(sx, sy, sz),
+    new THREE.MeshBasicMaterial({ color: 0x7ec8c4, transparent: true, opacity: 0, depthWrite: false })
+  );
+  m.position.set(x, y, z);
+  m.userData.isHotspot = true;
+  hotspotGroup.add(m);
+  hotspotMeshes.push(m);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.28, 0.36, 32),
+    new THREE.MeshBasicMaterial({ color: 0x7ec8c4, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(x, 0.14, z);
+  ring.userData.pulse = true;
+  hotspotGroup.add(ring);
+}
+
+function setFocus(on) {
+  focused = on;
+  focusT = 0;
+  panelEl.classList.toggle('show', on);
+  controls.enabled = !on;
+  if (on) {
+    camFar.copy(camera.position);
+    tgtFar.copy(controls.target);
+    camNear.set(-2.1, 1.55, 2.4);
+    tgtNear.set(-3.6, 0.55, 0.35);
+  }
+}
+panelClose.addEventListener('click', () => setFocus(false));
+
+function onPointer(e) {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+  const cy = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+  pointer.x = ((cx - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((cy - rect.top) / rect.height) * 2 + 1;
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  onPointer(e);
+  if (!desktopWater || focused || !waterHit || !waterMesh) return;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObject(waterHit, false);
+  if (!hits.length) { prevWaterHit = null; return; }
+  const local = waterMesh.worldToLocal(hits[0].point.clone());
+  const lx = local.x, ly = local.y;
+  const now = clock.getElapsedTime();
+  if (prevWaterHit) {
+    const dx = lx - prevWaterHit.x;
+    const dy = ly - prevWaterHit.y;
+    const dt = Math.max(0.008, now - prevWaterHit.t);
+    const speed = Math.hypot(dx, dy) / dt;
+    if (speed > 0.35) pushWake(lx, ly, dx, dy, Math.min(speed, 4));
+  }
+  prevWaterHit = { x: lx, y: ly, t: now };
+});
+canvas.addEventListener('pointerleave', () => { prevWaterHit = null; });
+canvas.addEventListener('pointerup', (e) => {
+  if (focused) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  onPointer(e);
+  raycaster.setFromCamera(pointer, camera);
+  if (raycaster.intersectObjects(hotspotMeshes, false).length) setFocus(true);
+});
+
+// —— Mobile: continuous flow + DeviceOrientation surge ——
+let orientEnabled = false;
+let orientSupported = typeof window.DeviceOrientationEvent !== 'undefined';
+let surgeTarget = new THREE.Vector2(0, 0);
+let surgeSmooth = new THREE.Vector2(0, 0);
+let autoSurgePhase = 0;
+
+function onDeviceOrient(ev) {
+  if (!orientEnabled) return;
+  // beta: front-back tilt (-180..180), gamma: left-right (-90..90)
+  const beta = ev.beta || 0;
+  const gamma = ev.gamma || 0;
+  // map to water surge in plane local xy (~ world xz)
+  const sx = THREE.MathUtils.clamp(gamma / 28, -1.2, 1.2);
+  const sy = THREE.MathUtils.clamp((beta - 45) / 35, -1.2, 1.2);
+  surgeTarget.set(sx, sy);
+}
+
+async function enableOrientation() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const state = await DeviceOrientationEvent.requestPermission();
+      if (state !== 'granted') {
+        orientBtn.textContent = '已拒绝 · 使用自动涌浪';
+        orientBtn.classList.add('show');
+        orientEnabled = false;
+        return;
+      }
+    }
+    window.addEventListener('deviceorientation', onDeviceOrient, true);
+    orientEnabled = true;
+    orientBtn.classList.remove('show');
+    hudEl.textContent = '拖动环视 · 点躺椅靠近 · 倾斜手机涌浪';
+  } catch (err) {
+    console.warn('orientation permission', err);
+    orientBtn.textContent = '陀螺仪不可用 · 自动涌浪';
+    orientBtn.classList.add('show');
+    orientEnabled = false;
+  }
+}
+
+if (isMobile || !desktopWater) {
+  waterUniforms.uFlowAmp.value = 0.055;
+  waterUniforms.uFlow.value.set(0.28, 0.12);
+  if (orientSupported) {
+    // iOS needs user gesture; Android may work immediately
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      orientBtn.classList.add('show');
+      orientBtn.addEventListener('click', () => { enableOrientation(); });
+    } else {
+      enableOrientation();
+    }
+  } else {
+    orientBtn.textContent = '无陀螺仪 · 自动涌浪';
+    orientBtn.classList.add('show');
+  }
+} else {
+  waterUniforms.uFlowAmp.value = 0.02;
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight, false);
+});
+
+const loader = new GLTFLoader();
+loader.load(
+  '/models/pool/Swiming%20Pool.gltf',
+  (gltf) => {
+    const root = gltf.scene;
+    root.name = 'poolRoom';
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach((m) => { if (m && m.map) m.map.colorSpace = THREE.SRGBColorSpace; });
+    });
+    scene.add(root);
+
+    const box = new THREE.Box3().setFromObject(root);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    root.position.x += -center.x;
+    root.position.z += -center.z;
+    root.position.y += -box.min.y;
+    root.updateMatrixWorld(true);
+
+    const box2 = new THREE.Box3().setFromObject(root);
+    const c2 = box2.getCenter(new THREE.Vector3());
+    controls.target.set(c2.x, Math.min(1.35, c2.y * 0.55 + 0.4), c2.z * 0.15);
+    camera.position.set(c2.x + 0.8, 3.2, box2.max.z + 4.6);
+    controls.update();
+
+    let mainWater = null;
+    const loungeCenters = [];
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.name === 'Cube.017') mainWater = o;
+      if (/^Cube\.00([7-9]|1[0-2])$/.test(o.name)) {
+        loungeCenters.push(new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()));
+      }
+    });
+
+    if (mainWater) {
+      mainWater.visible = false;
+      const wb = new THREE.Box3().setFromObject(mainWater);
+      const wc = wb.getCenter(new THREE.Vector3());
+      const ws = wb.getSize(new THREE.Vector3());
+      waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(ws.x * 0.98, ws.z * 0.98, 72, 44), waterMat);
+      waterMesh.rotation.x = -Math.PI / 2;
+      waterMesh.position.set(wc.x, wc.y + 0.012, wc.z);
+      waterMesh.renderOrder = 2;
+      scene.add(waterMesh);
+      waterHit = new THREE.Mesh(
+        new THREE.PlaneGeometry(ws.x * 0.98, ws.z * 0.98),
+        new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+      );
+      waterHit.rotation.copy(waterMesh.rotation);
+      waterHit.position.copy(waterMesh.position);
+      scene.add(waterHit);
+    } else {
+      waterMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 3.2, 64, 40), waterMat);
+      waterMesh.rotation.x = -Math.PI / 2;
+      waterMesh.position.set(c2.x, 0.14, c2.z);
+      scene.add(waterMesh);
+      waterHit = waterMesh;
+    }
+
+    if (loungeCenters.length) {
+      const avg = loungeCenters.reduce((a, v) => a.add(v), new THREE.Vector3()).multiplyScalar(1 / loungeCenters.length);
+      addHotspot(avg.x, avg.y + 0.15, avg.z, 2.2, 0.9, 2.8);
+      camNear.set(avg.x + 1.6, avg.y + 1.1, avg.z + 2.0);
+      tgtNear.set(avg.x, avg.y + 0.2, avg.z);
+    } else {
+      addHotspot(-3.5, 0.6, 0.4, 2.0, 0.9, 2.5);
+    }
+
+    loadingEl.classList.add('hide');
+    console.info('[pool] ready', { size: size.toArray(), az: [AZ_MIN, AZ_MAX], water: !!mainWater, mobile: isMobile, orientSupported });
+  },
+  (ev) => {
+    if (ev.total) loadingEl.textContent = '加载泳池场景… ' + Math.round((ev.loaded / ev.total) * 100) + '%';
+  },
+  (err) => showErr(String(err && err.message ? err.message : err))
+);
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta());
+  const t = clock.getElapsedTime();
+  waterUniforms.uTime.value = t;
+  syncWakeUniforms(t);
+
+  if (!orientEnabled) {
+    autoSurgePhase += dt;
+    surgeTarget.set(Math.sin(autoSurgePhase * 0.55) * 0.35, Math.cos(autoSurgePhase * 0.37) * 0.22);
+  }
+  surgeSmooth.lerp(surgeTarget, 1 - Math.exp(-3.5 * dt));
+  waterUniforms.uSurge.value.copy(surgeSmooth);
+  // flow direction slowly follows surge on mobile
+  if (isMobile || !desktopWater) {
+    const fx = 0.22 + surgeSmooth.x * 0.2;
+    const fy = 0.1 + surgeSmooth.y * 0.15;
+    waterUniforms.uFlow.value.set(fx, fy);
+  }
+
+  for (const car of cars) {
+    car.position.x += car.userData.speed * dt;
+    if (car.position.x > 12) car.position.x = -12;
+    car.position.z = car.userData.laneZ + Math.sin(t * 0.7 + car.position.x) * 0.02;
+  }
+  hotspotGroup.children.forEach((ch) => {
+    if (ch.userData.pulse) {
+      const s = 1 + Math.sin(t * 2.4) * 0.08;
+      ch.scale.set(s, s, s);
+      ch.material.opacity = 0.35 + Math.sin(t * 2.4) * 0.2;
+    }
+  });
+
+  if (focused) {
+    focusT = Math.min(1, focusT + dt * 1.35);
+    const k = focusT * focusT * (3 - 2 * focusT);
+    camera.position.lerpVectors(camFar, camNear, k);
+    controls.target.lerpVectors(tgtFar, tgtNear, k);
+  } else if (focusT > 0) {
+    focusT = Math.max(0, focusT - dt * 1.2);
+    const k = focusT * focusT * (3 - 2 * focusT);
+    camera.position.lerpVectors(camFar, camNear, k);
+    controls.target.lerpVectors(tgtFar, tgtNear, k);
+    if (focusT === 0) controls.enabled = true;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+} catch (e) {
+  showErr(e && e.stack ? e.stack : String(e));
+}
+</script>
+</body>
+</html>
