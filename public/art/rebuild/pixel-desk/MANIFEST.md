@@ -11,3 +11,7 @@
 - `panel-screen-ui.jpg` — in-screen UI art
 
 Do not wire `layer-character-body.png`.
+
+## Sky cycle (~30s)
+- sky-dawn/morning/afternoon/evening/night.jpg
+- sky-cycle.json — crossfade_loop periodSec 30

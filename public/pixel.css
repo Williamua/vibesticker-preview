@@ -74,18 +74,7 @@ button,a{font:inherit;color:inherit}
 .layer{position:absolute;inset:0;pointer-events:none}
 .hero-base{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;transition:filter .8s ease}
 
-/* Sky tint by local hour */
-.sky-tint{position:absolute;inset:0;pointer-events:none;mix-blend-mode:soft-light;opacity:.55;transition:background .8s ease,opacity .8s ease}
-.stage[data-sky="dawn"] .sky-tint{background:linear-gradient(180deg,#F7C9A8 0%,#F2A66E66 35%,transparent 70%);opacity:.5}
-.stage[data-sky="morning"] .sky-tint{background:linear-gradient(180deg,#B8D4F0 0%,#F5EDE488 40%,transparent 72%);opacity:.35;mix-blend-mode:overlay}
-.stage[data-sky="afternoon"] .sky-tint{background:linear-gradient(180deg,#E8D4A8 0%,transparent 55%);opacity:.28}
-.stage[data-sky="evening"] .sky-tint{background:linear-gradient(180deg,#E8A04A88 0%,#F4A3A044 40%,transparent 70%);opacity:.45}
-.stage[data-sky="night"] .sky-tint{background:linear-gradient(180deg,#1a2244aa 0%,#2A1C14aa 55%,#120e0bcc 100%);opacity:.62;mix-blend-mode:multiply}
-.stage[data-sky="dawn"] .hero-base{filter:saturate(1.05) hue-rotate(-8deg) brightness(1.06)}
-.stage[data-sky="morning"] .hero-base{filter:saturate(.95) brightness(1.12) contrast(.96)}
-.stage[data-sky="afternoon"] .hero-base{filter:saturate(1.05) brightness(1.04)}
-.stage[data-sky="evening"] .hero-base{filter:saturate(1.08) contrast(1.02)}
-.stage[data-sky="night"] .hero-base{filter:saturate(.7) brightness(.72) contrast(1.08)}
+
 
 /* Separable head layer */
 .head-wrap{
@@ -301,3 +290,34 @@ button,a{font:inherit;color:inherit}
 }
 .stage.is-monitor-hover .monitor-glow-img{opacity:.85}
 .trash-hot{left:56%;top:58%;width:8.5%;}
+
+
+/* Sky cycle — full-scene crossfade (~30s) */
+.sky-stack{position:absolute;inset:0;z-index:0}
+.sky-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;opacity:0;transition:opacity 1.2s ease}
+.sky-img.is-on{opacity:1}
+.hero-base{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 42%;opacity:0;pointer-events:none;z-index:0}
+.head-wrap{z-index:4}
+.monitor-glow-img{z-index:3}
+.trash-hot{z-index:6;left:56%;top:58%;width:8.5%}
+.figure-wall{display:none} /* baked into sky/r5 scenes */
+
+/* Cover baked head in sky scenes so rotating head-back is single */
+.head-patch{
+  position:absolute;left:var(--head-x);top:var(--head-y);width:var(--head-w);height:var(--head-h);
+  object-fit:none;object-position:calc(0px - var(--head-x)) calc(0px - var(--head-y));
+  /* object-fit none with % object-position is tricky; use background instead via attr - fallback: */
+  z-index:3;pointer-events:none;
+  /* Use clip via sized crop: scale full image */
+  width:100%;height:100%;left:0;top:0;opacity:0; /* disabled — use clip-path box */
+}
+
+.head-erase{
+  position:absolute;left:var(--head-x);top:var(--head-y);width:var(--head-w);height:var(--head-h);
+  z-index:3;pointer-events:none;overflow:hidden;
+}
+.head-erase img{
+  position:absolute;width:853.33%; /* 100/0.1171875 */ height:450%; /* 100/0.2222 */
+  left:calc(var(--head-x) * -8.5333); /* approximate */
+  max-width:none;height:auto;
+}

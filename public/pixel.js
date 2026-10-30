@@ -32,7 +32,6 @@
     updateQuota();
     forceClose($('#overlay')); forceClose($('#detail-overlay'));
     applySky();
-    setInterval(applySky, 30 * 60 * 1000);
     const hero = $('#hero-base');
     if (hero) hero.addEventListener('error', () => {
       hero.src = ART + '/hero-wide-r5.jpg';
@@ -60,20 +59,71 @@
     el.textContent = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
-  function applySky() {
+  const SKY_LABELS = { dawn: '清晨', morning: '上午', afternoon: '下午', evening: '傍晚', night: '夜晚' };
+  let skyCfg = {
+    periodSec: 30, stages: ['dawn','morning','afternoon','evening','night'],
+    files: { dawn:'sky-dawn.jpg', morning:'sky-morning.jpg', afternoon:'sky-afternoon.jpg', evening:'sky-evening.jpg', night:'sky-night.jpg' },
+    perStageSec: 6,
+  };
+  let skyIdx = 3; // evening first
+  let skyFrontIsA = true;
+  let skyTimer = 0;
+
+  async function loadSkyCycle() {
+    try {
+      const r = await fetch(ART + '/sky-cycle.json', { cache: 'no-store' });
+      if (r.ok) skyCfg = Object.assign(skyCfg, await r.json());
+    } catch (_) {}
+    const stages = skyCfg.stages || ['evening'];
+    // start near local hour if possible
     const h = new Date().getHours();
-    let sky = 'evening';
-    if (h >= 5 && h < 8) sky = 'dawn';
-    else if (h >= 8 && h < 12) sky = 'morning';
-    else if (h >= 12 && h < 17) sky = 'afternoon';
-    else if (h >= 17 && h < 20) sky = 'evening';
-    else sky = 'night';
-    const stage = $('#stage');
-    if (stage) stage.dataset.sky = sky;
-    const claim = $('#far-claim');
-    const labels = { dawn: '清晨', morning: '上午', afternoon: '下午', evening: '傍晚', night: '夜晚' };
-    if (claim) claim.innerHTML = labels[sky] + '的高楼窗外。<em>拖或滚</em>靠近设计台。';
+    let prefer = 'evening';
+    if (h >= 5 && h < 8) prefer = 'dawn';
+    else if (h >= 8 && h < 12) prefer = 'morning';
+    else if (h >= 12 && h < 17) prefer = 'afternoon';
+    else if (h >= 17 && h < 20) prefer = 'evening';
+    else prefer = 'night';
+    skyIdx = Math.max(0, stages.indexOf(prefer));
+    if (skyIdx < 0) skyIdx = 0;
+    const a = $('#sky-a'), b = $('#sky-b');
+    const file = skyCfg.files[stages[skyIdx]] || 'sky-evening.jpg';
+    if (a) { a.src = ART + '/' + file; a.classList.add('is-on'); }
+    if (b) { b.src = ART + '/' + (skyCfg.files[stages[(skyIdx+1)%stages.length]] || file); b.classList.remove('is-on'); }
+    paintSkyClaim(stages[skyIdx]);
+    if (!reduce()) startSkyLoop();
   }
+
+  function paintSkyClaim(stage) {
+    const st = $('#stage'); if (st) st.dataset.sky = stage;
+    const claim = $('#far-claim');
+    if (claim) claim.innerHTML = (SKY_LABELS[stage] || stage) + '的高楼窗外。<em>拖或滚</em>靠近设计台。';
+  }
+
+  function startSkyLoop() {
+    clearInterval(skyTimer);
+    const stages = skyCfg.stages || [];
+    if (stages.length < 2) return;
+    const per = (skyCfg.perStageSec || (skyCfg.periodSec || 30) / stages.length) * 1000;
+    skyTimer = setInterval(() => {
+      const next = (skyIdx + 1) % stages.length;
+      const file = skyCfg.files[stages[next]];
+      if (!file) return;
+      const front = skyFrontIsA ? $('#sky-a') : $('#sky-b');
+      const back = skyFrontIsA ? $('#sky-b') : $('#sky-a');
+      if (!front || !back) return;
+      back.src = ART + '/' + file;
+      // force reflow then crossfade
+      back.classList.remove('is-on');
+      void back.offsetWidth;
+      back.classList.add('is-on');
+      front.classList.remove('is-on');
+      skyFrontIsA = !skyFrontIsA;
+      skyIdx = next;
+      paintSkyClaim(stages[skyIdx]);
+    }, per);
+  }
+
+  function applySky() { loadSkyCycle(); }
 
   function playIntro() {
     const words = $$('.intro-word'), wrap = $('#intro-title');

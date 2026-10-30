@@ -34,12 +34,18 @@
 
     <div class="cam" id="cam" aria-hidden="true">
       <div class="layer room" id="layer-room">
+        <!-- 30s sky cycle: full-scene lighting variants (r5-aligned) -->
+        <div class="sky-stack" id="sky-stack" aria-hidden="true">
+          <img class="sky-img is-on" id="sky-a" src="/art/rebuild/pixel-desk/sky-evening.jpg" alt="" width="1280" height="720" decoding="async" fetchpriority="high">
+          <img class="sky-img" id="sky-b" src="/art/rebuild/pixel-desk/sky-night.jpg" alt="" width="1280" height="720" decoding="async">
+        </div>
+        <!-- headless underpaint so rotating head has clean neck; masked under skies via blend -->
         <img class="hero-base" id="hero-base"
           src="/art/rebuild/pixel-desk/hero-wide-r4-headless.jpg"
-          alt="" width="1280" height="720" decoding="async" fetchpriority="high">
-        <div class="sky-tint" id="sky-tint" aria-hidden="true"></div>
-        <img class="figure-wall" id="figure-wall"
-          src="/art/rebuild/pixel-desk/layer-figure-wall.jpg" alt="" decoding="async">
+          alt="" width="1280" height="720" decoding="async">
+        <img class="head-erase-patch" id="head-erase"
+          src="/art/rebuild/pixel-desk/head-erase-patch.jpg" alt="" aria-hidden="true"
+          style="position:absolute;left:19.5%;top:33.3%;width:13.3%;height:25%;object-fit:cover;z-index:3;pointer-events:none">
         <div class="head-wrap" id="head-wrap">
           <img class="head-layer" id="head-layer"
             src="/art/rebuild/pixel-desk/layer-head-back.png"
