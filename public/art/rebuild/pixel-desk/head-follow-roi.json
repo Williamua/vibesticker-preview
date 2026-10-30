@@ -1,0 +1,37 @@
+{
+  "base": "hero-wide-r4.jpg",
+  "baseSize": {
+    "w": 1280,
+    "h": 720
+  },
+  "headRoiPx": {
+    "x": 260,
+    "y": 250,
+    "w": 150,
+    "h": 160
+  },
+  "headRoiNorm": {
+    "x": 0.2031,
+    "y": 0.3472,
+    "w": 0.1172,
+    "h": 0.2222
+  },
+  "pivotNorm": {
+    "x": 0.2617,
+    "y": 0.5206
+  },
+  "pivotNote": "CSS transform-origin: 50% 78% (neck); rotate ±12deg with mouse X",
+  "layers": {
+    "lockedHero": "hero-wide-r4.jpg",
+    "headlessScene": "hero-wide-r4-headless.jpg",
+    "headBackTransparent": "layer-head-back.png",
+    "headRoiCrop": "layer-head-roi-crop.jpg",
+    "bodyIsolatedSpare": "layer-character-body.png"
+  },
+  "recommendedStack": [
+    "Use hero-wide-r4-headless.jpg as full-bleed base (head removed, neck stump)",
+    "Overlay layer-head-back.png at headRoiPx, size to fit, rotate with mouse around pivotNorm",
+    "Pink diamond hotspot as separate DOM above head"
+  ],
+  "note": "bodyIsolatedSpare is standing pose — desk composite should use headlessScene + headBack only."
+}

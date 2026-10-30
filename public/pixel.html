@@ -28,28 +28,30 @@
     <span class="intro-word accent">做成贴纸</span>
   </div>
 
-  <div class="stage" id="stage" data-state="FAR">
-    <p class="far-claim" id="far-claim">阳光洒进屋子。<em>拖或滚</em>靠近设计台。</p>
-    <p class="drag-hint" id="drag-hint">拖动或滚动靠近</p>
+  <div class="stage" id="stage" data-state="FAR" data-sky="evening">
+    <p class="far-claim" id="far-claim">傍晚的高楼窗外。<em>拖或滚</em>靠近设计台。</p>
+    <p class="drag-hint" id="drag-hint">拖动或滚动靠近 · 按住可绕电脑转</p>
 
     <div class="cam" id="cam" aria-hidden="true">
-      <!-- Warm sunset placeholder only — no robot room art -->
       <div class="layer room" id="layer-room">
-        <img class="sunset-hero" id="sunset-hero" src="/art/rebuild/pixel-desk/hero-wide-sunset.jpg" alt="" width="1920" height="1080" decoding="async" fetchpriority="high">
-        <div class="sunset-fallback" aria-hidden="true">
-          <div class="sun"></div>
-          <div class="window-glow"></div>
-          <div class="wall"></div>
-          <div class="floor"></div>
-          <div class="desk-block"><span class="desk-glow"></span></div>
+        <img class="hero-base" id="hero-base"
+          src="/art/rebuild/pixel-desk/hero-wide-r4-headless.jpg"
+          alt="" width="1280" height="720" decoding="async" fetchpriority="high">
+        <div class="sky-tint" id="sky-tint" aria-hidden="true"></div>
+        <img class="figure-wall" id="figure-wall"
+          src="/art/rebuild/pixel-desk/layer-figure-wall.jpg" alt="" decoding="async">
+        <div class="head-wrap" id="head-wrap">
+          <img class="head-layer" id="head-layer"
+            src="/art/rebuild/pixel-desk/layer-head-back.png"
+            alt="" width="150" height="160" decoding="async">
         </div>
-      </div>
-      <!-- Simple pixel placeholder figure (not robot) -->
-      <div class="layer fig-layer" id="fig-layer">
-        <div class="px-buddy" id="px-buddy" title="占位角色">
-          <span class="b-head"></span><span class="b-body"></span>
-          <span class="b-arm"></span><span class="b-leg-l"></span><span class="b-leg-r"></span>
+        <img class="monitor-glow-img" id="monitor-glow"
+          src="/art/rebuild/pixel-desk/layer-monitor-glow.png" alt="" aria-hidden="true">
+        <button type="button" class="monitor-hit" id="monitor-hit" aria-label="靠近电脑屏幕"></button>
+        <div class="trash-hot" id="trash-hot" title="垃圾桶">
+          <img class="trash-img" id="trash-img" src="/art/rebuild/pixel-desk/ui-trash-closed.png" alt="">
         </div>
+        <img class="print-sticker" id="print-sticker" alt="" hidden>
       </div>
     </div>
 
@@ -95,12 +97,15 @@
             <div class="ply-body">
               <h2 class="ply-title">上传</h2>
               <p class="ply-lede">拖入照片或点击选择。</p>
-              <button type="button" class="upload" id="upload-zone" aria-label="上传照片">
-                <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
-                <img class="upload-plate" src="/art/rebuild/pixel-desk/ui-upload-plate.png" alt="">
-                <img id="upload-thumb" alt="" hidden>
-                <span class="upload-hint" id="upload-hint">拖入或点击</span>
-              </button>
+              <div class="upload-block" id="upload-block">
+                <button type="button" class="upload-del" id="upload-del" hidden>删除</button>
+                <button type="button" class="upload" id="upload-zone" aria-label="上传照片">
+                  <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
+                  <img class="upload-plate" src="/art/rebuild/pixel-desk/ui-upload-plate.png" alt="">
+                  <img id="upload-thumb" class="upload-thumb" alt="" hidden draggable="true">
+                  <span class="upload-hint" id="upload-hint">拖入或点击</span>
+                </button>
+              </div>
               <p class="hint" id="quota"></p>
               <button type="button" class="btn btn-primary" data-goto="2">下一步 · 风格</button>
             </div>
@@ -150,7 +155,7 @@
           <article class="ply" data-layer="5" id="ply-5" hidden>
             <div class="ply-body">
               <h2 class="ply-title">帮助</h2>
-              <p class="ply-lede">推近镜头 → 开机 → 面板内滚轮切层。</p>
+              <p class="ply-lede">推近镜头 → 开机 → 面板内滚轮切层。可拖图到垃圾桶删除。</p>
               <ul class="help-list">
                 <li>底栏切换模块，小人走到落点</li>
                 <li>「回房间」退出面板</li>
@@ -172,7 +177,6 @@
       <p class="push-tip" id="push-tip">推近</p>
     </div>
 
-    <!-- 原创中文模块条（非 Hamza 英式胶囊） -->
     <nav class="modbar" id="modbar" aria-label="模块">
       <button type="button" class="modbar-item is-on" data-layer="0" data-mod="overview">总览</button>
       <button type="button" class="modbar-item" data-layer="1" data-mod="upload">上传</button>

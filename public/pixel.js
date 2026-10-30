@@ -1,4 +1,4 @@
-/** Pixel Desk — sunset placeholder FAR; no robot-room art. FAR→DOLLY→DOCKED→BOOT→PANEL */
+/** Pixel Desk — r4-headless + head-back FAR; sky; orbit; glow; dock; trash delete; idle fx */
 (function () {
   'use strict';
   const $ = (s, r = document) => r.querySelector(s);
@@ -13,10 +13,17 @@
   ];
   const LAYERS = [0, 1, 2, 3, 4, 5];
   const DOCK_AT = 0.92, UNLOCK = 0.72, FAR_SNAP = 0.08;
+  const HEAD_MAX = 12;
+  const ORBIT_MAX = 14;
+
   let progress = 0, state = 'FAR', layer = 0;
   let selectedStyle = localStorage.getItem('vibe-style') || 'pixel';
   let photoFile = null, photoUrl = null, bootedOnce = false;
   let walking = false, walkGen = 0, walkTween = null, wheelAcc = 0, wheelLock = false;
+  let headTarget = 0, headCurrent = 0, orbitX = 0, orbitY = 0, orbitTX = 0, orbitTY = 0;
+  let orbitDrag = false, orbitMoved = false, pushDragging = false;
+  let rafId = 0;
+
   const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   async function boot() {
@@ -24,16 +31,22 @@
     showDemo(window.VibeAPI ? VibeAPI.isDemo() : true);
     updateQuota();
     forceClose($('#overlay')); forceClose($('#detail-overlay'));
-    const hero = $('#sunset-hero');
-    if (hero) hero.addEventListener('error', () => $('#layer-room')?.classList.add('is-fallback'));
+    applySky();
+    setInterval(applySky, 30 * 60 * 1000);
+    const hero = $('#hero-base');
+    if (hero) hero.addEventListener('error', () => {
+      hero.src = ART + '/hero-wide-r5.jpg';
+    });
     buildStyles(); buildTicks();
-    bindPush(); bindPanelWheel(); bindModbar(); bindUpload(); bindGenerate(); bindPricing();
-    bindOverlay(); bindUndock();
+    bindPush(); bindOrbit(); bindHead(); bindMonitor(); bindTrash();
+    bindPanelWheel(); bindModbar(); bindUpload(); bindGenerate(); bindPricing();
+    bindOverlay(); bindUndock(); bindIdleFx();
     $('#layers')?.addEventListener('click', (e) => {
       const g = e.target.closest('[data-goto]'); if (g) requestLayer(+g.dataset.goto);
     });
     tickClock(); setInterval(tickClock, 15000);
     playIntro(); applyProgress(0); setState('FAR'); goLayer(0, { instant: true, silent: true });
+    startRaf();
   }
 
   function showDemo(on) { const b = $('#demo-banner'); if (b) b.hidden = !on; }
@@ -46,6 +59,22 @@
     const el = $('#panel-clock'); if (!el) return;
     el.textContent = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
+
+  function applySky() {
+    const h = new Date().getHours();
+    let sky = 'evening';
+    if (h >= 5 && h < 8) sky = 'dawn';
+    else if (h >= 8 && h < 12) sky = 'morning';
+    else if (h >= 12 && h < 17) sky = 'afternoon';
+    else if (h >= 17 && h < 20) sky = 'evening';
+    else sky = 'night';
+    const stage = $('#stage');
+    if (stage) stage.dataset.sky = sky;
+    const claim = $('#far-claim');
+    const labels = { dawn: '清晨', morning: '上午', afternoon: '下午', evening: '傍晚', night: '夜晚' };
+    if (claim) claim.innerHTML = labels[sky] + '的高楼窗外。<em>拖或滚</em>靠近设计台。';
+  }
+
   function playIntro() {
     const words = $$('.intro-word'), wrap = $('#intro-title');
     if (!wrap || !words.length) return;
@@ -85,12 +114,13 @@
   }
   function paintCam(p) {
     const cam = $('#cam');
-    const scale = 1 + p * 2.2;
-    const y = p * 8;
-    if (typeof gsap !== 'undefined') gsap.set(cam, { scale, yPercent: y });
-    else if (cam) cam.style.transform = `translateY(${y}%) scale(${scale})`;
-    const buddy = $('#px-buddy');
-    if (buddy) buddy.style.opacity = String(Math.max(0, 1 - p * 1.2));
+    const scale = 1 + p * 2.6;
+    const y = p * 6;
+    const ox = orbitX * (1 - p * 0.85);
+    const oy = orbitY * (1 - p * 0.85);
+    if (cam) {
+      cam.style.transform = `translate(${ox}%, ${y + oy * 0.35}%) scale(${scale}) rotateY(${ox * 0.9}deg) rotateX(${-oy * 0.5}deg)`;
+    }
   }
   function paintPanelVis(p) {
     const panel = $('#panel'); if (!panel) return;
@@ -108,7 +138,7 @@
     if (typeof gsap === 'undefined' || reduce()) { finish(); return; }
     const obj = { p: progress };
     gsap.to(obj, {
-      p: target, duration: 0.5, ease: 'power3.inOut',
+      p: target, duration: 0.55, ease: 'power3.inOut',
       onUpdate: () => { applyProgress(obj.p); if (obj.p > FAR_SNAP && obj.p < DOCK_AT) setState('DOLLY'); },
       onComplete: finish,
     });
@@ -130,7 +160,11 @@
   }
   function hideBoot() { const s = $('#boot-seq'); if (s) s.hidden = true; }
   function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
-  function undock() { forceClose($('#overlay')); forceClose($('#detail-overlay')); hideBoot(); animateTo(0); }
+  function undock() {
+    forceClose($('#overlay')); forceClose($('#detail-overlay')); hideBoot();
+    orbitTX = orbitTY = 0;
+    animateTo(0);
+  }
 
   function bindPush() {
     const stage = $('#stage'), track = $('#push-track'), knob = $('#push-knob');
@@ -141,21 +175,6 @@
       setState(progress > FAR_SNAP ? 'DOLLY' : 'FAR');
       clearTimeout(bindPush._t); bindPush._t = setTimeout(snap, 140);
     }, { passive: false });
-    let ptr = false, y0 = 0, p0 = 0;
-    stage?.addEventListener('pointerdown', (e) => {
-      if (state === 'DOCKED' || state === 'PANEL') return;
-      if (e.target.closest('.push-dock,.panel,a,button,input,.modbar')) return;
-      ptr = true; y0 = e.clientY; p0 = progress;
-      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    stage?.addEventListener('pointermove', (e) => {
-      if (!ptr) return;
-      applyProgress(p0 + (y0 - e.clientY) / (innerHeight * 0.7));
-      setState('DOLLY');
-    });
-    const end = () => { if (!ptr) return; ptr = false; snap(); };
-    stage?.addEventListener('pointerup', end);
-    stage?.addEventListener('pointercancel', end);
     function fromX(cx) {
       const r = track.getBoundingClientRect();
       applyProgress((cx - r.left) / Math.max(1, r.width));
@@ -164,16 +183,137 @@
     let scrub = false;
     const down = (e) => {
       if (state === 'DOCKED' || state === 'PANEL') return;
-      scrub = true; try { knob.setPointerCapture(e.pointerId); } catch (_) {}
+      scrub = true; pushDragging = true;
+      try { knob.setPointerCapture(e.pointerId); } catch (_) {}
       fromX(e.clientX); e.preventDefault();
     };
     knob?.addEventListener('pointerdown', down);
     track?.addEventListener('pointerdown', (e) => { if (e.target !== knob) down(e); });
     knob?.addEventListener('pointermove', (e) => { if (scrub) fromX(e.clientX); });
-    const up = () => { if (!scrub) return; scrub = false; snap(); };
+    const up = () => { if (!scrub) return; scrub = false; pushDragging = false; snap(); };
     knob?.addEventListener('pointerup', up); knob?.addEventListener('pointercancel', up);
   }
   function bindUndock() { $('#undock')?.addEventListener('click', undock); }
+
+  function bindOrbit() {
+    const stage = $('#stage');
+    let x0 = 0, y0 = 0, ox0 = 0, oy0 = 0;
+    stage?.addEventListener('pointerdown', (e) => {
+      if (state === 'DOCKED' || state === 'PANEL') return;
+      if (e.target.closest('.push-dock,.panel,a,button,input,.modbar,.trash-hot,.monitor-hit')) return;
+      orbitDrag = true; orbitMoved = false;
+      x0 = e.clientX; y0 = e.clientY; ox0 = orbitTX; oy0 = orbitTY;
+      try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    stage?.addEventListener('pointermove', (e) => {
+      if (!orbitDrag) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (Math.abs(dx) + Math.abs(dy) > 6) orbitMoved = true;
+      // horizontal drag = orbit around desk; vertical = dolly
+      orbitTX = Math.max(-ORBIT_MAX, Math.min(ORBIT_MAX, ox0 + dx / innerWidth * ORBIT_MAX * 2.2));
+      orbitTY = Math.max(-ORBIT_MAX * 0.5, Math.min(ORBIT_MAX * 0.5, oy0 + dy / innerHeight * ORBIT_MAX));
+      applyProgress(Math.max(0, Math.min(1, progress + (-dy) / (innerHeight * 1.4) * 0.002))); // subtle
+      // better: map vertical drag to progress from start
+      const p0 = bindOrbit._p0 != null ? bindOrbit._p0 : progress;
+      if (bindOrbit._p0 == null) bindOrbit._p0 = progress;
+      applyProgress(bindOrbit._p0 + (y0 - e.clientY) / (innerHeight * 0.75));
+      if (progress > FAR_SNAP) setState('DOLLY');
+    });
+    const end = () => {
+      if (!orbitDrag) return;
+      orbitDrag = false; bindOrbit._p0 = null;
+      // release: ease orbit back toward center (default), snap dolly
+      orbitTX *= 0.35; orbitTY *= 0.35;
+      if (!orbitMoved && progress < FAR_SNAP) return;
+      snap();
+    };
+    stage?.addEventListener('pointerup', end);
+    stage?.addEventListener('pointercancel', end);
+  }
+
+  function bindHead() {
+    const stage = $('#stage');
+    stage?.addEventListener('pointermove', (e) => {
+      if (reduce() || state === 'DOCKED' || state === 'PANEL') return;
+      const nx = (e.clientX / Math.max(1, innerWidth)) * 2 - 1;
+      headTarget = nx * HEAD_MAX;
+    });
+    stage?.addEventListener('pointerleave', () => { headTarget = 0; });
+  }
+
+  function bindMonitor() {
+    const hit = $('#monitor-hit'), stage = $('#stage');
+    hit?.addEventListener('pointerenter', () => stage?.classList.add('is-monitor-hover'));
+    hit?.addEventListener('pointerleave', () => stage?.classList.remove('is-monitor-hover'));
+    hit?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state === 'FAR' || state === 'DOLLY') animateTo(1);
+    });
+  }
+
+  function startRaf() {
+    cancelAnimationFrame(rafId);
+    const tick = () => {
+      const lerp = reduce() ? 1 : 0.12;
+      headCurrent += (headTarget - headCurrent) * lerp;
+      orbitX += (orbitTX - orbitX) * (reduce() ? 1 : 0.14);
+      orbitY += (orbitTY - orbitY) * (reduce() ? 1 : 0.14);
+      const wrap = $('#head-wrap');
+      if (wrap && !reduce()) {
+        const stretch = wrap.classList.contains('is-stretch') ? '' : '';
+        wrap.style.transform = `rotateY(${headCurrent}deg) rotateZ(${headCurrent * 0.18}deg)`;
+      } else if (wrap && reduce()) {
+        wrap.style.transform = 'none';
+      }
+      paintCam(progress);
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function bindIdleFx() {
+    if (reduce()) return;
+    const stretch = () => {
+      if (state !== 'FAR' && state !== 'DOLLY') return;
+      const wrap = $('#head-wrap');
+      if (!wrap) return;
+      wrap.classList.remove('is-stretch');
+      void wrap.offsetWidth;
+      wrap.classList.add('is-stretch');
+      setTimeout(() => wrap.classList.remove('is-stretch'), 1000);
+    };
+    const loop = () => {
+      const waitMs = 8000 + Math.random() * 12000;
+      setTimeout(() => { stretch(); loop(); }, waitMs);
+    };
+    setTimeout(loop, 5000);
+  }
+
+  function clearPhoto() {
+    photoFile = null;
+    if (photoUrl) { URL.revokeObjectURL(photoUrl); photoUrl = null; }
+    const thumb = $('#upload-thumb'), hint = $('#upload-hint'), del = $('#upload-del');
+    if (thumb) { thumb.removeAttribute('src'); thumb.hidden = true; }
+    if (hint) hint.hidden = false;
+    if (del) del.hidden = true;
+    syncGen();
+  }
+
+  function bindTrash() {
+    const trash = $('#trash-hot'), img = $('#trash-img');
+    const setOpen = (on) => {
+      trash?.classList.toggle('is-hot', on);
+      if (img) img.src = ART + (on ? '/ui-trash-open.png' : '/ui-trash-closed.png');
+    };
+    ['dragenter', 'dragover'].forEach((ev) => trash?.addEventListener(ev, (e) => {
+      e.preventDefault(); setOpen(true);
+    }));
+    ['dragleave', 'drop'].forEach((ev) => trash?.addEventListener(ev, (e) => {
+      e.preventDefault();
+      if (ev === 'drop' && photoFile) clearPhoto();
+      setOpen(false);
+    }));
+  }
 
   function buildTicks() {
     const root = $('#layer-ticks'); if (!root) return;
@@ -285,24 +425,56 @@
     });
   }
   function bindUpload() {
-    const zone = $('#upload-zone'), input = $('#photo');
+    const zone = $('#upload-zone'), input = $('#photo'), del = $('#upload-del');
     if (!zone || !input) return;
-    zone.addEventListener('click', () => input.click());
+    zone.addEventListener('click', (e) => {
+      if (e.target.closest('.upload-del')) return;
+      input.click();
+    });
     ['dragenter', 'dragover'].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('is-drag'); }));
     ['dragleave', 'drop'].forEach((ev) => zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove('is-drag'); }));
     zone.addEventListener('drop', (e) => { const f = e.dataTransfer?.files?.[0]; if (f) setPhoto(f); });
     input.addEventListener('change', () => { if (input.files?.[0]) setPhoto(input.files[0]); });
+    del?.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); clearPhoto(); });
     function setPhoto(file) {
       photoFile = file;
       if (photoUrl) URL.revokeObjectURL(photoUrl);
       photoUrl = URL.createObjectURL(file);
       const thumb = $('#upload-thumb'), hint = $('#upload-hint');
-      if (thumb) { thumb.src = photoUrl; thumb.hidden = false; }
+      if (thumb) {
+        thumb.src = photoUrl; thumb.hidden = false; thumb.draggable = true;
+        thumb.ondragstart = (ev) => {
+          ev.dataTransfer?.setData('text/plain', 'photo');
+          ev.dataTransfer.effectAllowed = 'move';
+        };
+      }
       if (hint) hint.hidden = true;
+      if (del) del.hidden = false;
       syncGen();
     }
   }
   function syncGen() { const b = $('#gen-btn'); if (b) b.disabled = !(photoFile && selectedStyle); }
+
+  function flyPrint(src) {
+    const el = $('#print-sticker'); if (!el || reduce()) return;
+    el.hidden = false; el.src = src;
+    el.style.opacity = '1';
+    el.style.left = '46%'; el.style.top = '46%';
+    el.style.transform = 'translate(-50%,-50%) scale(.4)';
+    if (typeof gsap === 'undefined') {
+      setTimeout(() => { el.hidden = true; }, 900); return;
+    }
+    gsap.fromTo(el,
+      { opacity: 0, scale: 0.3, xPercent: -50, yPercent: -50, left: '48%', top: '50%' },
+      {
+        opacity: 1, scale: 1, left: '72%', top: '28%', duration: 0.85, ease: 'power2.out',
+        onComplete: () => gsap.to(el, {
+          opacity: 0, y: -40, duration: 0.35, delay: 0.2,
+          onComplete: () => { el.hidden = true; },
+        }),
+      });
+  }
+
   function bindGenerate() {
     const btn = $('#gen-btn'); if (!btn) return;
     btn.addEventListener('click', async () => {
@@ -316,6 +488,7 @@
         if (empty) empty.hidden = true; if (acts) acts.hidden = false;
         const dlP = $('#dl-png'), dlG = $('#dl-gif');
         if (dlP) dlP.href = `${j.png}?dl=1`; if (dlG) dlG.href = `${j.gif}?dl=1`;
+        flyPrint(`${j.png}?t=${Date.now()}`);
         requestLayer(3);
       } catch (e) { openSheet(`<h2>失败</h2><p>${e.message || '生成失败'}</p>`); }
       finally { btn.textContent = '生成贴纸'; syncGen(); }
