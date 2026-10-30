@@ -48,9 +48,10 @@ function setupVideo() {
   const v = $('#bgv'), wrap = $('.l-video');
   if (reduced) return;                       // reduced-motion: static poster only
   const mobile = isMobile();
-  v.poster = mobile ? '/media/forest-poster-m.jpg' : '/media/forest-poster.jpg';
-  $('.l-video .poster').src = v.poster;
-  v.src = mobile ? '/media/forest-mobile.mp4' : '/media/forest-desktop.mp4';
+  // rainforest upward-shot footage (ASSETS-V2 §1 V4 "Sunlight Streaming Through Forest Canopy", Saulo Nulo / Pexels) – locked by the user; files are used as delivered, no re-encode
+  v.poster = mobile ? '/media/rainforest-loop-mobile-720-poster.jpg' : '/media/rainforest-loop-1080-poster.jpg';
+  v.preload = 'auto';
+  v.src = mobile ? '/media/rainforest-loop-mobile-720.mp4' : '/media/rainforest-loop-1080.mp4';
   v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
   v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
   const off = () => wrap.classList.remove('playing');   // poster underneath shows through
@@ -63,6 +64,44 @@ function setupVideo() {
   // iOS low-power mode refuses autoplay: retry once on first touch
   addEventListener('touchstart', tryPlay, { once: true, passive: true });
   tryPlay();
+}
+
+/* ---------- parallax layers (ASSETS-V2 §2) ----------
+   L1 fog is switched off (L1 fog off per design brief). Mobile and desktop both use 3 layers: L2 beams, L3 trunks, L4 fore-leaves.
+   speed = share of a common travel distance (layers are one-screen images, so 1.0 ≠ content speed literally). */
+const LAYERS = [
+  { id: 'L2', file: 'L2-lightbeams', speed: 0.3 },
+  { id: 'L3', file: 'L3-trunks', speed: 0.6 },
+  { id: 'L4', file: 'L4-foreleaves', speed: 1.2 },
+];
+const travelFor = speed => Math.round(speed * innerHeight * 0.25);
+function buildLayers() {
+  const box = $('#pxLayers'), suf = isMobile() ? '1080m' : '2560';
+  box.innerHTML = LAYERS.map(l => `
+    <div class="layer px px-${l.id}" data-speed="${l.speed}" style="--travel:${l.id === 'L3' ? travelFor(l.speed) : 0}px">
+      <div class="pxi"><picture>
+        <source type="image/webp" srcset="/media/layers/${l.file}-${suf}.webp">
+        <img src="/media/layers/${l.file}-${suf}.png" alt="" decoding="async">
+      </picture></div>
+    </div>`).join('');
+}
+async function loadLeafDefs() {
+  try { const r = await fetch('/media/layers/leaf-mask.svg'); if (r.ok) $('#leafDefs').innerHTML = await r.text(); }
+  catch (e) { console.warn('leaf mask unavailable', e); }
+}
+/* wind from scroll speed → fore-leaf sway ±1.5° … ±6° */
+function setupWind() {
+  if (reduced) return;
+  let last = scrollY, wind = 0, pic = null;
+  const t0 = performance.now();
+  (function loop(now) {
+    const v = Math.abs(scrollY - last); last = scrollY;
+    wind += (Math.min(1, v / 40) - wind) * 0.08;
+    const a = (1.5 + 4.5 * wind) * Math.sin((now - t0) / 6000 * Math.PI * 2);
+    pic = pic || $('.px-L4 picture');
+    if (pic) pic.style.transform = `rotate(${a.toFixed(2)}deg)`;
+    requestAnimationFrame(loop);
+  })(t0);
 }
 
 /* ---------- style cards ---------- */
@@ -188,7 +227,8 @@ function setProgress(p) {
   p = Math.max(0, Math.min(1, p));
   $('#ringFg').style.strokeDashoffset = String(100 - p * 100);
   const w = $('#leafWrap'); w.style.setProperty('--p', p.toFixed(3));
-  $('#leafImg').style.setProperty('--lb', (0.55 + 0.55 * p).toFixed(3));
+  const sv = $('.leafsvg');                                   // §4: brightness .4 → 1, glow radius 8 → 18px
+  sv.style.setProperty('--lb', (0.4 + 0.6 * p).toFixed(3)); sv.style.setProperty('--gr', (8 + 10 * p).toFixed(1) + 'px');
   $('#gen').setAttribute('aria-valuenow', Math.round(p * 100));
 }
 function startCaptions() {
@@ -234,7 +274,7 @@ async function generate() {
   const btn = $('#genBtn'); btn.setAttribute('aria-busy', 'true'); btn.textContent = '正在生长…';
   $('#dl').hidden = true; $('#gen').setAttribute('role', 'progressbar'); $('#gen').setAttribute('aria-label', '生成进度');
   const w = $('#leafWrap');
-  $('#leafImg').src = state.photoURL;
+  $('#leafImg').setAttribute('href', state.photoURL); $('#leafPhoto').src = state.photoURL;
   w.className = 'leafwrap'; w.style.transform = 'none'; w.style.opacity = '1'; w.hidden = false;
   showFrame('none'); setProgress(0);
   const fd = new FormData();
@@ -258,7 +298,7 @@ async function generate() {
   clearInterval(progTimer);
   if (res) {
     setProgress(1); await sleep(450 * step);
-    w.classList.add('glow'); await sleep(500 * step);
+    w.classList.add('done'); await sleep(600 * step);              // halo 0 → 60px, .6 → 0
     w.classList.remove('hang'); w.style.transform = 'none'; await sleep(850 * step);   // float back to frame centre
     w.classList.remove('curl'); await sleep(500 * step);                               // unfold
     w.style.opacity = '0';
@@ -270,7 +310,7 @@ async function generate() {
     if (typeof res.freeLeft === 'number') setQuota(res);
   } else {
     console.warn('generate failed', err);
-    w.classList.remove('glow'); w.classList.add('wither'); await sleep(700 * step);
+    w.classList.add('wither'); await sleep(700 * step);
     w.classList.remove('hang'); w.classList.add('fall');
     const g = $('#gen').getBoundingClientRect();
     w.style.transform = `translate(0px, ${g.height * 0.2}px) scale(.22) rotate(200deg)`; w.style.opacity = '0';
@@ -350,7 +390,6 @@ function setupScroll() {
   if (!animate) {
     html.classList.add('plain');
     // reduced-motion / no-GSAP: hide scene photos, simple 200ms reveal
-    $('.l-canopy').style.opacity = reduced ? '0' : '';
     const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) e.target.classList.add('seen'); }), { threshold: 0.1 });
     $$('.sec').forEach(s => io.observe(s));
     if (!reduced && !hasGSAP) console.info('GSAP not available – using plain reveal');
@@ -362,29 +401,17 @@ function setupScroll() {
   // master background timeline, progress p ∈ [0,1] over the whole roll
   const tl = gsap.timeline({ defaults: { ease: 'none' }, scrollTrigger: { trigger: '#roll', start: 'top top', end: 'bottom bottom', scrub: 1.2 } });
   tl.fromTo('.l-video', { scale: 1.12, y: 0 }, { scale: 1.0, y: () => -innerHeight * 0.08, duration: 0.64, ease: E }, 0)
-    .to('.l-video', { y: () => -innerHeight * 0.18, scale: 1.04, duration: 0.18, ease: E }, 0.64)  // descend to the forest floor
-    .to('.l-video', { y: () => -innerHeight * 0.12, duration: 0.18, ease: E }, 0.82)               // tilt up
-    // 0 → 1: canopy pushes in and dissolves
-    .fromTo('.l-canopy', { scale: 1, yPercent: 0, opacity: 1 }, { scale: 1.22, yPercent: -6, duration: 0.12, ease: 'power1.in' }, 0)
-    .to('.l-canopy', { opacity: 0, duration: 0.07 }, 0.045)
-    // 1: camera moves down onto the trunk (mid layer, speed .6)
-    .fromTo('.l-trunk', { opacity: 0, scale: 1.3, yPercent: 6 }, { opacity: 1, scale: 1.08, yPercent: 0, duration: 0.12, ease: E }, 0.06)
-    .to('.l-trunk', { scale: 1.02, yPercent: -6, duration: 0.06 }, 0.18)
-    // 2: slide along the trunk into the light beams
-    .to('.l-trunk', { xPercent: mobile ? -10 : -14, opacity: 0, duration: 0.08, ease: E }, 0.23)
-    .to('.beams-in', { opacity: 0.95, x: () => -innerWidth * 0.06, duration: 0.12, ease: E }, 0.2)
-    // 3: beams converge to a point
-    .to('.beams-in', { scaleX: 0.55, opacity: 1, duration: 0.14, ease: E }, 0.36)
-    // 4: through the beams into the open forest
-    .to('.beams-in', { scaleX: 1.2, opacity: 0.35, duration: 0.14, ease: E }, 0.5)
-    // 5-6: light shifts to warm afternoon gold
-    .to('.l-warm', { opacity: 0.5, duration: 0.36 }, 0.64)
-    .to('.l-shade', { opacity: 0.85, duration: 0.2 }, 0.1)
-    .to('.l-shade', { opacity: 0.7, duration: 0.2 }, 0.8);
-  if (!mobile) tl.fromTo('.fog-in', { yPercent: 0 }, { yPercent: -25, duration: 1 }, 0);
-
-  // foreground leaves: speed 1.3 – leave faster than the content
-  gsap.to('#fg .fgc', { y: () => -innerHeight * 1.3, ease: 'none', scrollTrigger: { trigger: '#s0', start: 'top top', end: 'bottom top', scrub: true } });
+    .to('.l-video', { y: () => -innerHeight * 0.16, scale: 1.04, duration: 0.18, ease: E }, 0.64)
+    .to('.l-video', { y: () => -innerHeight * 0.12, duration: 0.18, ease: E }, 0.82);
+  // parallax: each layer travels speed × common distance over the whole roll
+  // L2 beams stay put (final brief: opacity .3, no shift); L3/L4 travel speed × common distance
+  $$('.px:not(.px-L2)').forEach(el => tl.fromTo(el, { y: 0 }, { y: () => -travelFor(+el.dataset.speed), duration: 1 }, 0));
+  // 段4 (p .50–.64): push into the trunks, scale 1 → 1.6 (ASSETS-V2 §2)
+  tl.fromTo('.px-L3', { scale: 1 }, { scale: 1.6, duration: 0.14, ease: E }, 0.5);
+  // beams opacity stays at .3 (design brief); warm afternoon light toward the end
+  tl.to('.l-warm', { opacity: 0.4, duration: 0.36 }, 0.64)
+    .to('.l-shade', { opacity: 0.9, duration: 0.2 }, 0.1)
+    .to('.l-shade', { opacity: 0.8, duration: 0.2 }, 0.8);
 
   // sections: overlapped crossfade (prev fades out ↑24px blur→6px while next fades in)
   const blur = mobile ? 0 : 6;
@@ -451,7 +478,7 @@ async function boot() {
   $('#genBtn').addEventListener('click', generate);
   $('#again').addEventListener('click', () => { scrollToSec('#s1'); setTimeout(() => $('#file').click(), reduced ? 0 : 600); });
   $$('.tier .btn').forEach(b => b.closest('.tier').addEventListener('click', () => toast('预览版：支付暂未开放')));
-  setupVideo(); setupScroll(); setupMicro();
+  buildLayers(); loadLeafDefs(); setupVideo(); setupScroll(); setupMicro(); setupWind();
   if (state.result) showResult(state.result, false); else showFrame('empty');
   updateGenButton(); updateFab();
   requestAnimationFrame(() => html.classList.add('ready'));     // E1 intro sequence (CSS-timed)

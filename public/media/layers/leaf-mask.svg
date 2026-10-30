@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="200" height="300">
+  <!-- 发光叶子轮廓 mask：白色=显示照片，叶尖朝上，叶柄在底部中心 -->
+  <defs>
+    <mask id="vs-leaf-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="300">
+      <path fill="#fff" d="M100 6 C142 40 178 92 178 150 C178 205 146 248 104 268 L104 294 L96 294 L96 268 C54 248 22 205 22 150 C22 92 58 40 100 6 Z"/>
+    </mask>
+  </defs>
+  <path id="vs-leaf-outline" fill="none" stroke="#F5D58E" stroke-width="1.5" d="M100 6 C142 40 178 92 178 150 C178 205 146 248 104 268 L104 294 L96 294 L96 268 C54 248 22 205 22 150 C22 92 58 40 100 6 Z"/>
+  <!-- 叶脉：主脉 + 6 条侧脉，描边发光 -->
+  <g id="vs-leaf-veins" fill="none" stroke="#FFE7A8" stroke-width="1.2" stroke-linecap="round" opacity=".85">
+    <path d="M100 20 L100 268"/>
+    <path d="M100 80 Q124 66 146 62"/><path d="M100 80 Q76 66 54 62"/>
+    <path d="M100 135 Q132 118 164 116"/><path d="M100 135 Q68 118 36 116"/>
+    <path d="M100 190 Q128 176 156 178"/><path d="M100 190 Q72 176 44 178"/>
+  </g>
+</svg>

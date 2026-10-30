@@ -8,40 +8,25 @@
 <meta name="theme-color" content="#0d120d">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&display=swap">
-<link rel="preload" as="image" href="/media/forest-poster.jpg">
+
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/app.css">
 <script>document.documentElement.classList.replace('no-js','js')</script>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <symbol id="leafShape" viewBox="0 0 100 100"><path d="M50 2 C80 18 96 44 88 66 C80 86 62 96 50 99 C38 96 20 86 12 66 C4 44 20 18 50 2Z"/></symbol>
-    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f4a22"/><stop offset="1" stop-color="#0f1c0b"/></linearGradient>
-  </defs>
-</svg>
 
-<!-- ===== fixed background stage (parallax layers, far → near) ===== -->
+<!-- ===== fixed background stage (far → near). Parallax image layers are injected by app.js (WebP first, PNG fallback; desktop -2560, mobile -1080m) ===== -->
 <div id="stage" aria-hidden="true">
-  <div class="layer l-video" data-depth="0.1">
-    <img class="poster" src="/media/forest-poster.jpg" alt="">
-    <video id="bgv" muted playsinline loop preload="none" poster="/media/forest-poster.jpg" disablepictureinpicture></video>
+  <div class="layer l-video">
+    <picture><source media="(max-width: 768px)" srcset="/media/rainforest-loop-mobile-720-poster.jpg"><img class="poster" src="/media/rainforest-loop-1080-poster.jpg" alt=""></picture>
+    <video id="bgv" muted playsinline loop preload="none" disablepictureinpicture></video>
   </div>
-  <div class="layer l-fog desk-only"><div class="fog-in"></div></div>
-  <div class="layer l-beams"><div class="beams-drift"><div class="beams-in"></div></div></div>
-  <div class="layer l-trunk"><img src="/media/trunk.jpg" alt="" loading="lazy" decoding="async"></div>
-  <div class="layer l-canopy"><picture><source media="(max-width: 768px)" srcset="/media/canopy-m.jpg"><img src="/media/canopy.jpg" alt="" decoding="async"></picture></div>
+  <div id="pxLayers"></div>
   <div class="layer l-warm"></div>
   <div class="layer l-shade"></div>
   <div class="layer l-black"></div>
 </div>
-
-<!-- foreground leaves (speed 1.3, faster than content) -->
-<div id="fg" aria-hidden="true">
-  <div class="fgc fg-tl"><svg class="sway" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg><svg class="sway s2" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg></div>
-  <div class="fgc fg-tr"><svg class="sway s3" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg><svg class="sway" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg></div>
-  <div class="fgc fg-br desk-only"><svg class="sway s2" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg></div>
-</div>
+<div id="leafDefs" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"></div>
 
 <a class="brand" href="#s0" aria-label="VibeSticker 回到顶部">VibeSticker</a>
 
@@ -60,7 +45,7 @@
     <div class="out"><div class="in">
       <p class="logo rv">VibeSticker</p>
       <p class="sub rv">树干上有一块磨砂玻璃，把照片放进去</p>
-      <div class="drop glass rv" id="drop" role="button" tabindex="0" aria-label="放入一张照片：点击选择、拖拽，或拍照" aria-describedby="dropHelp">
+      <div class="drop rv" id="drop" role="button" tabindex="0" aria-label="放入一张照片：点击选择、拖拽，或拍照" aria-describedby="dropHelp">
         <div class="drop-empty">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg>
           <p class="drop-t">放入一张照片</p>
@@ -99,12 +84,22 @@
         <div class="frame glass" id="frame" aria-live="polite">
           <div class="f-empty" id="fEmpty"><span class="dot-glow"></span><p>贴纸会在这里展开</p></div>
           <figure class="sticker" id="sticker" hidden><img id="stickerImg" alt="生成的贴纸"></figure>
-          <div class="failcard" id="failCard" hidden><svg viewBox="0 0 100 100" aria-hidden="true"><use href="#leafShape" fill="#c9a24a"/></svg><p>这次没长好，<br>免费再来一次</p><small id="failWhy"></small></div>
+          <div class="failcard" id="failCard" hidden><svg viewBox="0 0 200 300" aria-hidden="true"><rect width="200" height="300" fill="#c9a24a" mask="url(#vs-leaf-mask)"/><use href="#vs-leaf-outline"/><use href="#vs-leaf-veins" style="stroke:#7a5a1c"/></svg><p>这次没长好，<br>免费再来一次</p><small id="failWhy"></small></div>
         </div>
         <div class="leafwrap" id="leafWrap" hidden aria-hidden="true">
           <div class="leafsway">
             <svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="56"/><circle class="ring-fg" id="ringFg" cx="60" cy="60" r="56" pathLength="100"/></svg>
-            <div class="leaf" id="leaf"><img id="leafImg" alt=""><svg class="veins" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M50 4 L50 96 M50 28 L70 18 M50 28 L30 18 M50 46 L76 34 M50 46 L24 34 M50 64 L74 54 M50 64 L26 54 M50 80 L66 72 M50 80 L34 72"/></svg></div>
+            <div class="leaf" id="leaf">
+              <svg class="leafsvg" viewBox="0 0 200 300" preserveAspectRatio="xMidYMid meet">
+                <g mask="url(#vs-leaf-mask)">
+                  <image id="leafImg" x="0" y="0" width="200" height="300" preserveAspectRatio="xMidYMid slice"/>
+                  <rect class="sun" width="200" height="300"/>
+                </g>
+                <use href="#vs-leaf-outline"/><use href="#vs-leaf-veins" class="veins"/>
+              </svg>
+              <img id="leafPhoto" class="leafphoto" alt="">
+            </div>
+            <span class="halo"></span>
           </div>
         </div>
       </div>
@@ -151,6 +146,7 @@
       <p class="sub rv">树枝上还空着，等你来占位</p>
       <ol class="rank rv" id="rank"></ol>
       <p class="foot">© VibeSticker · 预览版 · Powered by AI</p>
+      <p class="credit">Video: <a href="https://www.pexels.com/video/sunlight-streaming-through-forest-canopy-37218116/" target="_blank" rel="noopener">Saulo Nulo / Pexels</a></p>
     </div></div>
   </section>
 </main>
