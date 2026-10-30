@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VibeSticker · 3D 房间 · 窗景昼夜</title>
+<title>VibeSticker · 3D 房间 · 果冻海</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:100%;height:100%;overflow:hidden;background:#1a1210;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -88,15 +88,15 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x161210);
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.15, 120);
-camera.position.set(-3.8, 5.8, 7.5);
+camera.position.set(0, 5.2, 6.5);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.07;
 controls.enablePan = false;
-controls.target.set(0.5, 5.3, -5.5);
-controls.minDistance = 2.4;
-controls.maxDistance = 13.5;
+controls.target.set(0, 3.4, -8.5);
+controls.minDistance = 2.0;
+controls.maxDistance = 18;
 controls.maxPolarAngle = Math.PI * 0.485;
 controls.minPolarAngle = 0.32;
 // 软限位：可越过「电脑边对齐拐角」一点，松手回弹；硬顶防穿帮
@@ -142,7 +142,8 @@ function clampIndoor() {
   const t = controls.target;
   t.x = THREE.MathUtils.clamp(t.x, -ROOM_W / 2 + 2.2, ROOM_W / 2 - 2.2);
   t.y = THREE.MathUtils.clamp(t.y, 1.6, WALL_H - 1.4);
-  t.z = THREE.MathUtils.clamp(t.z, -ROOM_D / 2 + 1.6, ROOM_D / 2 - 1.8);
+  // 允许注视点落到窗洞附近（窗外景色），但相机本身仍锁室内
+  t.z = THREE.MathUtils.clamp(t.z, -ROOM_D / 2 - 4.0, ROOM_D / 2 - 1.8);
   if (p.distanceTo(t) < 1.2) {
     const dir = new THREE.Vector3().subVectors(t, p);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
@@ -311,7 +312,10 @@ skyCanvas.width = 512; skyCanvas.height = 512;
 const skyCtx = skyCanvas.getContext('2d');
 const skyTex = new THREE.CanvasTexture(skyCanvas);
 skyTex.colorSpace = THREE.SRGBColorSpace;
-skyTex.mapping = THREE.EquirectangularReflectionMapping;
+// 玻璃 env 用克隆，避免改 mapping 搞坏天空 mesh 的 UV 采样
+const skyEnv = skyTex.clone();
+skyEnv.mapping = THREE.EquirectangularReflectionMapping;
+skyEnv.colorSpace = THREE.SRGBColorSpace;
 
 function drawSky(topHex, midHex, botHex, disc) {
   const g = skyCtx.createLinearGradient(0, 0, 0, 512);
@@ -332,17 +336,18 @@ function drawSky(topHex, midHex, botHex, disc) {
     skyCtx.fill();
   }
   skyTex.needsUpdate = true;
+  skyEnv.needsUpdate = true;
 }
 
 // 玻璃：双层薄片 + env 反光（iOS 安全）
 const glassMat = new THREE.MeshStandardMaterial({
   color: 0xe8f2fa, transparent: true, opacity: 0.14,
-  roughness: 0.06, metalness: 0.15, envMap: skyTex, envMapIntensity: 1.15,
+  roughness: 0.06, metalness: 0.15, envMap: skyEnv, envMapIntensity: 1.15,
   side: THREE.DoubleSide, depthWrite: false,
 });
 const glassTint = new THREE.MeshStandardMaterial({
   color: 0xcfe4f4, transparent: true, opacity: 0.07,
-  roughness: 0.2, metalness: 0.05, envMap: skyTex, envMapIntensity: 0.55,
+  roughness: 0.2, metalness: 0.05, envMap: skyEnv, envMapIntensity: 0.55,
   side: THREE.DoubleSide, depthWrite: false,
 });
 const paneGap = 0.04;
@@ -363,106 +368,220 @@ for (const [px, py] of panePositions) {
   room.add(inner);
 }
 
-// —— 窗外：天空 + 果冻海 ——
+// —— 窗外：天空 + 果冻海（几何体严格在窗墙外侧，永不进室内）——
+// 窗外世界放在独立组；海面近边世界 Z 必须 < WALL_Z - SEA_GAP
+const SEA_GAP = 2.5;
+const SEA_CLIP_Z = WALL_Z - SEA_GAP; // 着色器再 discard 一道保险
 const outside = new THREE.Group();
-outside.position.set(0, 0, WALL_Z - 1.2);
+outside.position.set(0, 0, 0); // 用世界坐标摆窗外物体，避免局部偏移算错
 scene.add(outside);
 
-const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.DoubleSide, depthWrite: false });
-const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(70, isMobile ? 24 : 36, isMobile ? 16 : 24), skyMat);
-skyMesh.geometry.scale(-1, 1, 1);
-skyMesh.position.set(0, 6, -18);
+const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, color: 0x87c8e8, depthWrite: true, fog: false });
+const skyMesh = new THREE.Mesh(new THREE.PlaneGeometry(120, 70), skyMat);
+// 天空板严格在海更远处，不包裹房间
+skyMesh.position.set(0, 8, SEA_CLIP_Z - 36);
 outside.add(skyMesh);
 
-const seaSeg = isMobile ? 48 : 96;
-const seaGeo = new THREE.PlaneGeometry(90, 70, seaSeg, Math.floor(seaSeg * 0.7));
-seaGeo.rotateX(-Math.PI / 2);
+// 窗外遮挡环（窗墙外侧四块板），确保透明海不会“贴”到内墙前面
+(function addWindowOccluders() {
+  const mats = new THREE.MeshBasicMaterial({ color: 0x161410, side: THREE.DoubleSide });
+  const z = WALL_Z - 0.4;
+  const gapX = (ROOM_W - winW) / 2;
+  const panels = [
+    [-ROOM_W / 2 + gapX / 2, WALL_H / 2, gapX, WALL_H],
+    [ ROOM_W / 2 - gapX / 2, WALL_H / 2, gapX, WALL_H],
+    [0, winBottom / 2, winW + 0.05, Math.max(0.2, winBottom)],
+    [0, winTop + (WALL_H - winTop) / 2, winW + 0.05, Math.max(0.2, WALL_H - winTop)],
+  ];
+  for (const [x, y, w, h] of panels) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.3), mats);
+    m.position.set(x, y, z);
+    outside.add(m);
+  }
+})();
+
+// 水底（沙/石 + 动态焦散）——主体「果冻海」观感来自看清水底
+const bedSeg = isMobile ? 32 : 64;
+const bedW = 56, bedD = 24; // X × Z
+// 中心放在窗外足够远：近边 = centerZ + bedD/2 <= SEA_CLIP_Z
+const bedCenterZ = SEA_CLIP_Z - bedD / 2 - 1.2;
+const bedY = 2.2; // 固定高度：窗洞下半可见水面与水底
+const bedGeo = new THREE.PlaneGeometry(bedW, bedD, bedSeg, Math.floor(bedSeg * 0.75));
+bedGeo.rotateX(-Math.PI / 2);
+
 const seaUniforms = {
   uTime: { value: 0 },
-  uDeep: { value: new THREE.Color(0x0a3a55) },
-  uShallow: { value: new THREE.Color(0x3ec4d0) },
-  uFoam: { value: new THREE.Color(0xd8fff8) },
-  uSky: { value: new THREE.Color(0xa8d4f0) },
-  uSunDir: { value: new THREE.Vector3(0.3, 0.7, 0.4).normalize() },
-  uSunCol: { value: new THREE.Color(0xfff2dc) },
-  uSparkle: { value: 0.85 },
-  uOpacity: { value: 0.82 },
+  uDeep: { value: new THREE.Color(0x06939a) },
+  uShallow: { value: new THREE.Color(0x5aefe4) },
+  uSand: { value: new THREE.Color(0xc9b896) },
+  uRock: { value: new THREE.Color(0x8a8578) },
+  uSky: { value: new THREE.Color(0x8ec8e8) },
+  uSunDir: { value: new THREE.Vector3(0.25, 0.85, 0.35).normalize() },
+  uSunCol: { value: new THREE.Color(0xfff5e0) },
+  uSparkle: { value: 1.0 },
+  uOpacity: { value: 0.55 },
+  uClipZ: { value: SEA_CLIP_Z },
 };
+
+const bedMat = new THREE.ShaderMaterial({
+  uniforms: seaUniforms,
+  transparent: false,
+  depthWrite: true,
+  side: THREE.DoubleSide,
+  vertexShader: /* glsl */`
+    varying vec3 vWorld;
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorld = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    uniform float uTime, uSparkle, uClipZ;
+    uniform vec3 uDeep, uShallow, uSand, uRock, uSunCol, uSunDir;
+    varying vec3 vWorld;
+    varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+    float noise(vec2 p){
+      vec2 i = floor(p), f = fract(p);
+      float a = hash(i), b = hash(i+vec2(1.,0.)), c = hash(i+vec2(0.,1.)), d = hash(i+vec2(1.,1.));
+      vec2 u = f*f*(3.-2.*f);
+      return mix(a,b,u.x) + (c-a)*u.y*(1.-u.x) + (d-b)*u.x*u.y;
+    }
+    // 焦散：两层扭曲域的锐利亮网
+    float caustic(vec2 p, float t) {
+      vec2 q = p * 1.15;
+      q += 0.25 * vec2(noise(q*2.0 + t*0.4), noise(q*2.3 - t*0.32));
+      q += 0.15 * vec2(sin(q.y*4.0 + t*1.2), cos(q.x*3.6 - t*1.0));
+      float c1 = pow(max(0.0, 1.0 - abs(sin(q.x*7.5) * sin(q.y*6.8))), 5.5);
+      float c2 = pow(max(0.0, 1.0 - abs(sin((q.x+q.y)*5.5 + t*0.7) * sin((q.x-q.y)*6.2 - t*0.5))), 6.5);
+      float c3 = pow(max(0.0, 1.0 - abs(sin(q.x*3.2 - q.y*2.8 + t))), 4.0) * 0.45;
+      return clamp(c1 * 0.75 + c2 * 0.7 + c3, 0.0, 1.5);
+    }
+    void main() {
+      if (vWorld.z > uClipZ) discard;
+      vec2 wp = vWorld.xz * 0.35;
+      float n = noise(wp * 2.2) * 0.55 + noise(wp * 5.5) * 0.3 + noise(wp * 11.0) * 0.15;
+      float rockMask = smoothstep(0.55, 0.78, n + noise(wp * 1.1) * 0.2);
+      vec3 bed = mix(uSand, uRock, rockMask);
+      bed *= 0.75 + 0.35 * n;
+      // 水深染色（越远/越「深」更青绿）
+      float distFade = smoothstep(0.0, 1.0, length(vWorld.xz - vec2(0.0, uClipZ - 18.0)) / 28.0);
+      vec3 waterTint = mix(uShallow, uDeep, distFade * 0.65 + 0.15);
+      bed = mix(bed, waterTint, 0.45 + distFade * 0.25);
+      float cau = caustic(wp * 1.4, uTime) * uSparkle;
+      bed += mix(uSunCol, vec3(1.0), 0.35) * cau * (0.85 + 0.4 * max(dot(normalize(uSunDir), vec3(0.,1.,0.)), 0.0));
+      bed = mix(bed, uShallow, 0.18 + cau * 0.12);
+      // 浅处更亮的果冻感
+      bed = mix(bed, uShallow * 1.2, 0.12 * (1.0 - distFade));
+      gl_FragColor = vec4(bed, 1.0);
+    }
+  `,
+});
+const seabed = new THREE.Mesh(bedGeo, bedMat);
+seabed.position.set(0, bedY, bedCenterZ);
+outside.add(seabed);
+
+// 水面：轻涟漪 + 青绿果冻半透明 + 柔高光（无方块闪点）
+const seaSeg = isMobile ? 40 : 80;
+const seaGeo = new THREE.PlaneGeometry(bedW * 0.98, bedD * 0.98, seaSeg, Math.floor(seaSeg * 0.75));
+seaGeo.rotateX(-Math.PI / 2);
 const seaMat = new THREE.ShaderMaterial({
   uniforms: seaUniforms,
   transparent: true,
+  depthTest: true,
   depthWrite: false,
   side: THREE.DoubleSide,
   vertexShader: /* glsl */`
     uniform float uTime;
     varying vec3 vWorld;
     varying vec3 vN;
-    varying float vH;
     float wave(vec2 p, float t) {
       float w = 0.0;
-      w += sin(p.x * 0.18 + t * 1.1) * cos(p.y * 0.14 - t * 0.85) * 0.85;
-      w += sin(p.x * 0.42 - t * 1.6 + p.y * 0.2) * 0.42;
-      w += sin((p.x + p.y) * 0.55 + t * 2.2) * 0.12;
-      w += sin(p.x * 1.1 - t * 2.8) * cos(p.y * 0.9 + t * 1.4) * 0.06;
+      w += sin(p.x * 0.55 + t * 0.9) * cos(p.y * 0.48 - t * 0.7) * 0.11;
+      w += sin(p.x * 1.1 - t * 1.3 + p.y * 0.4) * 0.06;
+      w += sin((p.x + p.y) * 1.6 + t * 1.7) * 0.025;
       return w;
     }
     void main() {
       vec3 pos = position;
       float h = wave(pos.xz, uTime);
       pos.y += h;
-      float e = 0.35;
-      float hx = wave(pos.xz + vec2(e, 0.0), uTime) - wave(pos.xz - vec2(e, 0.0), uTime);
-      float hz = wave(pos.xz + vec2(0.0, e), uTime) - wave(pos.xz - vec2(0.0, e), uTime);
+      float e = 0.25;
+      float hx = wave(pos.xz + vec2(e,0.), uTime) - wave(pos.xz - vec2(e,0.), uTime);
+      float hz = wave(pos.xz + vec2(0.,e), uTime) - wave(pos.xz - vec2(0.,e), uTime);
       vec3 n = normalize(vec3(-hx, 2.0 * e, -hz));
       vN = normalize(mat3(modelMatrix) * n);
       vec4 wp = modelMatrix * vec4(pos, 1.0);
       vWorld = wp.xyz;
-      vH = h;
       gl_Position = projectionMatrix * viewMatrix * wp;
     }
   `,
   fragmentShader: /* glsl */`
-    uniform vec3 uDeep, uShallow, uFoam, uSky, uSunCol;
-    uniform vec3 uSunDir;
-    uniform float uSparkle, uOpacity;
+    uniform vec3 uDeep, uShallow, uSky, uSunCol, uSunDir;
+    uniform float uSparkle, uOpacity, uClipZ;
     varying vec3 vWorld;
     varying vec3 vN;
-    varying float vH;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     void main() {
+      if (vWorld.z > uClipZ) discard;
       vec3 N = normalize(vN);
       vec3 V = normalize(cameraPosition - vWorld);
-      float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-      float depth = smoothstep(-0.6, 0.9, vH);
-      vec3 jelly = mix(uDeep, uShallow, depth);
-      jelly = mix(jelly, uShallow * 1.15, fres * 0.55);
-      // 果冻次表面感：边缘更亮更透
-      jelly += uFoam * fres * 0.22;
-      float ndl = max(dot(N, normalize(uSunDir)), 0.0);
-      jelly += uSunCol * ndl * 0.28;
-      // 波光闪点
-      vec3 R = reflect(-normalize(uSunDir), N);
-      float spec = pow(max(dot(R, V), 0.0), 64.0);
-      float spark = step(0.992 - uSparkle * 0.02, hash(floor(vWorld.xz * 3.5 + N.xz * 8.0)));
-      jelly += uSunCol * (spec * 0.85 + spark * uSparkle * 0.65);
-      jelly = mix(jelly, uSky, fres * 0.35);
-      float alpha = mix(uOpacity * 0.72, min(0.95, uOpacity + 0.12), fres);
+      float fres = pow(1.0 - max(dot(N, V), 0.0), 2.4);
+      // 果冻体：浅处亮青，深处略深，边缘菲涅尔提亮
+      vec3 jelly = mix(uShallow * 1.08, uDeep, 0.2 + fres * 0.12);
+      jelly = mix(jelly, uShallow * 1.25, fres * 0.55);
+      jelly = mix(jelly, uSky, fres * 0.28);
+      vec3 L = normalize(uSunDir);
+      vec3 R = reflect(-L, N);
+      float spec = pow(max(dot(R, V), 0.0), 96.0) * uSparkle;
+      float soft = pow(max(dot(R, V), 0.0), 16.0) * 0.25 * uSparkle;
+      jelly += uSunCol * (spec * 0.9 + soft);
+      float alpha = mix(uOpacity * 0.42, min(0.78, uOpacity + 0.18), fres);
       gl_FragColor = vec4(jelly, alpha);
     }
   `,
 });
 const sea = new THREE.Mesh(seaGeo, seaMat);
-sea.position.set(0, 1.6, -22);
+sea.position.set(0, bedY + 0.55, bedCenterZ);
+sea.renderOrder = 1;
 outside.add(sea);
 
-// 远岸雾带（弱化地平线，无城市）
+// 远处岩岸（低模，仅窗外）
+const cliffMat = new THREE.MeshStandardMaterial({ color: 0xb8a078, roughness: 0.95, metalness: 0.0, flatShading: true });
+const cliffs = new THREE.Group();
+cliffs.position.set(0, bedY - 0.2, bedCenterZ - bedD * 0.42);
+outside.add(cliffs);
+const cliffSpecs = [
+  { x: -14, y: 3.2, z: -2, sx: 5, sy: 7, sz: 4 },
+  { x: -9, y: 2.0, z: 1, sx: 3.5, sy: 4.5, sz: 3 },
+  { x: 11, y: 2.8, z: -1, sx: 4.5, sy: 6.2, sz: 3.5 },
+  { x: 16, y: 4.0, z: -3, sx: 6, sy: 9, sz: 5 },
+  { x: 0, y: 1.4, z: -4, sx: 8, sy: 3.2, sz: 3 },
+];
+for (const c of cliffSpecs) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(c.sx, c.sy, c.sz), cliffMat);
+  m.position.set(c.x, c.y, c.z);
+  m.rotation.y = (c.x > 0 ? -0.2 : 0.15);
+  // 保证岩体也在 clip 外
+  m.updateMatrixWorld();
+  cliffs.add(m);
+}
+
 const haze = new THREE.Mesh(
-  new THREE.PlaneGeometry(100, 14),
-  new THREE.MeshBasicMaterial({ color: 0xa8d4f0, transparent: true, opacity: 0.18, depthWrite: false })
+  new THREE.PlaneGeometry(70, 12),
+  new THREE.MeshBasicMaterial({ color: 0x9fd0e8, transparent: true, opacity: 0.14, depthWrite: false })
 );
-haze.position.set(0, 4.2, -48);
+haze.position.set(0, bedY + 5.5, bedCenterZ - bedD * 0.55);
 outside.add(haze);
 const seaHaze = haze;
+
+// 不接收/投射到室内：海与水底不参与室内阴影接收错乱
+seabed.castShadow = false;
+seabed.receiveShadow = false;
+sea.castShadow = false;
+sea.receiveShadow = false;
 
 
 // —— 家具 ——
@@ -521,7 +640,7 @@ const KEYS = [
     lampInt: 0.12,
     sky: ['#6a4a7a', '#e8a070', '#f0c090'],
     disc: { x: 160, y: 300, r: 55, color: '#ffc090' },
-    exposure: 0.95, seaSparkle: 0.55, seaDeep: 0x14324a, seaShallow: 0x5ab8c8, wallTint: 0xd4c4b0,
+    exposure: 0.95, seaSparkle: 0.7, seaDeep: 0x0d5c68, seaShallow: 0x4ecfc6, wallTint: 0xd4c4b0,
   },
   {
     t: 0.15, name: '清晨',
@@ -533,7 +652,7 @@ const KEYS = [
     lampInt: 0.02,
     sky: ['#6ab0e8', '#a8d4f0', '#e8f0f8'],
     disc: { x: 180, y: 160, r: 42, color: '#fff6d0' },
-    exposure: 1.22, seaSparkle: 1.0, seaDeep: 0x0a4a6a, seaShallow: 0x3ec8d4, wallTint: 0xd8c8b4,
+    exposure: 1.22, seaSparkle: 1.05, seaDeep: 0x087a82, seaShallow: 0x3fd4cc, wallTint: 0xd8c8b4,
   },
   {
     t: 0.38, name: '午后',
@@ -545,7 +664,7 @@ const KEYS = [
     lampInt: 0.0,
     sky: ['#4a90d0', '#7eb8e8', '#d0e8f8'],
     disc: { x: 256, y: 90, r: 48, color: '#fffce8' },
-    exposure: 1.25, seaSparkle: 1.1, seaDeep: 0x085a78, seaShallow: 0x2eb8d0, wallTint: 0xdcccb8,
+    exposure: 1.25, seaSparkle: 1.15, seaDeep: 0x0a6e78, seaShallow: 0x40e0d0, wallTint: 0xdcccb8,
   },
   {
     t: 0.55, name: '傍晚',
@@ -557,7 +676,7 @@ const KEYS = [
     lampInt: 0.28,
     sky: ['#3a2a50', '#e07040', '#f0a060'],
     disc: { x: 360, y: 280, r: 60, color: '#ff9040' },
-    exposure: 1.0, seaSparkle: 0.7, seaDeep: 0x1a2848, seaShallow: 0xc07050, wallTint: 0xd4b898,
+    exposure: 1.0, seaSparkle: 0.55, seaDeep: 0x1a3a50, seaShallow: 0xc88860, wallTint: 0xd4b898,
   },
   {
     t: 0.75, name: '夜晚',
@@ -569,7 +688,7 @@ const KEYS = [
     lampInt: 1.15,
     sky: ['#0a0e1c', '#1a2040', '#2a3048'],
     disc: { x: 340, y: 100, r: 22, color: '#d0d8e8' },
-    exposure: 0.88, seaSparkle: 0.25, seaDeep: 0x050c18, seaShallow: 0x1a3050, wallTint: 0x8a7a6a,
+    exposure: 0.88, seaSparkle: 0.2, seaDeep: 0x061018, seaShallow: 0x143048, wallTint: 0x8a7a6a,
   },
   {
     t: 1.0, name: '黎明',
@@ -581,7 +700,7 @@ const KEYS = [
     lampInt: 0.12,
     sky: ['#6a4a7a', '#e8a070', '#f0c090'],
     disc: { x: 160, y: 300, r: 55, color: '#ffc090' },
-    exposure: 0.95, seaSparkle: 0.55, seaDeep: 0x14324a, seaShallow: 0x5ab8c8, wallTint: 0xd4c4b0,
+    exposure: 0.95, seaSparkle: 0.7, seaDeep: 0x0d5c68, seaShallow: 0x4ecfc6, wallTint: 0xd4c4b0,
   },
 ];
 
@@ -668,7 +787,8 @@ function applyDayCycle(t) {
   seaUniforms.uSunCol.value.copy(sun.color);
   seaUniforms.uSunDir.value.copy(sun.position).normalize();
   seaUniforms.uSparkle.value = a.seaSparkle + (b.seaSparkle - a.seaSparkle) * e;
-  seaUniforms.uOpacity.value = 0.78 + (a.seaSparkle + (b.seaSparkle - a.seaSparkle) * e) * 0.08;
+  seaUniforms.uOpacity.value = 0.48 + (a.seaSparkle + (b.seaSparkle - a.seaSparkle) * e) * 0.1;
+  seaUniforms.uClipZ.value = SEA_CLIP_Z;
   seaHaze.material.color.set(skyMid);
   seaHaze.material.opacity = 0.12 + (1 - seaUniforms.uSparkle.value) * 0.12;
   glassMat.envMapIntensity = 0.85 + seaUniforms.uSparkle.value * 0.4;
