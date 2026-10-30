@@ -78,27 +78,32 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 
-// —— 房间尺寸（相机始终困在里面）——
-const ROOM_W = 6, ROOM_D = 5, WALL_H = 2.95;
+// —— 房间尺寸（约 2×，相机始终困在里面）——
+const ROOM_W = 12, ROOM_D = 10, WALL_H = 5.5;
 const WALL_Z = -ROOM_D / 2; // 后墙/窗户
-const CAM_MARGIN = 0.42;
+const CAM_MARGIN = 0.75;
 
 const scene = new THREE.Scene();
 // 固定深色室内底：昼夜只透过窗户看见
 scene.background = new THREE.Color(0x1a1410);
 
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.08, 60);
-camera.position.set(-1.35, 1.5, 1.35);
+const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 80);
+// 站在室内偏后，面向书桌/窗
+camera.position.set(0, 2.75, 3.7);
 
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.085;
 controls.enablePan = false;
-controls.target.set(0.15, 1.35, -1.6);
-controls.minDistance = 0.5;
-controls.maxDistance = 2.7;
-controls.maxPolarAngle = Math.PI * 0.495;
-controls.minPolarAngle = 0.22;
+controls.target.set(0, 2.3, -1.5);
+controls.minDistance = 1.2;
+controls.maxDistance = 5.6;
+controls.maxPolarAngle = Math.PI * 0.49;
+controls.minPolarAngle = 0.28;
+// 水平限位：左拖→显示器左边对齐左墙拐角；右拖→显示器右边对齐右墙拐角
+// （按 2× 房间 + 显示器半宽几何拟合，约 ±55°）
+controls.minAzimuthAngle = -0.85; // 往右拖极限：显示器右边≈右墙拐角
+controls.maxAzimuthAngle =  0.85; // 往左拖极限：显示器左边≈左墙拐角
 controls.update();
 
 function clampIndoor() {
@@ -106,17 +111,17 @@ function clampIndoor() {
   const hz = ROOM_D / 2 - CAM_MARGIN;
   const p = camera.position;
   p.x = THREE.MathUtils.clamp(p.x, -hx, hx);
-  p.y = THREE.MathUtils.clamp(p.y, 0.95, WALL_H - 0.4);
-  p.z = THREE.MathUtils.clamp(p.z, -hz + 0.2, hz);
+  p.y = THREE.MathUtils.clamp(p.y, 1.4, WALL_H - 0.55);
+  p.z = THREE.MathUtils.clamp(p.z, -hz + 0.35, hz);
   const t = controls.target;
-  t.x = THREE.MathUtils.clamp(t.x, -ROOM_W / 2 + 0.7, ROOM_W / 2 - 0.7);
-  t.y = THREE.MathUtils.clamp(t.y, 0.55, WALL_H - 0.55);
-  t.z = THREE.MathUtils.clamp(t.z, -ROOM_D / 2 + 0.5, ROOM_D / 2 - 0.6);
-  if (p.distanceTo(t) < 0.4) {
+  t.x = THREE.MathUtils.clamp(t.x, -ROOM_W / 2 + 1.2, ROOM_W / 2 - 1.2);
+  t.y = THREE.MathUtils.clamp(t.y, 0.9, WALL_H - 0.8);
+  t.z = THREE.MathUtils.clamp(t.z, -ROOM_D / 2 + 0.9, ROOM_D / 2 - 1.0);
+  if (p.distanceTo(t) < 0.7) {
     const dir = new THREE.Vector3().subVectors(t, p);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
     else dir.normalize();
-    t.copy(p).addScaledVector(dir, 0.5);
+    t.copy(p).addScaledVector(dir, 0.85);
   }
 }
 
@@ -124,27 +129,27 @@ function clampIndoor() {
 const ambient = new THREE.AmbientLight(0xffd8b8, 0.12);
 scene.add(ambient);
 // 窗边二次弹射，让侧墙/地面被窗光带亮
-const windowBounce = new THREE.PointLight(0xffe2c0, 0.55, 7, 1.6);
-windowBounce.position.set(0, 1.35, WALL_Z + 0.55);
+const windowBounce = new THREE.PointLight(0xffe2c0, 0.7, 14, 1.6);
+windowBounce.position.set(0, 2.5, WALL_Z + 1.0);
 scene.add(windowBounce);
 
 const sun = new THREE.DirectionalLight(0xffd2a0, 1.55);
 sun.castShadow = !isMobile;
 sun.shadow.mapSize.set(isMobile ? 512 : 1024, isMobile ? 512 : 1024);
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 30;
-sun.shadow.camera.left = -4;
-sun.shadow.camera.right = 4;
-sun.shadow.camera.top = 4;
-sun.shadow.camera.bottom = -4;
+sun.shadow.camera.far = 45;
+sun.shadow.camera.left = -8;
+sun.shadow.camera.right = 8;
+sun.shadow.camera.top = 8;
+sun.shadow.camera.bottom = -8;
 sun.shadow.bias = -0.00035;
-sun.target.position.set(0, 0.85, 0.5);
+sun.target.position.set(0, 1.5, 0.8);
 scene.add(sun);
 scene.add(sun.target);
 
-const windowSpot = new THREE.SpotLight(0xffe6c0, 1.8, 11, Math.PI / 4.0, 0.55, 1.05);
-windowSpot.position.set(0, 1.72, WALL_Z + 0.05);
-windowSpot.target.position.set(0, 0.65, 0.7);
+const windowSpot = new THREE.SpotLight(0xffe6c0, 2.2, 20, Math.PI / 4.0, 0.55, 1.05);
+windowSpot.position.set(0, 3.1, WALL_Z + 0.08);
+windowSpot.target.position.set(0, 1.2, 1.2);
 windowSpot.castShadow = false;
 scene.add(windowSpot);
 scene.add(windowSpot.target);
@@ -154,17 +159,17 @@ const shaftMat = new THREE.MeshBasicMaterial({
   color: 0xffe2b0, transparent: true, opacity: 0.07,
   depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
 });
-const shaft = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 3.2), shaftMat);
-shaft.position.set(0, 1.15, WALL_Z + 1.35);
+const shaft = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 6.0), shaftMat);
+shaft.position.set(0, 2.1, WALL_Z + 2.5);
 shaft.rotation.x = -0.42;
 scene.add(shaft);
 
 const fill = new THREE.DirectionalLight(0x9ab0c8, 0.06);
-fill.position.set(0.5, 2.0, 2.2);
+fill.position.set(0.8, 3.5, 4.0);
 scene.add(fill);
 
-const lamp = new THREE.PointLight(0xffcc88, 0.15, 5.5, 2);
-lamp.position.set(0.55, 1.52, 0.12);
+const lamp = new THREE.PointLight(0xffcc88, 0.2, 10, 2);
+lamp.position.set(1.0, 2.8, 0.2);
 scene.add(lamp);
 
 const hemi = new THREE.HemisphereLight(0xffefd8, 0x2a1c14, 0.1);
@@ -221,32 +226,32 @@ room.add(box(0.1, WALL_H, ROOM_D, mat.wall, ROOM_W / 2, WALL_H / 2, 0));
 room.add(box(ROOM_W, WALL_H, 0.1, mat.wall, 0, WALL_H / 2, ROOM_D / 2)); // 前墙
 
 // —— 后墙开窗 ——
-const winW = 2.4, winH = 1.55, winY = 1.7;
+const winW = 4.6, winH = 2.9, winY = 3.05;
 const winBottom = winY - winH / 2;
 const winTop = winY + winH / 2;
-const wallT = 0.12;
+const wallT = 0.18;
 const leftW = (ROOM_W - winW) / 2;
 room.add(box(leftW, WALL_H, wallT, mat.wallBack, -ROOM_W / 2 + leftW / 2, WALL_H / 2, WALL_Z));
 room.add(box(leftW, WALL_H, wallT, mat.wallBack, ROOM_W / 2 - leftW / 2, WALL_H / 2, WALL_Z));
 room.add(box(winW, winBottom, wallT, mat.wallBack, 0, winBottom / 2, WALL_Z));
 room.add(box(winW, WALL_H - winTop, wallT, mat.wallBack, 0, winTop + (WALL_H - winTop) / 2, WALL_Z));
 
-const casingD = 0.12, casingT = 0.07, casingZ = WALL_Z + 0.05;
+const casingD = 0.2, casingT = 0.12, casingZ = WALL_Z + 0.08;
 room.add(box(winW + casingT * 2, casingT, casingD, mat.frame, 0, winTop + casingT / 2, casingZ));
 room.add(box(winW + casingT * 2, casingT, casingD, mat.frame, 0, winBottom - casingT / 2, casingZ));
 room.add(box(casingT, winH + casingT * 2, casingD, mat.frame, -winW / 2 - casingT / 2, winY, casingZ));
 room.add(box(casingT, winH + casingT * 2, casingD, mat.frame, winW / 2 + casingT / 2, winY, casingZ));
 
-const sillDepth = 0.18, sillThick = 0.05, sillOverhang = 0.08;
+const sillDepth = 0.32, sillThick = 0.08, sillOverhang = 0.14;
 room.add(box(winW + casingT * 2 + sillOverhang * 2, sillThick, sillDepth, mat.sill,
   0, winBottom - sillThick / 2 - 0.01, WALL_Z + sillDepth / 2 - 0.02));
 room.add(box(winW + casingT * 2 + sillOverhang * 2, 0.04, 0.03, mat.sill,
   0, winBottom - sillThick - 0.02, WALL_Z + 0.08));
 
-const mullT = 0.035, mullD = 0.08, mullZ = WALL_Z + 0.03;
+const mullT = 0.06, mullD = 0.14, mullZ = WALL_Z + 0.05;
 room.add(box(mullT, winH, mullD, mat.frame, 0, winY, mullZ));
 room.add(box(winW, mullT, mullD, mat.frame, 0, winY, mullZ));
-const lip = 0.025;
+const lip = 0.045;
 room.add(box(winW, lip, mullD, mat.frame, 0, winTop - lip / 2, mullZ));
 room.add(box(winW, lip, mullD, mat.frame, 0, winBottom + lip / 2, mullZ));
 room.add(box(lip, winH, mullD, mat.frame, -winW / 2 + lip / 2, winY, mullZ));
@@ -270,7 +275,7 @@ for (const [px, py] of panePositions) {
 
 // —— 窗外世界（只从窗洞可见）——
 const outside = new THREE.Group();
-outside.position.set(0, 0, WALL_Z - 0.4);
+outside.position.set(0, 0, WALL_Z - 0.7);
 scene.add(outside);
 
 const skyCanvas = document.createElement('canvas');
@@ -279,8 +284,8 @@ const skyCtx = skyCanvas.getContext('2d');
 const skyTex = new THREE.CanvasTexture(skyCanvas);
 skyTex.colorSpace = THREE.SRGBColorSpace;
 const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.DoubleSide });
-const skyMesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 9), skyMat);
-skyMesh.position.set(0, 2.4, -9);
+const skyMesh = new THREE.Mesh(new THREE.PlaneGeometry(28, 16), skyMat);
+skyMesh.position.set(0, 4.5, -16);
 outside.add(skyMesh);
 
 function drawSky(topHex, midHex, botHex, disc) {
@@ -304,29 +309,29 @@ function drawSky(topHex, midHex, botHex, disc) {
 }
 
 const groundFar = new THREE.Mesh(
-  new THREE.PlaneGeometry(18, 5),
+  new THREE.PlaneGeometry(32, 9),
   new THREE.MeshStandardMaterial({ color: 0x2a221c, roughness: 1 })
 );
 groundFar.rotation.x = -Math.PI / 2;
-groundFar.position.set(0, -0.05, -6.5);
+groundFar.position.set(0, -0.05, -12);
 outside.add(groundFar);
 
 const city = new THREE.Group();
-city.position.set(0, 0, -5.8);
+city.position.set(0, 0, -11);
 outside.add(city);
 
 const cityLights = [];
 const buildingSpecs = [
-  { x: -5.2, w: 1.1, h: 2.4, d: 0.9, mat: mat.building },
-  { x: -3.9, w: 0.85, h: 3.2, d: 0.8, mat: mat.building2 },
-  { x: -2.8, w: 1.3, h: 1.8, d: 1.0, mat: mat.building3 },
-  { x: -1.5, w: 0.7, h: 4.0, d: 0.7, mat: mat.building },
-  { x: -0.6, w: 1.0, h: 2.6, d: 0.85, mat: mat.building2 },
-  { x: 0.5, w: 1.2, h: 3.5, d: 0.9, mat: mat.building3 },
-  { x: 1.6, w: 0.75, h: 2.1, d: 0.7, mat: mat.building },
-  { x: 2.5, w: 1.4, h: 2.9, d: 1.0, mat: mat.building2 },
-  { x: 3.8, w: 0.9, h: 3.8, d: 0.75, mat: mat.building },
-  { x: 4.9, w: 1.1, h: 2.3, d: 0.85, mat: mat.building3 },
+  { x: -9.5, w: 2.0, h: 4.4, d: 1.6, mat: mat.building },
+  { x: -7.2, w: 1.6, h: 5.8, d: 1.5, mat: mat.building2 },
+  { x: -5.2, w: 2.4, h: 3.4, d: 1.8, mat: mat.building3 },
+  { x: -2.8, w: 1.3, h: 7.2, d: 1.3, mat: mat.building },
+  { x: -1.1, w: 1.9, h: 4.8, d: 1.6, mat: mat.building2 },
+  { x: 0.9, w: 2.2, h: 6.4, d: 1.7, mat: mat.building3 },
+  { x: 3.0, w: 1.4, h: 3.9, d: 1.3, mat: mat.building },
+  { x: 4.7, w: 2.5, h: 5.3, d: 1.8, mat: mat.building2 },
+  { x: 7.0, w: 1.7, h: 6.9, d: 1.4, mat: mat.building },
+  { x: 9.1, w: 2.0, h: 4.2, d: 1.6, mat: mat.building3 },
 ];
 
 for (const b of buildingSpecs) {
@@ -352,47 +357,47 @@ for (const b of buildingSpecs) {
 }
 
 // —— 家具 ——
-const deskY = 0.78;
-room.add(box(1.8, 0.06, 0.75, mat.wood, 0, deskY, -0.55));
-room.add(box(0.08, deskY, 0.08, mat.woodDark, -0.8, deskY / 2, -0.85));
-room.add(box(0.08, deskY, 0.08, mat.woodDark, 0.8, deskY / 2, -0.85));
-room.add(box(0.08, deskY, 0.08, mat.woodDark, -0.8, deskY / 2, -0.25));
-room.add(box(0.08, deskY, 0.08, mat.woodDark, 0.8, deskY / 2, -0.25));
+const deskY = 1.55;
+room.add(box(3.5, 0.1, 1.45, mat.wood, 0, deskY, -1.1));
+room.add(box(0.14, deskY, 0.14, mat.woodDark, -1.55, deskY / 2, -1.65));
+room.add(box(0.14, deskY, 0.14, mat.woodDark, 1.55, deskY / 2, -1.65));
+room.add(box(0.14, deskY, 0.14, mat.woodDark, -1.55, deskY / 2, -0.5));
+room.add(box(0.14, deskY, 0.14, mat.woodDark, 1.55, deskY / 2, -0.5));
 
 const monitor = new THREE.Group();
 monitor.name = 'monitor';
-monitor.position.set(0, deskY + 0.03, -0.75);
-monitor.add(box(0.18, 0.12, 0.14, mat.black, 0, 0.06, 0.02));
-monitor.add(box(0.06, 0.28, 0.05, mat.black, 0, 0.28, -0.02));
-monitor.add(box(0.72, 0.46, 0.05, mat.black, 0, 0.55, -0.02));
-const screen = box(0.64, 0.38, 0.02, mat.screen, 0, 0.55, 0.01);
+monitor.position.set(0, deskY + 0.05, -1.45);
+monitor.add(box(0.34, 0.22, 0.26, mat.black, 0, 0.11, 0.04));
+monitor.add(box(0.11, 0.52, 0.09, mat.black, 0, 0.52, -0.04));
+monitor.add(box(1.35, 0.86, 0.09, mat.black, 0, 1.02, -0.04));
+const screen = box(1.2, 0.72, 0.04, mat.screen, 0, 1.02, 0.02);
 screen.name = 'screen';
 monitor.add(screen);
 room.add(monitor);
 
-room.add(box(0.48, 0.06, 0.48, mat.woodDark, 0, 0.42, 0.2));
-room.add(box(0.48, 0.55, 0.06, mat.woodDark, 0, 0.72, 0.4));
-room.add(box(0.05, 0.42, 0.05, mat.black, -0.18, 0.21, 0.05));
-room.add(box(0.05, 0.42, 0.05, mat.black, 0.18, 0.21, 0.05));
-room.add(box(0.05, 0.42, 0.05, mat.black, -0.18, 0.21, 0.38));
-room.add(box(0.05, 0.42, 0.05, mat.black, 0.18, 0.21, 0.38));
+room.add(box(0.9, 0.1, 0.9, mat.woodDark, 0, 0.8, 0.4));
+room.add(box(0.9, 1.05, 0.1, mat.woodDark, 0, 1.35, 0.78));
+room.add(box(0.09, 0.8, 0.09, mat.black, -0.34, 0.4, 0.1));
+room.add(box(0.09, 0.8, 0.09, mat.black, 0.34, 0.4, 0.1));
+room.add(box(0.09, 0.8, 0.09, mat.black, -0.34, 0.4, 0.72));
+room.add(box(0.09, 0.8, 0.09, mat.black, 0.34, 0.4, 0.72));
 
 const character = new THREE.Group();
-character.position.set(0, 0.45, 0.3);
-character.add(box(0.32, 0.42, 0.18, mat.cloth, 0, 0.42, 0));
-character.add(box(0.2, 0.22, 0.2, mat.skin, 0, 0.74, 0));
-character.add(box(0.21, 0.12, 0.08, mat.hair, 0, 0.8, 0.08));
-character.add(box(0.08, 0.28, 0.08, mat.cloth, -0.22, 0.38, -0.05));
-character.add(box(0.08, 0.28, 0.08, mat.cloth, 0.22, 0.38, -0.05));
-character.add(box(0.1, 0.32, 0.12, mat.cloth, -0.09, 0.08, 0.02));
-character.add(box(0.1, 0.32, 0.12, mat.cloth, 0.09, 0.08, 0.02));
+character.position.set(0, 0.85, 0.55);
+character.add(box(0.6, 0.8, 0.34, mat.cloth, 0, 0.8, 0));
+character.add(box(0.38, 0.42, 0.38, mat.skin, 0, 1.4, 0));
+character.add(box(0.4, 0.22, 0.15, mat.hair, 0, 1.52, 0.15));
+character.add(box(0.15, 0.52, 0.15, mat.cloth, -0.42, 0.72, -0.08));
+character.add(box(0.15, 0.52, 0.15, mat.cloth, 0.42, 0.72, -0.08));
+character.add(box(0.18, 0.6, 0.22, mat.cloth, -0.17, 0.15, 0.04));
+character.add(box(0.18, 0.6, 0.22, mat.cloth, 0.17, 0.15, 0.04));
 room.add(character);
 
-room.add(cyl(0.045, 0.04, 0.12, mat.cup, 0.55, deskY + 0.09, -0.4));
+room.add(cyl(0.08, 0.07, 0.22, mat.cup, 1.05, deskY + 0.16, -0.8));
 const trash = new THREE.Group();
-trash.position.set(1.15, 0, -0.15);
-trash.add(cyl(0.16, 0.14, 0.42, mat.trash, 0, 0.21, 0));
-trash.add(cyl(0.175, 0.175, 0.035, mat.trash, 0, 0.43, 0));
+trash.position.set(2.2, 0, -0.3);
+trash.add(cyl(0.3, 0.26, 0.8, mat.trash, 0, 0.4, 0));
+trash.add(cyl(0.33, 0.33, 0.06, mat.trash, 0, 0.82, 0));
 room.add(trash);
 
 // sunPos = 窗外光源位置（z 更负 = 窗外），窗光洒向室内
@@ -401,7 +406,7 @@ const KEYS = [
     t: 0, name: '黎明',
     amb: [0xffb090, 0.06],
     sunCol: 0xff9a6a, sunInt: 0.85,
-    sunPos: [-3.2, 1.6, WALL_Z - 5],
+    sunPos: [-5.5, 3.0, WALL_Z - 9],
     spotCol: 0xffb080, spotInt: 1.1,
     shaftOp: 0.05,
     fillInt: 0.04, hemiInt: 0.08,
@@ -414,7 +419,7 @@ const KEYS = [
     t: 0.15, name: '清晨',
     amb: [0xffe8d0, 0.14],
     sunCol: 0xfff0d0, sunInt: 1.7,
-    sunPos: [-2.8, 3.8, WALL_Z - 5.5],
+    sunPos: [-5.0, 6.8, WALL_Z - 10],
     spotCol: 0xfff2d8, spotInt: 2.35,
     shaftOp: 0.1,
     fillInt: 0.05, hemiInt: 0.12,
@@ -427,7 +432,7 @@ const KEYS = [
     t: 0.38, name: '午后',
     amb: [0xfff5e8, 0.15],
     sunCol: 0xfff8e8, sunInt: 1.9,
-    sunPos: [0.6, 5.2, WALL_Z - 4.5],
+    sunPos: [1.0, 9.0, WALL_Z - 8],
     spotCol: 0xfff8e8, spotInt: 2.5,
     shaftOp: 0.12,
     fillInt: 0.06, hemiInt: 0.14,
@@ -440,7 +445,7 @@ const KEYS = [
     t: 0.55, name: '傍晚',
     amb: [0xffc9a0, 0.07],
     sunCol: 0xff9a55, sunInt: 1.25,
-    sunPos: [3.0, 2.0, WALL_Z - 5],
+    sunPos: [5.2, 3.6, WALL_Z - 9],
     spotCol: 0xffb070, spotInt: 1.55,
     shaftOp: 0.08,
     fillInt: 0.04, hemiInt: 0.1,
@@ -453,7 +458,7 @@ const KEYS = [
     t: 0.75, name: '夜晚',
     amb: [0x304060, 0.05],
     sunCol: 0x5070a0, sunInt: 0.08,
-    sunPos: [-1.5, 4.0, WALL_Z - 4],
+    sunPos: [-2.5, 7.0, WALL_Z - 8],
     spotCol: 0x6080b0, spotInt: 0.08,
     shaftOp: 0.0,
     fillInt: 0.03, hemiInt: 0.06,
@@ -466,7 +471,7 @@ const KEYS = [
     t: 1.0, name: '黎明',
     amb: [0xffb090, 0.06],
     sunCol: 0xff9a6a, sunInt: 0.85,
-    sunPos: [-3.2, 1.6, WALL_Z - 5],
+    sunPos: [-5.5, 3.0, WALL_Z - 9],
     spotCol: 0xffb080, spotInt: 1.1,
     shaftOp: 0.05,
     fillInt: 0.04, hemiInt: 0.08,
@@ -518,7 +523,7 @@ function applyDayCycle(t) {
   sun.intensity = a.sunInt + (b.sunInt - a.sunInt) * e;
   _vA.set(...a.sunPos); _vB.set(...b.sunPos);
   sun.position.copy(_vA).lerp(_vB, e);
-  sun.target.position.set(0, 0.85, 0.5);
+  sun.target.position.set(0, 1.5, 0.8);
   sun.target.updateMatrixWorld();
 
   windowSpot.color.set(a.spotCol).lerp(_cA.set(b.spotCol), e);
@@ -573,8 +578,8 @@ let anim = null;
 function startDock() {
   const fromPos = camera.position.clone();
   const fromTarget = controls.target.clone();
-  const toPos = new THREE.Vector3(0, 1.3, 0.95);
-  const toTarget = new THREE.Vector3(0, 1.2, -0.75);
+  const toPos = new THREE.Vector3(0, 2.5, 1.8);
+  const toTarget = new THREE.Vector3(0, 2.4, -1.45);
   anim = { t0: performance.now(), dur: 900, fromPos, toPos, fromTarget, toTarget };
   controls.enabled = false;
 }
@@ -631,7 +636,7 @@ function tick(now) {
     if (u >= 1) {
       anim = null;
       controls.enabled = true;
-      controls.minDistance = 0.45;
+      controls.minDistance = 0.9;
     }
   } else {
     controls.update();
