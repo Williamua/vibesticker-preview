@@ -71,7 +71,6 @@ function setupVideo() {
    speed = share of a common travel distance (layers are one-screen images, so 1.0 ≠ content speed literally). */
 const LAYERS = [
   { id: 'L2', file: 'L2-lightbeams', speed: 0.3 },
-  { id: 'L3', file: 'L3-trunks', speed: 0.6 },
   { id: 'L4', file: 'L4-foreleaves', speed: 1.2 },
 ];
 const travelFor = speed => Math.round(speed * innerHeight * 0.25);
@@ -407,7 +406,7 @@ function setupScroll() {
   // L2 beams stay put (final brief: opacity .3, no shift); L3/L4 travel speed × common distance
   $$('.px:not(.px-L2)').forEach(el => tl.fromTo(el, { y: 0 }, { y: () => -travelFor(+el.dataset.speed), duration: 1 }, 0));
   // 段4 (p .50–.64): push into the trunks, scale 1 → 1.6 (ASSETS-V2 §2)
-  tl.fromTo('.px-L3', { scale: 1 }, { scale: 1.6, duration: 0.14, ease: E }, 0.5);
+  // L3 trunks removed (user: eye-level trunks hid the upward rainforest video)
   // beams opacity stays at .3 (design brief); warm afternoon light toward the end
   tl.to('.l-warm', { opacity: 0.4, duration: 0.36 }, 0.64)
     .to('.l-shade', { opacity: 0.9, duration: 0.2 }, 0.1)

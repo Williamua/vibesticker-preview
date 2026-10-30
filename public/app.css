@@ -31,7 +31,7 @@ button{font:inherit;color:inherit}
 .px-L2 .pxi{opacity:0;transition:opacity 1200ms var(--ease) 1000ms}
 .ready .px-L2 .pxi{opacity:1}
 .px-L3{transform-origin:50% 55%}
-.px-L4{z-index:1}
+.px-L4{z-index:1;-webkit-mask-image:radial-gradient(ellipse 80% 75% at 50% 45%,transparent 60%,#000 92%);mask-image:radial-gradient(ellipse 80% 75% at 50% 45%,transparent 60%,#000 92%)}
 .px-L4 .pxi{filter:blur(2px);transform:scale(.92);opacity:0;transition:transform 600ms var(--ease) 600ms,opacity 600ms var(--ease) 600ms}
 .ready .px-L4 .pxi{transform:none;opacity:1}
 .px-L4 picture{transform-origin:50% 50%;will-change:transform}
