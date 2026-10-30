@@ -14,3 +14,9 @@
 3. Stripe Dashboard → Developers → Webhooks → 添加 `https://<域名>/webhook`，事件 `checkout.session.completed`，把 whsec_ 填入 STRIPE_WEBHOOK_SECRET。
 Railway / Fly.io 同理（`fly launch` 会识别 Dockerfile）。
 注意：文件存在本地 data/ 目录，免费实例重启会丢；正式用建议挂磁盘或改存 S3/R2。付费校验：下载时服务端用 session_id 向 Stripe 查询 payment_status=paid 且 metadata.id 匹配，webhook 作为补充。
+
+## VibeSticker 森林长卷预览版
+    PORT=3100 IMAGE_PROVIDER=mock node server.js     # 出图走本地 mock，不需要任何 Key
+打开 http://localhost:3100 。前端：`public/index.html` + `public/app.css` + `public/app.js`（GSAP ScrollTrigger 走 CDN），素材在 `public/media/`。
+出图切换：`IMAGE_PROVIDER=mock|gemini|replicate|xai`；不设时有 `GEMINI_API_KEY` 走 gemini，否则 mock。
+端到端测试：`python3 /workspace/preview-shots/e2e.py http://localhost:3100`（需 playwright + /tmp/vt/photo.jpg）。

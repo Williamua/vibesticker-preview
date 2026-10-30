@@ -1,30 +1,166 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VibeSticker</title><meta name="color-scheme" content="light dark">
-<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
-<style>
-:root{--bg:#f6f5ff;--fg:#1b1b2f;--card:#fff;--ac:#7c4dff}
-@media(prefers-color-scheme:dark){:root{--bg:#0e0f1f;--fg:#ecebff;--card:#1b1c33}}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-main{max-width:560px;margin:auto;padding:16px 16px 100px}h1{text-align:center;margin:8px 0}
-.lang{text-align:right}.lang button{background:none;border:1px solid var(--ac);color:var(--fg);border-radius:8px;margin-left:4px}
-.card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0}
-.styles{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.styles label{border:2px solid transparent;border-radius:10px;padding:8px;background:var(--bg);cursor:pointer;transition:transform .2s}
-.styles label:hover{transform:scale(1.05)}.styles input{display:none}.styles label:has(input:checked){border-color:var(--ac);font-weight:700}
-#gen{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(90%,520px);padding:16px;border:0;border-radius:30px;background:var(--ac);color:#fff;font-size:18px;animation:breathe 2s infinite}
-@keyframes breathe{50%{box-shadow:0 0 24px var(--ac)}}
-#out img{width:48%;border-radius:12px;background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0/20px 20px}
-.row{display:flex;gap:8px;flex-wrap:wrap}.row a,.row button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--ac);background:none;color:var(--fg);text-align:center;text-decoration:none}
-small{opacity:.7}
-</style></head><body><main>
-<div class="lang"><button data-l="en">EN</button><button data-l="zh">中文</button><button data-l="ja">日本語</button></div>
-<h1>VibeSticker</h1><p style="text-align:center" data-i="tag"></p>
-<div class="card"><input type="file" id="file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif"><img id="src" style="max-width:100%;display:none;margin-top:8px;border-radius:10px"></div>
-<div class="card"><b data-i="style"></b><div class="styles" id="styles"></div></div>
-<div class="card" id="quota"></div>
-<div class="card" id="out" style="display:none"><div class="row"><img id="png"><img id="gif"></div><div class="row" style="margin-top:8px">
-<a id="dpng" data-i="dpng"></a><a id="dgif" data-i="dgif"></a></div><div class="row" style="margin-top:8px">
-<a id="sx" target="_blank">X</a><button onclick="share()">Instagram / TikTok</button><button onclick="again()" data-i="again"></button></div></div>
-<div class="card" id="buy"><b data-i="buy"></b><div class="row" id="tiers" style="margin-top:8px"></div></div>
-<div class="card"><small><b data-i="noticeT"></b><br><span data-i="notice"></span><br><br>Powered by AI</small></div>
-</main><button id="gen" data-i="gen"></button>
-<script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VibeSticker · 把一张照片种成一枚贴纸</title>
+<meta name="description" content="走进森林，上传一张照片，让光把它长成一枚贴纸。">
+<meta name="theme-color" content="#0d120d">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&display=swap">
+<link rel="preload" as="image" href="/media/forest-poster.jpg">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+<script>document.documentElement.classList.replace('no-js','js')</script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="leafShape" viewBox="0 0 100 100"><path d="M50 2 C80 18 96 44 88 66 C80 86 62 96 50 99 C38 96 20 86 12 66 C4 44 20 18 50 2Z"/></symbol>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f4a22"/><stop offset="1" stop-color="#0f1c0b"/></linearGradient>
+  </defs>
+</svg>
+
+<!-- ===== fixed background stage (parallax layers, far → near) ===== -->
+<div id="stage" aria-hidden="true">
+  <div class="layer l-video" data-depth="0.1">
+    <img class="poster" src="/media/forest-poster.jpg" alt="">
+    <video id="bgv" muted playsinline loop preload="none" poster="/media/forest-poster.jpg" disablepictureinpicture></video>
+  </div>
+  <div class="layer l-fog desk-only"><div class="fog-in"></div></div>
+  <div class="layer l-beams"><div class="beams-drift"><div class="beams-in"></div></div></div>
+  <div class="layer l-trunk"><img src="/media/trunk.jpg" alt="" loading="lazy" decoding="async"></div>
+  <div class="layer l-canopy"><picture><source media="(max-width: 768px)" srcset="/media/canopy-m.jpg"><img src="/media/canopy.jpg" alt="" decoding="async"></picture></div>
+  <div class="layer l-warm"></div>
+  <div class="layer l-shade"></div>
+  <div class="layer l-black"></div>
+</div>
+
+<!-- foreground leaves (speed 1.3, faster than content) -->
+<div id="fg" aria-hidden="true">
+  <div class="fgc fg-tl"><svg class="sway" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg><svg class="sway s2" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg></div>
+  <div class="fgc fg-tr"><svg class="sway s3" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg><svg class="sway" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg></div>
+  <div class="fgc fg-br desk-only"><svg class="sway s2" viewBox="0 0 100 100"><use href="#leafShape" fill="url(#lg)"/></svg></div>
+</div>
+
+<a class="brand" href="#s0" aria-label="VibeSticker 回到顶部">VibeSticker</a>
+
+<main id="roll">
+  <!-- 0 · 首屏 -->
+  <section id="s0" class="sec hero" data-fab="">
+    <div class="hero-copy">
+      <p class="eyebrow rv">VIBESTICKER</p>
+      <h1 class="rv">把一张照片，<br>种成一枚贴纸</h1>
+    </div>
+    <div class="hint"><span class="hint-line"></span><span class="hint-t">向下滑动，走进森林</span></div>
+  </section>
+
+  <!-- 1 · 上传（树干） -->
+  <section id="s1" class="sec" data-fab="放入照片">
+    <div class="out"><div class="in">
+      <p class="logo rv">VibeSticker</p>
+      <p class="sub rv">树干上有一块磨砂玻璃，把照片放进去</p>
+      <div class="drop glass rv" id="drop" role="button" tabindex="0" aria-label="放入一张照片：点击选择、拖拽，或拍照" aria-describedby="dropHelp">
+        <div class="drop-empty">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg>
+          <p class="drop-t">放入一张照片</p>
+          <p class="drop-s" id="dropHelp">点击选择 · 拖拽到这里 · JPG / PNG / HEIC</p>
+        </div>
+        <img id="preview" alt="已选择的照片预览" hidden>
+        <div class="drop-busy" hidden><span class="spin"></span><span id="busyT">正在整理照片…</span></div>
+      </div>
+      <div class="drop-actions rv">
+        <button class="link" id="pick" type="button">选择照片</button>
+        <button class="link" id="camBtn" type="button">拍照</button>
+        <button class="link" id="repick" type="button" hidden>重新选择</button>
+      </div>
+      <p class="err" id="upErr" role="alert" hidden></p>
+      <input type="file" id="file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
+      <input type="file" id="cam" accept="image/*" capture="environment" hidden>
+    </div></div>
+  </section>
+
+  <!-- 2 · 风格 -->
+  <section id="s2" class="sec" data-fab="生成">
+    <div class="out"><div class="in">
+      <h2 class="rv">选一种风格</h2>
+      <p class="sub rv">沿着光柱，一种光一种样子</p>
+      <div class="styles" id="styles" role="radiogroup" aria-label="贴纸风格"></div>
+    </div></div>
+  </section>
+
+  <!-- 3 · 生成结果 -->
+  <section id="s3" class="sec" data-fab="">
+    <div class="out"><div class="in">
+      <h2 class="rv">让光把它长出来</h2>
+      <p class="sub rv" id="genSub">照片会先变成一片发光的叶子，挂上树枝</p>
+      <div class="gen rv" id="gen">
+        <svg class="branch" viewBox="0 0 300 120" aria-hidden="true"><path d="M300 18 C230 24 190 40 150 62 C120 78 96 84 60 86" /><path d="M210 30 C214 18 224 10 238 6"/><path d="M160 58 C150 46 150 34 156 22"/></svg>
+        <div class="frame glass" id="frame" aria-live="polite">
+          <div class="f-empty" id="fEmpty"><span class="dot-glow"></span><p>贴纸会在这里展开</p></div>
+          <figure class="sticker" id="sticker" hidden><img id="stickerImg" alt="生成的贴纸"></figure>
+          <div class="failcard" id="failCard" hidden><svg viewBox="0 0 100 100" aria-hidden="true"><use href="#leafShape" fill="#c9a24a"/></svg><p>这次没长好，<br>免费再来一次</p><small id="failWhy"></small></div>
+        </div>
+        <div class="leafwrap" id="leafWrap" hidden aria-hidden="true">
+          <div class="leafsway">
+            <svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="56"/><circle class="ring-fg" id="ringFg" cx="60" cy="60" r="56" pathLength="100"/></svg>
+            <div class="leaf" id="leaf"><img id="leafImg" alt=""><svg class="veins" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M50 4 L50 96 M50 28 L70 18 M50 28 L30 18 M50 46 L76 34 M50 46 L24 34 M50 64 L74 54 M50 64 L26 54 M50 80 L66 72 M50 80 L34 72"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption" id="caption" aria-live="polite"></p>
+      <div class="gen-actions rv">
+        <button class="btn primary breathe" id="genBtn" type="button" disabled>生成贴纸</button>
+        <div class="dl" id="dl" hidden>
+          <a class="btn" id="dlPng" download>下载 PNG</a>
+          <!-- GIF download hidden in preview: server makeGif() currently outputs a single-frame 512×12288 strip (sharp 0.33 raw input has no pageHeight) -->
+          <a class="btn ghost" id="dlGif" download hidden>下载动图 GIF</a>
+          <button class="link" id="again" type="button">换一张照片</button>
+        </div>
+      </div>
+      <p class="meta rv" id="quota"></p>
+    </div></div>
+  </section>
+
+  <!-- 4 · 付费（占位） -->
+  <section id="s4" class="sec" data-fab="支付 $4.99">
+    <div class="out"><div class="in">
+      <h2 class="rv">带走更多贴纸</h2>
+      <p class="sub rv">预览版：支付暂未开放，以下为版式占位</p>
+      <div class="tiers rv">
+        <div class="tier"><p class="price">$1</p><div class="mid"><p class="tn">单张</p><p class="td">1 枚高清贴纸</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
+        <div class="tier rec"><span class="tag">推荐</span><p class="price">$4.99</p><div class="mid"><p class="tn">一小包</p><p class="td">8 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
+        <div class="tier"><p class="price">$8.99</p><div class="mid"><p class="tn">一整片林子</p><p class="td">20 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- 5 · 展示墙（占位） -->
+  <section id="s5" class="sec" data-fab="生成我的贴纸">
+    <div class="out"><div class="in">
+      <h2 class="rv">林间展示墙</h2>
+      <p class="sub rv">第一张贴纸会长在这里</p>
+      <div class="wall rv" id="wall"></div>
+    </div></div>
+  </section>
+
+  <!-- 6 · 点赞榜（占位） -->
+  <section id="s6" class="sec" data-fab="生成我的贴纸">
+    <div class="out"><div class="in">
+      <h2 class="rv">点赞榜</h2>
+      <p class="sub rv">树枝上还空着，等你来占位</p>
+      <ol class="rank rv" id="rank"></ol>
+      <p class="foot">© VibeSticker · 预览版 · Powered by AI</p>
+    </div></div>
+  </section>
+</main>
+
+<button class="fab btn primary" id="fab" type="button" hidden></button>
+<div id="cursor" aria-hidden="true"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

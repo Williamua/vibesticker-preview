@@ -5,7 +5,7 @@ async function toJpegUri(buf){return 'data:image/jpeg;base64,'+(await sharp(buf)
 async function grab(url){return Buffer.from(await (await fetch(url)).arrayBuffer())}
 const providers={
  async mock(buf,style){ // local filter: no API cost
-  const tint={chibi:[255,200,220],vaporwave:[255,120,230],graffiti:[255,200,0],glitch:[0,255,200],ink:[40,40,40],retro:[230,160,90],pixel:[120,200,255],clay:[220,150,110],comic:[255,60,60],kawaii:[255,220,240]}[style.id]||[200,200,200];
+  const tint={chibi:[255,200,220],vaporwave:[255,120,230],graffiti:[255,200,0],glitch:[0,255,200],ink:[40,40,40],retro:[230,160,90],pixel:[120,200,255],clay:[220,150,110],comic:[255,60,60],kawaii:[255,220,240],anime:[170,215,255],toy3d:[255,190,120],watercolor:[200,230,225]}[style.id]||[200,200,200];
   let img=sharp(buf).resize(1024,1024,{fit:'cover'});
   if(style.id==='ink')img=img.grayscale().linear(1.4,-40);
   else if(style.id==='pixel'){const sm=await img.resize(64,64).png().toBuffer();img=sharp(sm).resize(1024,1024,{kernel:'nearest'});}

@@ -11,6 +11,11 @@ module.exports=[
  {id:'comic',name:'Comic Pop Art',prompt:'american pop art comic sticker, ben-day dots, thick black ink lines, bright primaries'},
  {id:'kawaii',name:'Kawaii Pastel',prompt:'japanese kawaii sticker, pastel colors, blush cheeks, sparkles, white die-cut border'}
 ];
+// VibeSticker forest preview: 3 extra visible styles used by the 5 style cards (日漫/Q版=chibi/3D潮玩/像素=pixel/水彩)
+module.exports.push(
+ {id:'anime',name:'日漫',prompt:'japanese anime cel-shaded sticker, clean line art, soft gradient hair highlights, bright clear colors'},
+ {id:'toy3d',name:'3D潮玩',prompt:'3D designer art toy figurine sticker, glossy vinyl material, chibi proportions, soft studio lighting'},
+ {id:'watercolor',name:'水彩',prompt:'soft watercolor painting sticker, wet-on-wet blooms, delicate pastel washes, paper texture'});
 // 5 hidden styles: unlocked by mini-game score/luck, daily cap = 3% of today's users
 module.exports.push(
  {id:'aurora',name:'Aurora Spirit',hidden:true,prompt:'ethereal aurora spirit sticker, translucent glowing northern-lights body, star particles'},
