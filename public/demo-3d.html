@@ -19,12 +19,19 @@
     text-align:center;color:rgba(255,248,240,.7);font-size:12px;
     pointer-events:none;user-select:none;letter-spacing:.08em;
   }
-  #c{display:block;width:100%;height:100%}
+  #c{display:block;width:100%;height:100%;touch-action:none}
+  #err{
+    display:none;position:fixed;inset:0;z-index:20;align-items:center;justify-content:center;
+    padding:24px;background:rgba(26,18,16,.92);color:#fff8f0;font-size:15px;line-height:1.6;
+    text-align:center;white-space:pre-wrap;
+  }
+  #err.show{display:flex}
 </style>
 </head>
 <body>
 <div id="hud">拖动环视 · 滚轮缩放 · 点击显示器靠近</div>
 <div id="phase">昼夜循环 · 约 75 秒一轮</div>
+<div id="err" role="alert"></div>
 <canvas id="c"></canvas>
 <script type="importmap">
 {
@@ -40,16 +47,41 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const CYCLE_MS = 75000; // ~75s dawn→…→night→dawn
 const phaseEl = document.getElementById('phase');
+const errEl = document.getElementById('err');
+function showErr(msg) {
+  console.error(msg);
+  errEl.textContent = '3D 加载失败\n' + msg + '\n\n可刷新重试；若仍黑屏，请换浏览器或更新系统。';
+  errEl.classList.add('show');
+}
+
+try {
 
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+const glOpts = {
+  canvas,
+  antialias: !isMobile,
+  alpha: false,
+  powerPreference: 'high-performance',
+  failIfMajorPerformanceCaveat: false,
+};
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer(glOpts);
+} catch (e1) {
+  // WebGL2 / antialias fallback
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'default' });
+}
+if (!renderer.getContext()) throw new Error('WebGL 不可用（当前设备/浏览器不支持）');
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.setClearColor(0xb07050, 1); // dawn-ish so first paint is not black
+renderer.shadowMap.enabled = !isMobile;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a1a14);
@@ -72,8 +104,8 @@ controls.update();
 const ambient = new THREE.AmbientLight(0xffc9a0, 0.35);
 scene.add(ambient);
 const sun = new THREE.DirectionalLight(0xffb070, 1.15);
-sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.castShadow = !isMobile;
+sun.shadow.mapSize.set(isMobile ? 512 : 1024, isMobile ? 512 : 1024);
 sun.shadow.camera.near = 0.5;
 sun.shadow.camera.far = 24;
 sun.shadow.camera.left = -7;
@@ -97,10 +129,10 @@ const mat = {
   woodDark: new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.75 }),
   black: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.45, metalness: 0.2 }),
   screen: new THREE.MeshStandardMaterial({ color: 0x2a4a6a, emissive: 0x1a4060, emissiveIntensity: 0.55, roughness: 0.35 }),
-  glass: new THREE.MeshPhysicalMaterial({
-    color: 0xd8e8f2, transparent: true, opacity: 0.22,
-    roughness: 0.05, metalness: 0.05, transmission: 0.55,
-    thickness: 0.02, ior: 1.45, side: THREE.DoubleSide,
+  // MeshStandard + opacity：避免 MeshPhysical transmission 在 iOS Safari 上黑屏/掉上下文
+  glass: new THREE.MeshStandardMaterial({
+    color: 0xd8e8f2, transparent: true, opacity: 0.28,
+    roughness: 0.08, metalness: 0.05, side: THREE.DoubleSide, depthWrite: false,
   }),
   skin:  new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.7 }),
   cloth: new THREE.MeshStandardMaterial({ color: 0x3d5a80, roughness: 0.8 }),
@@ -473,7 +505,7 @@ function applyDayCycle(t) {
 
   const cl = a.cityLight + (b.cityLight - a.cityLight) * e;
   for (const lm of cityLights) {
-    lm.opacity = cl * (0.55 + 0.45 * Math.sin(lm.id * 12.9898 + t * 40)); // slight twinkle variance
+    lm.opacity = cl * (0.55 + 0.45 * Math.sin((lm.userData.twinkle || 0) * 12.9898 + t * 40));
   }
 
   mixColor(_cOut, a.wallTint, b.wallTint, e);
@@ -499,8 +531,8 @@ function mixHex(ha, hb, e) {
   return `#${((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)}`;
 }
 
-// assign stable ids for twinkle
-cityLights.forEach((lm, i) => { lm.id = i; });
+// Material.id 只读，用 userData 做闪烁相位
+cityLights.forEach((lm, i) => { lm.userData.twinkle = i; });
 
 // click → camera push toward monitor
 const raycaster = new THREE.Raycaster();
@@ -537,13 +569,22 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+addEventListener('resize', fit);
+if (visualViewport) visualViewport.addEventListener('resize', fit);
 
-const t0 = performance.now();
+// 从清晨附近起步，避免首帧偏暗被当成黑屏
+const START_T = 0.18;
+const t0 = performance.now() - START_T * CYCLE_MS;
+function fit() {
+  const w = innerWidth, h = innerHeight;
+  camera.aspect = w / Math.max(1, h);
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
+}
+fit();
+applyDayCycle(START_T);
+renderer.render(scene, camera);
+
 function tick(now) {
   requestAnimationFrame(tick);
   const cycleT = ((now - t0) % CYCLE_MS) / CYCLE_MS;
@@ -566,6 +607,10 @@ function tick(now) {
   renderer.render(scene, camera);
 }
 requestAnimationFrame(tick);
+
+} catch (err) {
+  showErr((err && (err.message || String(err))) || '未知错误');
+}
 </script>
 </body>
 </html>
