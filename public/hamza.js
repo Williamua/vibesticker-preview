@@ -56,7 +56,10 @@
     gsap.from('.slider-wrap', { y: 18, opacity: 0, duration: 0.4, delay: 0.4 });
     gsap.from('.drag-zone', { y: 18, opacity: 0, duration: 0.4, delay: 0.48 });
     // nudge knob once so user sees it's interactive
-    gsap.fromTo('#slider-knob', { x: -24 }, { x: 0, duration: 0.7, delay: 0.7, ease: 'elastic.out(1, 0.5)' });
+    gsap.fromTo('#slider-knob', { x: -24 }, {
+      x: 0, duration: 0.7, delay: 0.7, ease: 'elastic.out(1, 0.5)',
+      onComplete: () => gsap.set('#slider-knob', { clearProps: 'x' }),
+    });
   }
 
   function bindProjects() {
@@ -83,8 +86,9 @@
     let dragging = false;
 
     function setFromClientX(cx) {
-      const r = wrap.getBoundingClientRect();
-      let t = (cx - r.left) / r.width;
+      const track = wrap.querySelector('.slider-track') || wrap;
+      const r = track.getBoundingClientRect();
+      let t = (cx - r.left) / Math.max(1, r.width);
       t = Math.max(0, Math.min(1, t));
       setStyleIndex(Math.round(t * (STYLES.length - 1)), true);
     }
