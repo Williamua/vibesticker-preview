@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VibeSticker · 简单 3D 房间演示</title>
+<title>VibeSticker · 3D 房间 · 窗景昼夜</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:100%;height:100%;overflow:hidden;background:#1a1210;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -14,11 +14,17 @@
     background:linear-gradient(180deg,rgba(26,18,16,.72),rgba(26,18,16,0));
     pointer-events:none;user-select:none;
   }
+  #phase{
+    position:fixed;bottom:16px;left:0;right:0;z-index:10;
+    text-align:center;color:rgba(255,248,240,.7);font-size:12px;
+    pointer-events:none;user-select:none;letter-spacing:.08em;
+  }
   #c{display:block;width:100%;height:100%}
 </style>
 </head>
 <body>
 <div id="hud">拖动环视 · 滚轮缩放 · 点击显示器靠近</div>
+<div id="phase">昼夜循环 · 约 75 秒一轮</div>
 <canvas id="c"></canvas>
 <script type="importmap">
 {
@@ -32,6 +38,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+const CYCLE_MS = 75000; // ~75s dawn→…→night→dawn
+const phaseEl = document.getElementById('phase');
+
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -40,13 +49,13 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a1a14);
-scene.fog = new THREE.Fog(0x2a1a14, 12, 28);
+scene.fog = new THREE.Fog(0x2a1a14, 14, 36);
 
-const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 80);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
 camera.position.set(0, 1.55, 4.2);
 
 const controls = new OrbitControls(camera, canvas);
@@ -59,25 +68,26 @@ controls.maxPolarAngle = Math.PI * 0.48;
 controls.minPolarAngle = 0.15;
 controls.update();
 
-// —— lights (warm evening) ——
-scene.add(new THREE.AmbientLight(0xffc9a0, 0.35));
+// —— lights (driven by day cycle) ——
+const ambient = new THREE.AmbientLight(0xffc9a0, 0.35);
+scene.add(ambient);
 const sun = new THREE.DirectionalLight(0xffb070, 1.15);
-sun.position.set(-3.5, 4.2, 2.5);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 20;
-sun.shadow.camera.left = -6;
-sun.shadow.camera.right = 6;
-sun.shadow.camera.top = 6;
-sun.shadow.camera.bottom = -6;
+sun.shadow.camera.far = 24;
+sun.shadow.camera.left = -7;
+sun.shadow.camera.right = 7;
+sun.shadow.camera.top = 7;
+sun.shadow.camera.bottom = -7;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xff8a5c, 0.35);
-fill.position.set(2.5, 2.5, -1);
+const fill = new THREE.DirectionalLight(0xff8a5c, 0.3);
 scene.add(fill);
-const lamp = new THREE.PointLight(0xffcc88, 0.55, 8, 2);
+const lamp = new THREE.PointLight(0xffcc88, 0.45, 8, 2);
 lamp.position.set(0.55, 1.55, 0.15);
 scene.add(lamp);
+const hemi = new THREE.HemisphereLight(0xffe0b0, 0x4a3020, 0.25);
+scene.add(hemi);
 
 const mat = {
   floor: new THREE.MeshStandardMaterial({ color: 0x5c3d2e, roughness: 0.85 }),
@@ -87,14 +97,21 @@ const mat = {
   woodDark: new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.75 }),
   black: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.45, metalness: 0.2 }),
   screen: new THREE.MeshStandardMaterial({ color: 0x2a4a6a, emissive: 0x1a4060, emissiveIntensity: 0.55, roughness: 0.35 }),
-  glass: new THREE.MeshStandardMaterial({ color: 0xa8d4e8, transparent: true, opacity: 0.35, roughness: 0.15, metalness: 0.1 }),
-  sky:   new THREE.MeshBasicMaterial({ color: 0xe8945a }),
+  glass: new THREE.MeshPhysicalMaterial({
+    color: 0xd8e8f2, transparent: true, opacity: 0.22,
+    roughness: 0.05, metalness: 0.05, transmission: 0.55,
+    thickness: 0.02, ior: 1.45, side: THREE.DoubleSide,
+  }),
   skin:  new THREE.MeshStandardMaterial({ color: 0xe8b896, roughness: 0.7 }),
   cloth: new THREE.MeshStandardMaterial({ color: 0x3d5a80, roughness: 0.8 }),
   hair:  new THREE.MeshStandardMaterial({ color: 0x2a1f18, roughness: 0.9 }),
   cup:   new THREE.MeshStandardMaterial({ color: 0xf0e6d8, roughness: 0.4 }),
   trash: new THREE.MeshStandardMaterial({ color: 0x4a4a48, roughness: 0.65, metalness: 0.15 }),
-  frame: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55 }),
+  frame: new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.45 }),
+  sill:  new THREE.MeshStandardMaterial({ color: 0xe8e0d4, roughness: 0.5 }),
+  building: new THREE.MeshStandardMaterial({ color: 0x3a2e28, roughness: 0.9 }),
+  building2: new THREE.MeshStandardMaterial({ color: 0x2c2420, roughness: 0.88 }),
+  building3: new THREE.MeshStandardMaterial({ color: 0x4a3a32, roughness: 0.9 }),
 };
 
 function box(w, h, d, material, x, y, z) {
@@ -115,30 +132,152 @@ function cyl(rTop, rBot, h, material, x, y, z, segs = 24) {
 const room = new THREE.Group();
 scene.add(room);
 
+const ROOM_W = 6, ROOM_D = 5, WALL_H = 3, WALL_Z = -2.5;
+
 // floor
-room.add(box(6, 0.08, 5, mat.floor, 0, 0, 0));
-// back wall
-room.add(box(6, 3, 0.08, mat.wallBack, 0, 1.5, -2.5));
+room.add(box(ROOM_W, 0.08, ROOM_D, mat.floor, 0, 0, 0));
 // left / right walls
-room.add(box(0.08, 3, 5, mat.wall, -3, 1.5, 0));
-room.add(box(0.08, 3, 5, mat.wall, 3, 1.5, 0));
+room.add(box(0.08, WALL_H, ROOM_D, mat.wall, -ROOM_W / 2, WALL_H / 2, 0));
+room.add(box(0.08, WALL_H, ROOM_D, mat.wall, ROOM_W / 2, WALL_H / 2, 0));
 
-// window on back wall + sky plane outside
-const winW = 2.2, winH = 1.4, winY = 1.7;
-const frameT = 0.06;
-room.add(box(winW + frameT * 2, frameT, 0.1, mat.frame, 0, winY + winH / 2, -2.45));
-room.add(box(winW + frameT * 2, frameT, 0.1, mat.frame, 0, winY - winH / 2, -2.45));
-room.add(box(frameT, winH, 0.1, mat.frame, -winW / 2, winY, -2.45));
-room.add(box(frameT, winH, 0.1, mat.frame, winW / 2, winY, -2.45));
-room.add(box(frameT, winH, 0.1, mat.frame, 0, winY, -2.45));
-const glass = box(winW - 0.04, winH - 0.04, 0.02, mat.glass, 0, winY, -2.46);
-glass.castShadow = false;
-room.add(glass);
-const sky = new THREE.Mesh(new THREE.PlaneGeometry(winW - 0.1, winH - 0.1), mat.sky);
-sky.position.set(0, winY, -2.55);
-room.add(sky);
+// —— window opening (compose back wall around hole) ——
+const winW = 2.4, winH = 1.55, winY = 1.75;
+const winBottom = winY - winH / 2;
+const winTop = winY + winH / 2;
+const wallT = 0.1;
 
-// desk
+// panels: left, right, below, above opening
+const leftW = (ROOM_W - winW) / 2;
+room.add(box(leftW, WALL_H, wallT, mat.wallBack, -ROOM_W / 2 + leftW / 2, WALL_H / 2, WALL_Z));
+room.add(box(leftW, WALL_H, wallT, mat.wallBack, ROOM_W / 2 - leftW / 2, WALL_H / 2, WALL_Z));
+room.add(box(winW, winBottom, wallT, mat.wallBack, 0, winBottom / 2, WALL_Z));
+room.add(box(winW, WALL_H - winTop, wallT, mat.wallBack, 0, winTop + (WALL_H - winTop) / 2, WALL_Z));
+
+// window casing (outer trim, thicker)
+const casingD = 0.12;
+const casingT = 0.07;
+const casingZ = WALL_Z + 0.04;
+room.add(box(winW + casingT * 2, casingT, casingD, mat.frame, 0, winTop + casingT / 2, casingZ));
+room.add(box(winW + casingT * 2, casingT, casingD, mat.frame, 0, winBottom - casingT / 2, casingZ));
+room.add(box(casingT, winH + casingT * 2, casingD, mat.frame, -winW / 2 - casingT / 2, winY, casingZ));
+room.add(box(casingT, winH + casingT * 2, casingD, mat.frame, winW / 2 + casingT / 2, winY, casingZ));
+
+// sill (projects into room)
+const sillDepth = 0.18, sillThick = 0.05, sillOverhang = 0.08;
+room.add(box(winW + casingT * 2 + sillOverhang * 2, sillThick, sillDepth, mat.sill,
+  0, winBottom - sillThick / 2 - 0.01, WALL_Z + sillDepth / 2 - 0.02));
+// sill apron
+room.add(box(winW + casingT * 2 + sillOverhang * 2, 0.04, 0.03, mat.sill,
+  0, winBottom - sillThick - 0.02, WALL_Z + 0.08));
+
+// mullions (2×2 panes) — vertical + horizontal + thin outer
+const mullT = 0.035, mullD = 0.08, mullZ = WALL_Z + 0.02;
+room.add(box(mullT, winH, mullD, mat.frame, 0, winY, mullZ));
+room.add(box(winW, mullT, mullD, mat.frame, 0, winY, mullZ));
+// thin inner lip around opening
+const lip = 0.025;
+room.add(box(winW, lip, mullD, mat.frame, 0, winTop - lip / 2, mullZ));
+room.add(box(winW, lip, mullD, mat.frame, 0, winBottom + lip / 2, mullZ));
+room.add(box(lip, winH, mullD, mat.frame, -winW / 2 + lip / 2, winY, mullZ));
+room.add(box(lip, winH, mullD, mat.frame, winW / 2 - lip / 2, winY, mullZ));
+
+// four glass panes
+const paneGap = 0.02;
+const paneW = (winW - mullT) / 2 - paneGap;
+const paneH = (winH - mullT) / 2 - paneGap;
+const panePositions = [
+  [-paneW / 2 - mullT / 2, winY + paneH / 2 + mullT / 2],
+  [ paneW / 2 + mullT / 2, winY + paneH / 2 + mullT / 2],
+  [-paneW / 2 - mullT / 2, winY - paneH / 2 - mullT / 2],
+  [ paneW / 2 + mullT / 2, winY - paneH / 2 - mullT / 2],
+];
+for (const [px, py] of panePositions) {
+  const g = box(paneW, paneH, 0.015, mat.glass, px, py, WALL_Z + 0.01);
+  g.castShadow = false;
+  g.receiveShadow = false;
+  room.add(g);
+}
+
+// —— outside world (sky + city) ——
+const outside = new THREE.Group();
+outside.position.set(0, 0, WALL_Z - 0.5);
+scene.add(outside);
+
+// gradient sky (canvas texture, colors updated each frame via draw)
+const skyCanvas = document.createElement('canvas');
+skyCanvas.width = 512; skyCanvas.height = 512;
+const skyCtx = skyCanvas.getContext('2d');
+const skyTex = new THREE.CanvasTexture(skyCanvas);
+skyTex.colorSpace = THREE.SRGBColorSpace;
+const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.DoubleSide });
+const skyMesh = new THREE.Mesh(new THREE.PlaneGeometry(14, 8), skyMat);
+skyMesh.position.set(0, 2.2, -8);
+outside.add(skyMesh);
+
+function drawSky(topHex, midHex, botHex) {
+  const g = skyCtx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, topHex);
+  g.addColorStop(0.45, midHex);
+  g.addColorStop(1, botHex);
+  skyCtx.fillStyle = g;
+  skyCtx.fillRect(0, 0, 512, 512);
+  // soft sun/moon disc
+  skyTex.needsUpdate = true;
+}
+
+// distant ground strip
+const groundFar = new THREE.Mesh(
+  new THREE.PlaneGeometry(16, 4),
+  new THREE.MeshStandardMaterial({ color: 0x2a221c, roughness: 1 })
+);
+groundFar.rotation.x = -Math.PI / 2;
+groundFar.position.set(0, -0.05, -6);
+outside.add(groundFar);
+
+// low-poly city silhouette
+const city = new THREE.Group();
+city.position.set(0, 0, -5.5);
+outside.add(city);
+
+const cityLights = []; // emissive window dots
+const buildingSpecs = [
+  { x: -5.2, w: 1.1, h: 2.4, d: 0.9, mat: mat.building },
+  { x: -3.9, w: 0.85, h: 3.2, d: 0.8, mat: mat.building2 },
+  { x: -2.8, w: 1.3, h: 1.8, d: 1.0, mat: mat.building3 },
+  { x: -1.5, w: 0.7, h: 4.0, d: 0.7, mat: mat.building },
+  { x: -0.6, w: 1.0, h: 2.6, d: 0.85, mat: mat.building2 },
+  { x: 0.5, w: 1.2, h: 3.5, d: 0.9, mat: mat.building3 },
+  { x: 1.6, w: 0.75, h: 2.1, d: 0.7, mat: mat.building },
+  { x: 2.5, w: 1.4, h: 2.9, d: 1.0, mat: mat.building2 },
+  { x: 3.8, w: 0.9, h: 3.8, d: 0.75, mat: mat.building },
+  { x: 4.9, w: 1.1, h: 2.3, d: 0.85, mat: mat.building3 },
+];
+
+for (const b of buildingSpecs) {
+  const mesh = box(b.w, b.h, b.d, b.mat, b.x, b.h / 2, (Math.random() - 0.5) * 0.6);
+  city.add(mesh);
+  // small roof cap
+  city.add(box(b.w * 0.95, 0.08, b.d * 0.95, mat.building2, b.x, b.h + 0.04, mesh.position.z));
+  // window lights grid
+  const cols = Math.max(2, Math.floor(b.w / 0.28));
+  const rows = Math.max(2, Math.floor(b.h / 0.35));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (Math.random() < 0.35) continue;
+      const lightMat = new THREE.MeshBasicMaterial({
+        color: 0xffcc88, transparent: true, opacity: 0,
+      });
+      const wx = b.x - b.w / 2 + 0.18 + c * ((b.w - 0.3) / Math.max(1, cols - 1));
+      const wy = 0.25 + r * ((b.h - 0.4) / Math.max(1, rows - 1));
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.14), lightMat);
+      win.position.set(wx, wy, mesh.position.z + b.d / 2 + 0.01);
+      city.add(win);
+      cityLights.push(lightMat);
+    }
+  }
+}
+
+// —— desk / furniture (unchanged feel) ——
 const deskY = 0.78;
 room.add(box(1.8, 0.06, 0.75, mat.wood, 0, deskY, -0.55));
 room.add(box(0.08, deskY, 0.08, mat.woodDark, -0.8, deskY / 2, -0.85));
@@ -146,23 +285,19 @@ room.add(box(0.08, deskY, 0.08, mat.woodDark, 0.8, deskY / 2, -0.85));
 room.add(box(0.08, deskY, 0.08, mat.woodDark, -0.8, deskY / 2, -0.25));
 room.add(box(0.08, deskY, 0.08, mat.woodDark, 0.8, deskY / 2, -0.25));
 
-// monitor (clickable)
 const monitor = new THREE.Group();
 monitor.name = 'monitor';
 monitor.position.set(0, deskY + 0.03, -0.75);
-const stand = box(0.18, 0.12, 0.14, mat.black, 0, 0.06, 0.02);
-const neck = box(0.06, 0.28, 0.05, mat.black, 0, 0.28, -0.02);
-const bezel = box(0.72, 0.46, 0.05, mat.black, 0, 0.55, -0.02);
+monitor.add(box(0.18, 0.12, 0.14, mat.black, 0, 0.06, 0.02));
+monitor.add(box(0.06, 0.28, 0.05, mat.black, 0, 0.28, -0.02));
+monitor.add(box(0.72, 0.46, 0.05, mat.black, 0, 0.55, -0.02));
 const screen = box(0.64, 0.38, 0.02, mat.screen, 0, 0.55, 0.01);
 screen.name = 'screen';
-monitor.add(stand, neck, bezel, screen);
+monitor.add(screen);
 room.add(monitor);
 
-// chair + character (back to camera, facing desk/window)
-const chair = new THREE.Group();
-chair.position.set(0, 0, 0.35);
-room.add(box(0.48, 0.06, 0.48, mat.woodDark, 0, 0.42, 0.35)); // seat
-room.add(box(0.48, 0.55, 0.06, mat.woodDark, 0, 0.72, 0.56)); // back
+room.add(box(0.48, 0.06, 0.48, mat.woodDark, 0, 0.42, 0.35));
+room.add(box(0.48, 0.55, 0.06, mat.woodDark, 0, 0.72, 0.56));
 room.add(box(0.05, 0.42, 0.05, mat.black, -0.18, 0.21, 0.18));
 room.add(box(0.05, 0.42, 0.05, mat.black, 0.18, 0.21, 0.18));
 room.add(box(0.05, 0.42, 0.05, mat.black, -0.18, 0.21, 0.52));
@@ -170,35 +305,207 @@ room.add(box(0.05, 0.42, 0.05, mat.black, 0.18, 0.21, 0.52));
 
 const character = new THREE.Group();
 character.position.set(0, 0.45, 0.38);
-// torso
 character.add(box(0.32, 0.42, 0.18, mat.cloth, 0, 0.42, 0));
-// head
 character.add(box(0.2, 0.22, 0.2, mat.skin, 0, 0.74, 0));
-// hair (back of head)
 character.add(box(0.21, 0.12, 0.08, mat.hair, 0, 0.8, 0.08));
-// arms
 character.add(box(0.08, 0.28, 0.08, mat.cloth, -0.22, 0.38, -0.05));
 character.add(box(0.08, 0.28, 0.08, mat.cloth, 0.22, 0.38, -0.05));
-// legs
 character.add(box(0.1, 0.32, 0.12, mat.cloth, -0.09, 0.08, 0.02));
 character.add(box(0.1, 0.32, 0.12, mat.cloth, 0.09, 0.08, 0.02));
 room.add(character);
 
-// cup on desk (cylinder)
 room.add(cyl(0.045, 0.04, 0.12, mat.cup, 0.55, deskY + 0.09, -0.4));
-
-// trash can beside desk (cylinder + rim thickness)
 const trash = new THREE.Group();
 trash.position.set(1.15, 0, -0.15);
-const trashBody = cyl(0.16, 0.14, 0.42, mat.trash, 0, 0.21, 0);
-const trashRim = cyl(0.175, 0.175, 0.035, mat.trash, 0, 0.43, 0);
-trash.add(trashBody, trashRim);
+trash.add(cyl(0.16, 0.14, 0.42, mat.trash, 0, 0.21, 0));
+trash.add(cyl(0.175, 0.175, 0.035, mat.trash, 0, 0.43, 0));
 room.add(trash);
+
+// —— day / night cycle keyframes ——
+// t: 0 dawn, 0.15 morning, 0.35 afternoon, 0.55 evening, 0.75 night, 1 dawn
+const KEYS = [
+  { // dawn
+    t: 0,
+    name: '黎明',
+    amb: [0xffb090, 0.28],
+    sunCol: 0xff9a6a, sunInt: 0.7,
+    sunPos: [-4, 1.2, 3],
+    fillCol: 0xff8060, fillInt: 0.25,
+    hemiSky: 0xffc8a0, hemiGround: 0x4a3028, hemiInt: 0.3,
+    lampInt: 0.15,
+    sky: ['#6a4a7a', '#e8a070', '#f0c090'],
+    fog: 0xc08060, bg: 0xb07050,
+    exposure: 0.95,
+    cityLight: 0.05,
+    wallTint: 0xd4c4b0,
+  },
+  { // morning
+    t: 0.15,
+    name: '清晨',
+    amb: [0xffe8d0, 0.45],
+    sunCol: 0xfff0d0, sunInt: 1.2,
+    sunPos: [-3.5, 3.5, 2.5],
+    fillCol: 0xa0c0ff, fillInt: 0.2,
+    hemiSky: 0xfff5e0, hemiGround: 0x6a5040, hemiInt: 0.35,
+    lampInt: 0.05,
+    sky: ['#6ab0e8', '#a8d4f0', '#e8f0f8'],
+    fog: 0xc8d8e8, bg: 0xa0c0d8,
+    exposure: 1.1,
+    cityLight: 0,
+    wallTint: 0xd8c8b4,
+  },
+  { // afternoon
+    t: 0.38,
+    name: '午后',
+    amb: [0xfff5e8, 0.5],
+    sunCol: 0xfff8e8, sunInt: 1.35,
+    sunPos: [1, 5, 2],
+    fillCol: 0x90b0e0, fillInt: 0.22,
+    hemiSky: 0xfffaf0, hemiGround: 0x706050, hemiInt: 0.4,
+    lampInt: 0.0,
+    sky: ['#4a90d0', '#7eb8e8', '#d0e8f8'],
+    fog: 0xb0c8d8, bg: 0x88b0c8,
+    exposure: 1.15,
+    cityLight: 0,
+    wallTint: 0xdcccb8,
+  },
+  { // evening (warm — our locked mood)
+    t: 0.55,
+    name: '傍晚',
+    amb: [0xffc9a0, 0.38],
+    sunCol: 0xffb070, sunInt: 1.1,
+    sunPos: [3.5, 2.0, 2.5],
+    fillCol: 0xff8a5c, fillInt: 0.35,
+    hemiSky: 0xffd0a0, hemiGround: 0x5a3828, hemiInt: 0.3,
+    lampInt: 0.35,
+    sky: ['#3a2a50', '#e07040', '#f0a060'],
+    fog: 0xa06040, bg: 0x8a4830,
+    exposure: 1.0,
+    cityLight: 0.15,
+    wallTint: 0xd4b898,
+  },
+  { // night
+    t: 0.75,
+    name: '夜晚',
+    amb: [0x405070, 0.18],
+    sunCol: 0x6080b0, sunInt: 0.15,
+    sunPos: [-2, 4, -1],
+    fillCol: 0x304060, fillInt: 0.12,
+    hemiSky: 0x1a2038, hemiGround: 0x1a1010, hemiInt: 0.15,
+    lampInt: 0.85,
+    sky: ['#0a0e1c', '#1a2040', '#2a3048'],
+    fog: 0x1a1828, bg: 0x12101c,
+    exposure: 0.85,
+    cityLight: 0.85,
+    wallTint: 0x8a7a6a,
+  },
+  { // back to dawn
+    t: 1.0,
+    name: '黎明',
+    amb: [0xffb090, 0.28],
+    sunCol: 0xff9a6a, sunInt: 0.7,
+    sunPos: [-4, 1.2, 3],
+    fillCol: 0xff8060, fillInt: 0.25,
+    hemiSky: 0xffc8a0, hemiGround: 0x4a3028, hemiInt: 0.3,
+    lampInt: 0.15,
+    sky: ['#6a4a7a', '#e8a070', '#f0c090'],
+    fog: 0xc08060, bg: 0xb07050,
+    exposure: 0.95,
+    cityLight: 0.05,
+    wallTint: 0xd4c4b0,
+  },
+];
+
+const _cA = new THREE.Color(), _cB = new THREE.Color(), _cOut = new THREE.Color();
+const _vA = new THREE.Vector3(), _vB = new THREE.Vector3();
+
+function lerpKeys(t) {
+  let i = 0;
+  while (i < KEYS.length - 1 && KEYS[i + 1].t < t) i++;
+  const a = KEYS[i], b = KEYS[Math.min(i + 1, KEYS.length - 1)];
+  const span = b.t - a.t || 1;
+  const u = Math.min(1, Math.max(0, (t - a.t) / span));
+  // smoothstep
+  const e = u * u * (3 - 2 * u);
+  return { a, b, e, name: e < 0.5 ? a.name : b.name };
+}
+
+function mixColor(out, ca, cb, e) {
+  _cA.set(ca); _cB.set(cb);
+  out.copy(_cA).lerp(_cB, e);
+  return out;
+}
+
+function applyDayCycle(t) {
+  const { a, b, e, name } = lerpKeys(t);
+
+  ambient.color.set(a.amb[0]).lerp(_cA.set(b.amb[0]), e);
+  ambient.intensity = a.amb[1] + (b.amb[1] - a.amb[1]) * e;
+
+  sun.color.set(a.sunCol).lerp(_cA.set(b.sunCol), e);
+  sun.intensity = a.sunInt + (b.sunInt - a.sunInt) * e;
+  _vA.set(...a.sunPos); _vB.set(...b.sunPos);
+  sun.position.copy(_vA).lerp(_vB, e);
+
+  fill.color.set(a.fillCol).lerp(_cA.set(b.fillCol), e);
+  fill.intensity = a.fillInt + (b.fillInt - a.fillInt) * e;
+  fill.position.set(-sun.position.x * 0.4, sun.position.y * 0.6, -sun.position.z * 0.3);
+
+  hemi.color.set(a.hemiSky).lerp(_cA.set(b.hemiSky), e);
+  hemi.groundColor.set(a.hemiGround).lerp(_cA.set(b.hemiGround), e);
+  hemi.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * e;
+
+  lamp.intensity = a.lampInt + (b.lampInt - a.lampInt) * e;
+
+  const skyTop = mixHex(a.sky[0], b.sky[0], e);
+  const skyMid = mixHex(a.sky[1], b.sky[1], e);
+  const skyBot = mixHex(a.sky[2], b.sky[2], e);
+  drawSky(skyTop, skyMid, skyBot);
+
+  mixColor(_cOut, a.fog, b.fog, e);
+  scene.fog.color.copy(_cOut);
+  scene.background.copy(_cOut);
+  mixColor(_cOut, a.bg, b.bg, e);
+  // keep fog linked to bg mood
+  scene.background.copy(mixColor(_cOut, a.bg, b.bg, e));
+
+  renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
+
+  const cl = a.cityLight + (b.cityLight - a.cityLight) * e;
+  for (const lm of cityLights) {
+    lm.opacity = cl * (0.55 + 0.45 * Math.sin(lm.id * 12.9898 + t * 40)); // slight twinkle variance
+  }
+
+  mixColor(_cOut, a.wallTint, b.wallTint, e);
+  mat.wall.color.copy(_cOut);
+  mat.wallBack.color.copy(_cOut).multiplyScalar(0.95);
+
+  phaseEl.textContent = `昼夜循环 · ${name} · 约 75 秒一轮`;
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+function mixHex(ha, hb, e) {
+  const a = hexToRgb(ha), b = hexToRgb(hb);
+  const r = Math.round(a[0] + (b[0] - a[0]) * e);
+  const g = Math.round(a[1] + (b[1] - a[1]) * e);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * e);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)}`;
+}
+
+// assign stable ids for twinkle
+cityLights.forEach((lm, i) => { lm.id = i; });
 
 // click → camera push toward monitor
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-let anim = null; // {t0, dur, fromPos, toPos, fromTarget, toTarget}
+let anim = null;
 
 function startDock() {
   const fromPos = camera.position.clone();
@@ -221,7 +528,6 @@ canvas.addEventListener('pointerdown', (e) => {
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects([monitor], true);
   if (hits.length) {
-    // only treat as click if little movement (OrbitControls also listens)
     const startX = e.clientX, startY = e.clientY;
     const up = (ev) => {
       canvas.removeEventListener('pointerup', up);
@@ -237,8 +543,12 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+const t0 = performance.now();
 function tick(now) {
   requestAnimationFrame(tick);
+  const cycleT = ((now - t0) % CYCLE_MS) / CYCLE_MS;
+  applyDayCycle(cycleT);
+
   if (anim) {
     const u = Math.min(1, (now - anim.t0) / anim.dur);
     const e = easeInOut(u);
