@@ -2,44 +2,81 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VibeSticker · 室内泳池预览</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>VibeSticker · 室内泳池</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{width:100%;height:100%;overflow:hidden;background:#1a2332;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
-  #hud{position:fixed;top:0;left:0;right:0;z-index:10;padding:14px 18px;text-align:center;color:#f5faf8;font-size:14px;letter-spacing:.04em;background:linear-gradient(180deg,rgba(20,30,42,.78),rgba(20,30,42,0));pointer-events:none;user-select:none}
-  #hint{position:fixed;bottom:16px;left:0;right:0;z-index:10;text-align:center;color:rgba(245,250,248,.68);font-size:12px;pointer-events:none;user-select:none;letter-spacing:.06em}
-  #c{display:block;width:100%;height:100%;touch-action:none}
-  #err{display:none;position:fixed;inset:0;z-index:30;align-items:center;justify-content:center;padding:24px;background:rgba(20,30,42,.94);color:#f5faf8;font-size:15px;line-height:1.6;text-align:center;white-space:pre-wrap}
-  #err.show{display:flex}
-  #panel{
-    display:none;position:fixed;z-index:20;right:max(18px,4vw);top:50%;transform:translateY(-50%);
-    width:min(320px,86vw);padding:22px 22px 18px;border-radius:16px;
-    background:rgba(18,26,36,.88);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    color:#f5faf8;box-shadow:0 16px 48px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.1);
-  }
-  #panel.show{display:block}
-  #panel h2{font-size:20px;font-weight:650;margin-bottom:8px;letter-spacing:.02em}
-  #panel p{font-size:13.5px;line-height:1.55;color:rgba(245,250,248,.82);margin-bottom:16px}
-  #panel button{appearance:none;border:0;border-radius:999px;padding:9px 18px;cursor:pointer;background:#7ec8c4;color:#102028;font-weight:600;font-size:13px}
-  #panel button:hover{filter:brightness(1.06)}
-  #loading{position:fixed;inset:0;z-index:25;display:flex;align-items:center;justify-content:center;background:#1a2332;color:#cfe8e4;font-size:14px;letter-spacing:.08em}
-  #loading.hide{opacity:0;pointer-events:none;transition:opacity .35s}
-  #orientBtn{display:none;position:fixed;z-index:18;left:50%;bottom:52px;transform:translateX(-50%);border:0;border-radius:999px;padding:10px 16px;font-size:13px;font-weight:600;cursor:pointer;background:rgba(126,200,196,.95);color:#102028;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-  #orientBtn.show{display:block}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#0e1620;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#f5faf8}
+#c{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:fixed;top:0;left:0;right:0;z-index:12;padding:14px 18px;text-align:center;font-size:13.5px;letter-spacing:.04em;background:linear-gradient(180deg,rgba(10,16,24,.75),transparent);pointer-events:none;user-select:none}
+#hint{position:fixed;bottom:14px;left:0;right:0;z-index:12;text-align:center;font-size:12px;color:rgba(245,250,248,.72);letter-spacing:.06em;pointer-events:none}
+#loading{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:#0e1620;font-size:14px;letter-spacing:.1em;transition:opacity .4s}
+#loading.hide{opacity:0;pointer-events:none}
+#err{display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;padding:28px;background:rgba(10,16,24,.95);text-align:center;white-space:pre-wrap;line-height:1.55}
+#err.show{display:flex}
+#orientBtn{display:none;position:fixed;z-index:20;left:50%;bottom:52px;transform:translateX(-50%);border:0;border-radius:999px;padding:11px 18px;font-size:13px;font-weight:650;cursor:pointer;background:rgba(126,200,196,.95);color:#102028;box-shadow:0 10px 28px rgba(0,0,0,.28)}
+#orientBtn.show{display:block}
+.panel{
+  display:none;position:fixed;z-index:25;top:50%;transform:translateY(-50%);
+  width:min(340px,88vw);padding:22px 22px 18px;border-radius:18px;
+  background:rgba(14,22,32,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.12);box-shadow:0 20px 60px rgba(0,0,0,.4);
+}
+.panel.show{display:block}
+.panel.right{right:max(16px,3.5vw)}
+.panel.left{left:max(16px,3.5vw)}
+.panel h2{font-size:19px;font-weight:650;margin-bottom:8px}
+.panel p{font-size:13.5px;line-height:1.55;color:rgba(245,250,248,.82);margin-bottom:14px}
+.panel .actions{display:flex;gap:8px;flex-wrap:wrap}
+.panel button,.cardBtn{
+  appearance:none;border:0;border-radius:999px;padding:9px 16px;cursor:pointer;
+  background:#7ec8c4;color:#102028;font-weight:650;font-size:13px
+}
+.panel button.ghost{background:rgba(255,255,255,.1);color:#f5faf8}
+#stickerCard{
+  display:none;position:fixed;z-index:26;left:50%;top:42%;
+  width:min(220px,56vw);aspect-ratio:1;border-radius:18px;
+  background:linear-gradient(145deg,#fff8f0,#e8f6f4);
+  box-shadow:0 24px 64px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.35) inset;
+  transform:translate(-50%,-50%) rotate(-4deg);
+  touch-action:none;cursor:grab;user-select:none;
+}
+#stickerCard.show{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px}
+#stickerCard .emoji{font-size:64px;filter:drop-shadow(0 8px 12px rgba(0,0,0,.15))}
+#stickerCard .label{font-size:13px;font-weight:700;color:#1a3030;letter-spacing:.04em}
+#stickerCard .sub{font-size:11px;color:#5a7070}
+#cardBar{display:none;position:fixed;z-index:26;left:50%;bottom:72px;transform:translateX(-50%);gap:8px}
+#cardBar.show{display:flex}
+.leafFx{position:fixed;z-index:22;pointer-events:none;font-size:22px;transition:transform 1.1s cubic-bezier(.2,.8,.2,1),opacity 1.1s;opacity:1}
+.leafFx.fall{opacity:0}
+#toast{position:fixed;z-index:30;left:50%;bottom:88px;transform:translateX(-50%);background:rgba(14,22,32,.88);padding:10px 16px;border-radius:999px;font-size:12.5px;opacity:0;transition:opacity .25s;pointer-events:none;border:1px solid rgba(255,255,255,.1)}
+#toast.show{opacity:1}
 </style>
 </head>
 <body>
 <div id="loading">加载泳池场景…</div>
-<div id="hud">拖动环视 · 滚轮缩放 · 点击躺椅靠近 · 水面滑动推浪</div>
+<div id="hud">拖动环视 · 滚轮微距 · 点热点探索 · 水面推浪</div>
 <div id="hint">果冻水体 · 窗外日照循环 · VibeSticker</div>
 <button type="button" id="orientBtn">开启陀螺仪控水</button>
 <div id="err" role="alert"></div>
-<aside id="panel" aria-live="polite">
-  <h2>VibeSticker</h2>
-  <p>欢迎来到室内泳池场景。这是交互入口占位——之后可换成贴纸定制、下单或品牌故事。</p>
-  <button type="button" id="panelClose">关闭 · 退回远景</button>
+<aside id="loungePanel" class="panel right" aria-live="polite">
+  <h2>躺椅 · Lounge</h2>
+  <p>靠在泳池边，窗外阳光慢慢移动。这里之后会放 VibeSticker 品牌故事与场景漫游。</p>
+  <div class="actions"><button type="button" id="loungeClose" class="ghost">退回远景</button><button type="button" id="loungeCta">探索贴纸</button></div>
 </aside>
+<aside id="windowPanel" class="panel left">
+  <h2>落地窗 · Day Cycle</h2>
+  <p>从早到晚的真实光影在窗外流转，车流缓慢经过。滚轮可微距观察日照与城市。</p>
+  <div class="actions"><button type="button" id="windowClose" class="ghost">退回</button></div>
+</aside>
+<aside id="plantPanel" class="panel right">
+  <h2>绿植掉落贴纸</h2>
+  <p>叶片化作一张小贴纸预览——之后可从这里进入生成 / 购买流程。</p>
+  <div class="actions"><button type="button" id="plantClose" class="ghost">关闭</button><button type="button" id="plantCta">生成贴纸</button></div>
+</aside>
+<div id="stickerCard"><div class="emoji">🏷️</div><div class="label">VibeSticker</div><div class="sub">拖转预览 · 占位卡</div></div>
+<div id="cardBar"><button class="cardBtn" id="cardBuy" type="button">购买占位</button><button class="cardBtn" id="cardGen" type="button" style="background:#f0c14a">生成占位</button><button class="cardBtn ghost" id="cardClose" type="button" style="background:rgba(255,255,255,.14);color:#fff">收起</button></div>
+<div id="toast"></div>
 <canvas id="c"></canvas>
 <script type="importmap">
 {"imports":{
@@ -52,810 +89,736 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const errEl = document.getElementById('err');
-const loadingEl = document.getElementById('loading');
-const panelEl = document.getElementById('panel');
-const panelClose = document.getElementById('panelClose');
-const orientBtn = document.getElementById('orientBtn');
-const hudEl = document.getElementById('hud');
+const $ = (id) => document.getElementById(id);
+const errEl=$('err'), loadingEl=$('loading'), hudEl=$('hud'), hintEl=$('hint'), orientBtn=$('orientBtn');
+const loungePanel=$('loungePanel'), windowPanel=$('windowPanel'), plantPanel=$('plantPanel');
+const stickerCard=$('stickerCard'), cardBar=$('cardBar');
+const toastEl=$('toast');
 
-function showErr(msg) {
-  console.error(msg);
-  errEl.textContent = '泳池场景加载失败\n' + msg + '\n\n可刷新重试；请确认 /models/pool/Swiming%20Pool.gltf 可访问。';
-  errEl.classList.add('show');
-  loadingEl.classList.add('hide');
-}
+function showErr(msg){console.error(msg);errEl.textContent='泳池场景加载失败\n'+msg;errEl.classList.add('show');loadingEl.classList.add('hide');}
+function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),2200);}
+function normName(n){return String(n||'').replace(/\./g,'').toLowerCase();}
+function hidePanels(){loungePanel.classList.remove('show');windowPanel.classList.remove('show');plantPanel.classList.remove('show');}
 
 try {
-
-const canvas = document.getElementById('c');
-const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
-const hasFinePointer = window.matchMedia && window.matchMedia('(pointer:fine)').matches;
-const desktopWater = hasFinePointer || !isMobile;
-if (isMobile) hudEl.textContent = '拖动环视 · 双指缩放 · 点躺椅靠近 · 倾斜手机涌浪';
+const canvas=$('c');
+const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/.test(navigator.platform));
+const hasFinePointer=window.matchMedia&&window.matchMedia('(pointer:fine)').matches;
+const desktopWater=hasFinePointer||!isMobile;
+if(isMobile) hudEl.textContent='拖动环视 · 点热点 · 倾斜手机涌浪';
 
 let renderer;
-try {
-  renderer = new THREE.WebGLRenderer({
-    canvas, antialias: !isMobile, alpha: false,
-    powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false,
-  });
-} catch (e1) {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'default' });
-}
-if (!renderer.getContext()) throw new Error('WebGL 不可用（当前设备/浏览器不支持）');
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.25 : 1.75));
-renderer.setSize(innerWidth, innerHeight, false);
-renderer.setClearColor(0x87a8c4, 1);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
-renderer.shadowMap.enabled = !isMobile;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+try{renderer=new THREE.WebGLRenderer({canvas,antialias:!isMobile,alpha:false,powerPreference:'high-performance'});}
+catch{renderer=new THREE.WebGLRenderer({canvas,antialias:false,alpha:false});}
+if(!renderer.getContext()) throw new Error('WebGL 不可用');
+renderer.setPixelRatio(Math.min(devicePixelRatio||1, isMobile?1.4:1.9));
+renderer.setSize(innerWidth,innerHeight,false);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.18;
+renderer.shadowMap.enabled=!isMobile;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.localClippingEnabled=false;
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9eb8d0);
-scene.fog = new THREE.Fog(0x9eb8d0, 18, 55);
+const scene=new THREE.Scene();
+scene.fog=new THREE.Fog(0x6a98b8,24,72);
 
-const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.08, 120);
-camera.position.set(1.2, 3.4, 7.2);
+const camera=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,0.05,110);
+camera.position.set(0.5,1.68,2.75);
 
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.075;
-controls.enablePan = false;
-controls.target.set(0.4, 1.2, 0);
-controls.minDistance = 2.2;
-controls.maxDistance = 14;
-controls.minPolarAngle = 0.55;
-controls.maxPolarAngle = Math.PI * 0.48;
-const AZ_MIN = -0.72;
-const AZ_MAX = 0.72;
-controls.minAzimuthAngle = AZ_MIN;
-controls.maxAzimuthAngle = AZ_MAX;
+const controls=new OrbitControls(camera,canvas);
+controls.enableDamping=true; controls.dampingFactor=0.078;
+controls.enablePan=false;
+controls.target.set(0.4,0.7,-0.4);
+controls.minDistance=1.45;
+controls.maxDistance=4.15;
+controls.minPolarAngle=0.78;
+controls.maxPolarAngle=Math.PI*0.448;
+const AZ_MIN=-0.52, AZ_MAX=0.52;
+controls.minAzimuthAngle=AZ_MIN; controls.maxAzimuthAngle=AZ_MAX;
 controls.update();
 
-const ambient = new THREE.AmbientLight(0xfff2dd, 0.22);
-scene.add(ambient);
-const hemi = new THREE.HemisphereLight(0xdfefff, 0x6a5a48, 0.55);
-scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff2e0, 1.55);
-sun.position.set(2, 12, -14);
-sun.target.position.set(0, 1.0, 0);
-sun.castShadow = !isMobile;
-if (sun.castShadow) {
-  const res = 2048;
-  sun.shadow.mapSize.set(res, res);
-  sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
-  sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
-  sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10;
-  sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.035;
-  sun.shadow.radius = 2.5;
+/* lights */
+const ambient=new THREE.AmbientLight(0xfff2dd,0.3); scene.add(ambient);
+const hemi=new THREE.HemisphereLight(0xe8f4ff,0x6a5a48,0.65); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff4e8,2.35);
+sun.position.set(-8,14,-16); sun.target.position.set(0.4,0.5,0);
+sun.castShadow=!isMobile;
+if(sun.castShadow){
+  sun.shadow.mapSize.set(2048,2048);
+  Object.assign(sun.shadow.camera,{near:1,far:60,left:-14,right:14,top:14,bottom:-14});
+  sun.shadow.bias=-0.00018; sun.shadow.normalBias=0.035; sun.shadow.radius=2;
 }
 scene.add(sun); scene.add(sun.target);
-const fill = new THREE.DirectionalLight(0xb8d4ff, 0.28);
-fill.position.set(6, 5, 8);
-scene.add(fill);
-const rim = new THREE.DirectionalLight(0xffe8c8, 0.25);
-rim.position.set(-4, 4, 3);
-scene.add(rim);
-// sunlight pouring in through the big window (-Z)
-const windowSun = new THREE.DirectionalLight(0xfff0d8, 1.1);
-windowSun.position.set(0, 6, -10);
-windowSun.target.position.set(0, 0.8, 1.5);
+const fill=new THREE.DirectionalLight(0xb8d4ff,0.34); fill.position.set(7,5,6); scene.add(fill);
+const rim=new THREE.DirectionalLight(0xffe0b8,0.32); rim.position.set(-5,4,4); scene.add(rim);
+const windowSun=new THREE.DirectionalLight(0xfff0d8,1.55);
+windowSun.position.set(0,7,-12); windowSun.target.position.set(0.3,0.6,1.0);
 scene.add(windowSun); scene.add(windowSun.target);
-const bounce = new THREE.PointLight(0xffd2a0, 0.45, 16, 1.6);
-bounce.position.set(0, 2.2, -2.2);
-scene.add(bounce);
+const bounce=new THREE.PointLight(0xffd2a0,0.6,18,1.45); bounce.position.set(0.2,2.0,-2.0); scene.add(bounce);
+const poolGlow=new THREE.PointLight(0x6ad4e6,0.4,9,2); poolGlow.position.set(0.55,0.35,0); scene.add(poolGlow);
 
-const outdoor = new THREE.Group(); scene.add(outdoor);
-const buildingMats = [
-  new THREE.MeshStandardMaterial({ color: 0x6d7f92, roughness: 0.85, metalness: 0.05 }),
-  new THREE.MeshStandardMaterial({ color: 0x8a7b6a, roughness: 0.9, metalness: 0 }),
-  new THREE.MeshStandardMaterial({ color: 0x5a6a78, roughness: 0.8, metalness: 0.08 }),
-  new THREE.MeshStandardMaterial({ color: 0x9aa8b5, roughness: 0.75, metalness: 0.05 }),
-];
-const cityWinMats = [];
-function makeBuilding(x, z, w, d, h, mat) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  mesh.position.set(x, h * 0.5 - 0.2, z); outdoor.add(mesh);
-  const winMat = new THREE.MeshStandardMaterial({ color: 0xcfe6ff, emissive: 0xffe6a0, emissiveIntensity: 0.08, roughness: 0.35 });
+/* outdoor city */
+const outdoor=new THREE.Group(); scene.add(outdoor);
+const cityWinMats=[];
+const rnd=(()=>{let a=42;return()=>{a=(a*16807)%2147483647;return(a-1)/2147483646;};})();
+const facadePalette=[0x6d7f92,0x8a7b6a,0x5a6a78,0x9aa8b5,0x7a8c78,0x958070,0x4e5d6c,0xb0a494,0x708090];
+const roofPalette=[0x3a424c,0x5a4034,0x2e3640,0x6a5a48,0x44505c];
+
+function makeBuilding(x,z,w,d,h,color){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshStandardMaterial({color,roughness:0.82,metalness:0.04}));
+  body.position.y=h*0.5; body.castShadow=!isMobile; body.receiveShadow=!isMobile; g.add(body);
+  const roofMat=new THREE.MeshStandardMaterial({color:roofPalette[Math.floor(rnd()*roofPalette.length)],roughness:0.9});
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(w*1.08,Math.max(0.1,h*0.035),d*1.08),roofMat);
+  roof.position.y=h+0.05; g.add(roof);
+  if(rnd()>0.4){const cap=new THREE.Mesh(new THREE.BoxGeometry(w*0.32,0.3+rnd()*0.55,d*0.32),roofMat); cap.position.y=h+0.38; g.add(cap);}
+  const winMat=new THREE.MeshStandardMaterial({color:0xb8d4ef,emissive:0xffe2a0,emissiveIntensity:0.05,roughness:0.25,metalness:0.18});
   cityWinMats.push(winMat);
-  const win = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, h * 0.55, 0.05), winMat);
-  win.position.set(x, h * 0.42, z + d * 0.5 + 0.02); outdoor.add(win);
+  const floors=Math.max(3,Math.floor(h/0.8));
+  const cols=Math.max(2,Math.floor(w/0.5));
+  for(let f=0;f<floors;f++){
+    for(let c=0;c<cols;c++){
+      if(rnd()<0.1) continue;
+      const ww=w*0.72/cols*0.7, wh=Math.min(0.4,h/floors*0.52);
+      const win=new THREE.Mesh(new THREE.BoxGeometry(ww,wh,0.04),winMat);
+      win.position.set(-w*0.36+(c+0.5)*(w*0.72/cols), 0.42+f*(h*0.86/floors), d*0.5+0.02);
+      g.add(win);
+    }
+  }
+  // ledge lines between floors
+  for(let f=1;f<floors;f++){
+    const ledge=new THREE.Mesh(new THREE.BoxGeometry(w*0.98,0.04,0.06), new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.6,transparent:true,opacity:0.18}));
+    ledge.position.set(0, f*(h/floors), d*0.5+0.01); g.add(ledge);
+  }
+  g.position.set(x,-0.15,z); outdoor.add(g);
 }
-const rnd = (() => { let a = 42; return () => { a = (a * 16807) % 2147483647; return (a - 1) / 2147483646; }; })();
-for (let i = 0; i < 10; i++) makeBuilding(-8 + i * 2.1 + (rnd() - 0.5) * 0.6, -6.5 - rnd() * 4.5, 1.1 + rnd() * 1.4, 1.0 + rnd() * 1.2, 2.5 + rnd() * 6.5, buildingMats[i % buildingMats.length]);
-for (let i = 0; i < 5; i++) makeBuilding(-8.5 - rnd() * 3, -2 + i * 1.8 + (rnd() - 0.5), 1.2 + rnd(), 1.1 + rnd(), 3 + rnd() * 5, buildingMats[(i + 2) % buildingMats.length]);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 30), new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 1 }));
-ground.rotation.x = -Math.PI / 2; ground.position.set(-2, -0.25, -10); outdoor.add(ground);
+for(let i=0;i<13;i++) makeBuilding(-9.2+i*1.75+(rnd()-0.5)*0.4, -7.0-rnd()*5.8, 1.2+rnd()*1.5, 1.05+rnd()*1.3, 3.4+rnd()*8.8, facadePalette[i%facadePalette.length]);
+for(let i=0;i<6;i++) makeBuilding(-10.8-rnd()*2.6, -1.2+i*1.65, 1.35+rnd(), 1.15+rnd(), 3.8+rnd()*6, facadePalette[(i+3)%facadePalette.length]);
+for(let i=0;i<5;i++) makeBuilding(8.8+rnd()*2.0, -2.8-i*2.0, 1.35+rnd(), 1.2+rnd(), 4+rnd()*5.5, facadePalette[(i+5)%facadePalette.length]);
 
-const cars = [];
-const carColors = [0xe85d4c, 0xf0c14a, 0x4aa3e0, 0x3d3d3d, 0xffffff];
-function makeCar(color) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.32, 0.42), new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.2 }));
-  body.position.y = 0.22; g.add(body);
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.24, 0.38), new THREE.MeshStandardMaterial({ color: 0xa8c8e8, roughness: 0.3 }));
-  cabin.position.set(-0.05, 0.42, 0); g.add(cabin);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.28), new THREE.MeshStandardMaterial({ color: 0xfff2cc, emissive: 0xfff0c0, emissiveIntensity: 0.2 }));
-  head.position.set(0.42, 0.22, 0); g.add(head); g.userData.head = head.material;
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.28), new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0xff2200, emissiveIntensity: 0.15 }));
-  tail.position.set(-0.42, 0.22, 0); g.add(tail); g.userData.tail = tail.material;
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(52,38), new THREE.MeshStandardMaterial({color:0x3a4450,roughness:0.95}));
+ground.rotation.x=-Math.PI/2; ground.position.set(-1,-0.22,-11); ground.receiveShadow=!isMobile; outdoor.add(ground);
+const road=new THREE.Mesh(new THREE.PlaneGeometry(42,2.6), new THREE.MeshStandardMaterial({color:0x262c34,roughness:0.92}));
+road.rotation.x=-Math.PI/2; road.position.set(-1,-0.2,-4.7); outdoor.add(road);
+const lane=new THREE.Mesh(new THREE.PlaneGeometry(42,0.07), new THREE.MeshStandardMaterial({color:0xd8c878,emissive:0xbbaa44,emissiveIntensity:0.1,roughness:0.7}));
+lane.rotation.x=-Math.PI/2; lane.position.set(-1,-0.195,-4.7); outdoor.add(lane);
+
+const cars=[];
+const carColors=[0xe85d4c,0xf0c14a,0x4aa3e0,0x2d2d32,0xf4f4f0,0x5cbf7a,0xc46ad4];
+function makeCar(color){
+  const g=new THREE.Group();
+  const bodyMat=new THREE.MeshStandardMaterial({color,roughness:0.35,metalness:0.4});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.25,0.32,0.58),bodyMat); body.position.y=0.28; body.castShadow=!isMobile; g.add(body);
+  const cabin=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.27,0.46), new THREE.MeshStandardMaterial({color:0x8eb4d4,roughness:0.2,metalness:0.3}));
+  cabin.position.set(-0.05,0.51,0); g.add(cabin);
+  const hood=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.1,0.48),bodyMat); hood.position.set(0.34,0.38,0); g.add(hood);
+  const wheelMat=new THREE.MeshStandardMaterial({color:0x151515,roughness:0.9});
+  [[0.34,0.12,0.24],[0.34,0.12,-0.24],[-0.34,0.12,0.24],[-0.34,0.12,-0.24]].forEach(([x,y,z])=>{
+    const wh=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,0.09,10),wheelMat); wh.rotation.z=Math.PI/2; wh.position.set(x,y,z); g.add(wh);
+  });
+  const head=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.08,0.38), new THREE.MeshStandardMaterial({color:0xfff2cc,emissive:0xfff0c0,emissiveIntensity:0.3}));
+  head.position.set(0.54,0.28,0); g.add(head); g.userData.head=head.material;
+  const tail=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.07,0.38), new THREE.MeshStandardMaterial({color:0xff4444,emissive:0xff2200,emissiveIntensity:0.2}));
+  tail.position.set(-0.54,0.28,0); g.add(tail); g.userData.tail=tail.material;
   return g;
 }
-for (let i = 0; i < 4; i++) {
-  const car = makeCar(carColors[i % carColors.length]);
-  car.position.set(-10 + i * 4.5, 0, -5.2 - (i % 2) * 1.1);
-  car.userData.speed = 1.4 + (i % 3) * 0.55;
-  car.userData.laneZ = car.position.z;
+for(let i=0;i<6;i++){
+  const car=makeCar(carColors[i%carColors.length]);
+  car.position.set(-12+i*4.0,0,-4.35-(i%2)*0.75);
+  car.userData.speed=1.05+(i%3)*0.42; car.userData.laneZ=car.position.z;
+  if(i%2) car.rotation.y=Math.PI;
   outdoor.add(car); cars.push(car);
 }
 
-/* ========== Procedural sky dome (real-time, no bake) ========== */
-const skyUniforms = {
-  uSunDir: { value: new THREE.Vector3(0.2, 0.8, -0.5).normalize() },
-  uZenith: { value: new THREE.Color(0x4a90d9) },
-  uHorizon: { value: new THREE.Color(0xc8dff0) },
-  uGround: { value: new THREE.Color(0x3a4038) },
-  uSunColor: { value: new THREE.Color(0xfff2dd) },
-  uSunSize: { value: 0.035 },
-  uSunIntensity: { value: 1.2 },
-  uNightGlow: { value: 0.0 },
+/* sky */
+const skyUniforms={
+  uSunDir:{value:new THREE.Vector3(0.2,0.8,-0.5).normalize()},
+  uZenith:{value:new THREE.Color(0x4a90d9)},
+  uHorizon:{value:new THREE.Color(0xc8dff0)},
+  uGround:{value:new THREE.Color(0x3a4038)},
+  uSunColor:{value:new THREE.Color(0xfff2dd)},
+  uSunSize:{value:0.032}, uSunIntensity:{value:1.2}, uNightGlow:{value:0},
 };
-const skyMat = new THREE.ShaderMaterial({
-  uniforms: skyUniforms,
-  side: THREE.BackSide,
-  depthWrite: false,
-  fog: false,
-  vertexShader: `
-    varying vec3 vDir;
-    void main() {
-      vec4 wp = modelMatrix * vec4(position, 1.0);
-      vDir = normalize(wp.xyz);
-      gl_Position = projectionMatrix * viewMatrix * wp;
-    }
-  `,
-  fragmentShader: `
-    uniform vec3 uSunDir, uZenith, uHorizon, uGround, uSunColor;
-    uniform float uSunSize, uSunIntensity, uNightGlow;
-    varying vec3 vDir;
-    void main() {
-      vec3 d = normalize(vDir);
-      float h = d.y;
-      // atmosphere gradient
-      vec3 col = mix(uHorizon, uZenith, smoothstep(-0.05, 0.65, h));
-      col = mix(uGround, col, smoothstep(-0.35, 0.02, h));
-      // horizon warm haze
-      float haze = exp(-abs(h) * 6.0) * 0.25;
-      col += uHorizon * haze;
-      // sun disc + bloom
-      float sunDot = max(dot(d, normalize(uSunDir)), 0.0);
-      float disc = smoothstep(1.0 - uSunSize, 1.0, sunDot);
-      float glow = pow(sunDot, 32.0) * 0.55 + pow(sunDot, 8.0) * 0.2;
-      col += uSunColor * (disc * 2.2 + glow) * uSunIntensity;
-      // night stars sprinkle
-      float stars = step(0.997, fract(sin(dot(d.xy, vec2(12.9898,78.233))) * 43758.5453));
-      col += vec3(0.85, 0.9, 1.0) * stars * uNightGlow;
-      gl_FragColor = vec4(col, 1.0);
-    }
-  `,
+const skyMat=new THREE.ShaderMaterial({
+  uniforms:skyUniforms, side:THREE.BackSide, depthWrite:false, fog:false,
+  vertexShader:`varying vec3 vDir; void main(){vec4 wp=modelMatrix*vec4(position,1.0); vDir=normalize(wp.xyz); gl_Position=projectionMatrix*viewMatrix*wp;}`,
+  fragmentShader:`
+    uniform vec3 uSunDir,uZenith,uHorizon,uGround,uSunColor; uniform float uSunSize,uSunIntensity,uNightGlow; varying vec3 vDir;
+    void main(){
+      vec3 d=normalize(vDir); float h=d.y;
+      vec3 col=mix(uHorizon,uZenith,smoothstep(-0.05,0.65,h));
+      col=mix(uGround,col,smoothstep(-0.35,0.02,h));
+      col+=uHorizon*exp(-abs(h)*6.0)*0.3;
+      float sunDot=max(dot(d,normalize(uSunDir)),0.0);
+      float disc=smoothstep(1.0-uSunSize,1.0,sunDot);
+      float glow=pow(sunDot,26.0)*0.7+pow(sunDot,5.5)*0.32;
+      col+=uSunColor*(disc*2.5+glow)*uSunIntensity;
+      float stars=step(0.9975,fract(sin(dot(d.xy,vec2(12.9898,78.233)))*43758.5453));
+      col+=vec3(0.85,0.9,1.0)*stars*uNightGlow;
+      gl_FragColor=vec4(col,1.0);
+    }`,
 });
-const skyDome = new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16), skyMat);
-skyDome.renderOrder = -10;
-scene.add(skyDome);
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(95,48,24),skyMat));
 
-/* ========== Daylight cycle through the window (slow loop) ========== */
-// timeOfDay 0–24; one full day ≈ 210s (偏慢、一直循环)
-const DAY_CYCLE_MS = 240000;
-const DAY_START_H = 7.5; // start mid-morning
-const DAY_KEYS = [
-  { h: 0,  name: '深夜', amb: [0x6a7f9e, 0.10], sunCol: 0x8ba3c7, sunInt: 0.04,
-    sunPos: [-6, 10, -12], winInt: 0.05, bounceInt: 0.05, fillInt: 0.08, hemiInt: 0.12, rimInt: 0.05,
-    sky: 0x0c1220, fog: 0x0a1018, hemiSky: 0x4a5a78, hemiGround: 0x1a1520, exposure: 0.88 },
-  { h: 5.5, name: '黎明', amb: [0xffb08a, 0.16], sunCol: 0xffb08a, sunInt: 0.85,
-    sunPos: [-14, 4.5, -16], winInt: 0.7, bounceInt: 0.35, fillInt: 0.12, hemiInt: 0.28, rimInt: 0.15,
-    sky: 0xc8a0d0, fog: 0x3a2848, hemiSky: 0xffc8b0, hemiGround: 0x4a3028, exposure: 0.98 },
-  { h: 8.5, name: '上午', amb: [0xfff2dd, 0.24], sunCol: 0xfff4e6, sunInt: 1.55,
-    sunPos: [-8, 11, -15], winInt: 1.15, bounceInt: 0.5, fillInt: 0.22, hemiInt: 0.5, rimInt: 0.22,
-    sky: 0x8ec8e8, fog: 0x7aa0b8, hemiSky: 0xdfefff, hemiGround: 0x6a5a48, exposure: 1.08 },
-  { h: 12.5, name: '正午', amb: [0xfff8f0, 0.30], sunCol: 0xfff2dd, sunInt: 2.05,
-    sunPos: [1, 16, -12], winInt: 1.55, bounceInt: 0.65, fillInt: 0.28, hemiInt: 0.62, rimInt: 0.2,
-    sky: 0x6eb8e0, fog: 0x6a98b0, hemiSky: 0xe8f4ff, hemiGround: 0x7a6a58, exposure: 1.14 },
-  { h: 16.5, name: '下午', amb: [0xffe8c8, 0.24], sunCol: 0xffd8a8, sunInt: 1.7,
-    sunPos: [9, 10, -14], winInt: 1.25, bounceInt: 0.55, fillInt: 0.2, hemiInt: 0.48, rimInt: 0.28,
-    sky: 0x9ec0d8, fog: 0x7a98a8, hemiSky: 0xffe8d0, hemiGround: 0x6a5848, exposure: 1.08 },
-  { h: 18.5, name: '黄昏', amb: [0xff8a4c, 0.18], sunCol: 0xff8a4c, sunInt: 1.85,
-    sunPos: [13, 5.5, -15], winInt: 1.6, bounceInt: 0.7, fillInt: 0.14, hemiInt: 0.32, rimInt: 0.35,
-    sky: 0xe89bb5, fog: 0x6b4c7a, hemiSky: 0xffb090, hemiGround: 0x4a2830, exposure: 1.05 },
-  { h: 20.5, name: '夜晚', amb: [0x8ba3c7, 0.11], sunCol: 0x8ba3c7, sunInt: 0.06,
-    sunPos: [4, 12, -12], winInt: 0.06, bounceInt: 0.08, fillInt: 0.08, hemiInt: 0.14, rimInt: 0.08,
-    sky: 0x12182a, fog: 0x0c101c, hemiSky: 0x4a5a78, hemiGround: 0x1a1520, exposure: 0.9 },
-  { h: 24, name: '深夜', amb: [0x6a7f9e, 0.10], sunCol: 0x8ba3c7, sunInt: 0.04,
-    sunPos: [-6, 10, -12], winInt: 0.05, bounceInt: 0.05, fillInt: 0.08, hemiInt: 0.12, rimInt: 0.05,
-    sky: 0x0c1220, fog: 0x0a1018, hemiSky: 0x4a5a78, hemiGround: 0x1a1520, exposure: 0.88 },
+/* day cycle */
+const DAY_CYCLE_MS=240000, DAY_START_H=8.0;
+const DAY_KEYS=[
+  {h:0,name:'深夜',amb:[0x6a7f9e,0.07],sunCol:0x8ba3c7,sunInt:0.025,sunPos:[-8,8,-14],winInt:0.03,bounceInt:0.03,fillInt:0.05,hemiInt:0.09,rimInt:0.03,poolInt:0.6,sky:0x060a12,fog:0x05080e,hemiSky:0x3a4a68,hemiGround:0x101018,exposure:0.8},
+  {h:5.2,name:'黎明',amb:[0xff9a6a,0.2],sunCol:0xff9a6a,sunInt:1.15,sunPos:[-16,3.0,-18],winInt:1.05,bounceInt:0.55,fillInt:0.15,hemiInt:0.34,rimInt:0.25,poolInt:0.42,sky:0xd090b8,fog:0x4a3058,hemiSky:0xffc0a0,hemiGround:0x4a2820,exposure:1.02},
+  {h:8.0,name:'上午',amb:[0xfff2dd,0.32],sunCol:0xfff6ea,sunInt:2.25,sunPos:[-10,12,-17],winInt:1.65,bounceInt:0.7,fillInt:0.3,hemiInt:0.6,rimInt:0.3,poolInt:0.34,sky:0x5eb0e4,fog:0x6a98b8,hemiSky:0xe8f4ff,hemiGround:0x6a5a48,exposure:1.16},
+  {h:12.5,name:'正午',amb:[0xfff8f0,0.38],sunCol:0xffffff,sunInt:2.75,sunPos:[0.5,18,-12],winInt:2.0,bounceInt:0.8,fillInt:0.34,hemiInt:0.72,rimInt:0.24,poolInt:0.3,sky:0x3a9fdc,fog:0x5a90b0,hemiSky:0xf0f8ff,hemiGround:0x7a6a58,exposure:1.22},
+  {h:16.2,name:'下午',amb:[0xffe0b0,0.3],sunCol:0xffd090,sunInt:2.3,sunPos:[11,10,-15],winInt:1.7,bounceInt:0.75,fillInt:0.26,hemiInt:0.55,rimInt:0.38,poolInt:0.36,sky:0x8eb8d8,fog:0x7a98a8,hemiSky:0xffe8d0,hemiGround:0x6a5848,exposure:1.14},
+  {h:18.3,name:'黄昏',amb:[0xff7a40,0.22],sunCol:0xff7a40,sunInt:2.45,sunPos:[15,4.0,-16],winInt:2.15,bounceInt:0.95,fillInt:0.18,hemiInt:0.38,rimInt:0.48,poolInt:0.48,sky:0xe888a8,fog:0x6b3c5a,hemiSky:0xffa878,hemiGround:0x4a2030,exposure:1.1},
+  {h:20.2,name:'夜晚',amb:[0x8ba3c7,0.1],sunCol:0x8ba3c7,sunInt:0.04,sunPos:[5,11,-12],winInt:0.04,bounceInt:0.07,fillInt:0.07,hemiInt:0.13,rimInt:0.07,poolInt:0.72,sky:0x0c1220,fog:0x0a101c,hemiSky:0x4a5a78,hemiGround:0x1a1520,exposure:0.88},
+  {h:24,name:'深夜',amb:[0x6a7f9e,0.07],sunCol:0x8ba3c7,sunInt:0.025,sunPos:[-8,8,-14],winInt:0.03,bounceInt:0.03,fillInt:0.05,hemiInt:0.09,rimInt:0.03,poolInt:0.6,sky:0x060a12,fog:0x05080e,hemiSky:0x3a4a68,hemiGround:0x101018,exposure:0.8},
 ];
-const _cA = new THREE.Color(), _cB = new THREE.Color(), _cOut = new THREE.Color();
-const _vA = new THREE.Vector3(), _vB = new THREE.Vector3();
-const phaseEl = document.getElementById('hint');
-const SUN_PEAK = Math.max(...DAY_KEYS.map((k) => k.sunInt)) || 1;
+const _cA=new THREE.Color(), _cOut=new THREE.Color();
+const _vA=new THREE.Vector3(), _vB=new THREE.Vector3();
+const SUN_PEAK=Math.max(...DAY_KEYS.map(k=>k.sunInt))||1;
+let forcedHour=null;
+window.__poolDebug={setHour:(h)=>{forcedHour=h;}, clearHour:()=>{forcedHour=null;}};
 
-function lerpDayKeys(hour) {
-  const h = ((hour % 24) + 24) % 24;
-  let i = 0;
-  while (i < DAY_KEYS.length - 1 && DAY_KEYS[i + 1].h < h) i++;
-  const a = DAY_KEYS[i], b = DAY_KEYS[Math.min(i + 1, DAY_KEYS.length - 1)];
-  const span = (b.h - a.h) || 1;
-  const u = Math.min(1, Math.max(0, (h - a.h) / span));
-  const e = u * u * (3 - 2 * u);
-  return { a, b, e, name: e < 0.5 ? a.name : b.name, hour: h };
+function lerpDayKeys(hour){
+  const h=((hour%24)+24)%24; let i=0;
+  while(i<DAY_KEYS.length-1&&DAY_KEYS[i+1].h<h) i++;
+  const a=DAY_KEYS[i], b=DAY_KEYS[Math.min(i+1,DAY_KEYS.length-1)];
+  const span=(b.h-a.h)||1; const u=Math.min(1,Math.max(0,(h-a.h)/span));
+  const e=u*u*(3-2*u); return {a,b,e,name:e<0.5?a.name:b.name,hour:h};
 }
-
-function applyDayCycle(hour) {
-  const { a, b, e, name, hour: h } = lerpDayKeys(hour);
-  ambient.color.set(a.amb[0]).lerp(_cA.set(b.amb[0]), e);
-  ambient.intensity = a.amb[1] + (b.amb[1] - a.amb[1]) * e;
-  sun.color.set(a.sunCol).lerp(_cA.set(b.sunCol), e);
-  sun.intensity = a.sunInt + (b.sunInt - a.sunInt) * e;
-  _vA.set(...a.sunPos); _vB.set(...b.sunPos);
-  sun.position.copy(_vA).lerp(_vB, e);
-  sun.target.updateMatrixWorld();
-
-  windowSun.color.copy(sun.color);
-  windowSun.intensity = a.winInt + (b.winInt - a.winInt) * e;
-  windowSun.position.set(sun.position.x * 0.35, Math.max(3.5, sun.position.y * 0.45), -10);
-  windowSun.target.updateMatrixWorld();
-  bounce.color.copy(sun.color);
-  bounce.intensity = a.bounceInt + (b.bounceInt - a.bounceInt) * e;
-
-  fill.intensity = a.fillInt + (b.fillInt - a.fillInt) * e;
-  rim.intensity = a.rimInt + (b.rimInt - a.rimInt) * e;
-  rim.color.copy(sun.color);
-  hemi.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * e;
-  hemi.color.set(a.hemiSky).lerp(_cA.set(b.hemiSky), e);
-  hemi.groundColor.set(a.hemiGround).lerp(_cA.set(b.hemiGround), e);
-
-  const skyC = _cOut.set(a.sky).lerp(_cA.set(b.sky), e);
-  scene.background = null; // sky dome provides background
-  scene.fog.color.set(a.fog).lerp(_cA.set(b.fog), e);
-  renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
-  renderer.setClearColor(skyC.getHex(), 1);
-
-  const sunDir = sun.position.clone().normalize();
-  skyUniforms.uSunDir.value.copy(sunDir);
-  skyUniforms.uZenith.value.copy(skyC);
-  skyUniforms.uHorizon.value.set(a.hemiSky).lerp(_cA.set(b.hemiSky), e);
-  skyUniforms.uGround.value.set(a.hemiGround).lerp(_cA.set(b.hemiGround), e);
+function applyDayCycle(hour){
+  const {a,b,e,name,hour:h}=lerpDayKeys(hour);
+  ambient.color.set(a.amb[0]).lerp(_cA.set(b.amb[0]),e);
+  ambient.intensity=a.amb[1]+(b.amb[1]-a.amb[1])*e;
+  sun.color.set(a.sunCol).lerp(_cA.set(b.sunCol),e);
+  sun.intensity=a.sunInt+(b.sunInt-a.sunInt)*e;
+  _vA.set(...a.sunPos); _vB.set(...b.sunPos); sun.position.copy(_vA).lerp(_vB,e); sun.target.updateMatrixWorld();
+  windowSun.color.copy(sun.color); windowSun.intensity=a.winInt+(b.winInt-a.winInt)*e;
+  windowSun.position.set(sun.position.x*0.4, Math.max(3.2,sun.position.y*0.42), -12); windowSun.target.updateMatrixWorld();
+  bounce.color.copy(sun.color); bounce.intensity=a.bounceInt+(b.bounceInt-a.bounceInt)*e;
+  poolGlow.intensity=a.poolInt+(b.poolInt-a.poolInt)*e;
+  fill.intensity=a.fillInt+(b.fillInt-a.fillInt)*e;
+  rim.intensity=a.rimInt+(b.rimInt-a.rimInt)*e; rim.color.copy(sun.color);
+  hemi.intensity=a.hemiInt+(b.hemiInt-a.hemiInt)*e;
+  hemi.color.set(a.hemiSky).lerp(_cA.set(b.hemiSky),e);
+  hemi.groundColor.set(a.hemiGround).lerp(_cA.set(b.hemiGround),e);
+  const skyC=_cOut.set(a.sky).lerp(_cA.set(b.sky),e);
+  scene.background=null; scene.fog.color.set(a.fog).lerp(_cA.set(b.fog),e);
+  renderer.toneMappingExposure=a.exposure+(b.exposure-a.exposure)*e;
+  renderer.setClearColor(skyC.getHex(),1);
+  const sunDir=sun.position.clone().normalize();
+  skyUniforms.uSunDir.value.copy(sunDir); skyUniforms.uZenith.value.copy(skyC);
+  skyUniforms.uHorizon.value.set(a.hemiSky).lerp(_cA.set(b.hemiSky),e);
+  skyUniforms.uGround.value.set(a.hemiGround).lerp(_cA.set(b.hemiGround),e);
   skyUniforms.uSunColor.value.copy(sun.color);
-  skyUniforms.uSunIntensity.value = Math.max(0.05, sun.intensity / SUN_PEAK);
-  // wider softer sun near horizon
-  const elev = Math.max(0, sunDir.y);
-  skyUniforms.uSunSize.value = 0.018 + (1 - elev) * 0.04;
-
-  // drive jelly light / env from sun + sky
+  skyUniforms.uSunIntensity.value=Math.max(0.04,sun.intensity/SUN_PEAK);
+  skyUniforms.uSunSize.value=0.015+(1-Math.max(0,sunDir.y))*0.048;
   waterUniforms.uLightDir.value.copy(sunDir);
   waterUniforms.uSunColor.value.copy(sun.color);
-  waterUniforms.uSunIntensity.value = sun.intensity;
+  waterUniforms.uSunIntensity.value=sun.intensity;
   waterUniforms.uSkyZenith.value.copy(skyC);
   waterUniforms.uSkyHorizon.value.copy(skyUniforms.uHorizon.value);
   waterUniforms.uGroundColor.value.copy(skyUniforms.uGround.value);
-
-  const sunK = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
-  const nightK = Math.pow(1 - sunK, 1.35);
-  skyUniforms.uNightGlow.value = nightK * 0.85;
-  cityWinMats.forEach((wm, i) => {
-    wm.emissiveIntensity = 0.05 + nightK * (0.55 + 0.7 * Math.abs(Math.sin(performance.now() * 0.0007 + i * 0.37)));
-  });
-  for (const car of cars) {
-    if (car.userData.head) car.userData.head.emissiveIntensity = 0.15 + nightK * 1.7;
-    if (car.userData.tail) car.userData.tail.emissiveIntensity = 0.1 + nightK * 1.3;
-  }
-
-  const hh = Math.floor(h);
-  const mm = Math.floor((h - hh) * 60);
-  phaseEl.textContent = `果冻水体 · ${name} ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} · 窗外日照循环`;
-  return { sunK, nightK, name, hour: h };
+  const sunK=Math.min(1,Math.max(0,sun.intensity/SUN_PEAK));
+  const nightK=Math.pow(1-sunK,1.35);
+  skyUniforms.uNightGlow.value=nightK*0.92;
+  cityWinMats.forEach((wm,i)=>{wm.emissiveIntensity=0.04+nightK*(0.7+0.8*Math.abs(Math.sin(performance.now()*0.00055+i*0.4)));});
+  cars.forEach(car=>{if(car.userData.head)car.userData.head.emissiveIntensity=0.2+nightK*2.0; if(car.userData.tail)car.userData.tail.emissiveIntensity=0.12+nightK*1.5;});
+  const hh=Math.floor(h), mm=Math.floor((h-hh)*60);
+  hintEl.textContent=`果冻水体 · ${name} ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} · 窗外日照循环`;
 }
+const dayT0=performance.now()-(DAY_START_H/24)*DAY_CYCLE_MS;
 
-const dayT0 = performance.now() - (DAY_START_H / 24) * DAY_CYCLE_MS;
-
-/* ========== Jelly water: custom grid + shader (replace glTF water) ========== */
-const MAX_WAKES = 12;
-const wakeData = [];
-for (let i = 0; i < MAX_WAKES; i++) wakeData.push({ x: 0, z: 0, dirX: 1, dirZ: 0, amp: 0, born: 0, life: 2.2 });
-
-const waterUniforms = {
-  uTime: { value: 0 },
-  uWakes: { value: new Array(MAX_WAKES).fill(0).map(() => new THREE.Vector4()) },
-  uWakeDir: { value: new Array(MAX_WAKES).fill(0).map(() => new THREE.Vector2()) },
-  uFlow: { value: new THREE.Vector2(0.18, 0.07) },
-  uSurge: { value: new THREE.Vector2(0, 0) },
-  uFlowAmp: { value: 0.04 },
-  uJellyColor: { value: new THREE.Color(0x4eb8c4) },
-  uJellyDeep: { value: new THREE.Color(0x0e4f5c) },
-  uJellyScatter: { value: new THREE.Color(0xc8fff4) },
-  uLightDir: { value: new THREE.Vector3(0.35, 0.85, 0.4).normalize() },
-  uSunColor: { value: new THREE.Color(0xfff2dd) },
-  uSunIntensity: { value: 1.5 },
-  uSkyZenith: { value: new THREE.Color(0x4a90d9) },
-  uSkyHorizon: { value: new THREE.Color(0xc8dff0) },
-  uGroundColor: { value: new THREE.Color(0x3a4038) },
-  uCamPos: { value: new THREE.Vector3() },
+/* jelly water */
+const MAX_WAKES=16;
+const wakeData=Array.from({length:MAX_WAKES},()=>({x:0,z:0,dirX:1,dirZ:0,amp:0,born:0,life:2.5}));
+const waterUniforms={
+  uTime:{value:0},
+  uWakes:{value:Array.from({length:MAX_WAKES},()=>new THREE.Vector4())},
+  uWakeDir:{value:Array.from({length:MAX_WAKES},()=>new THREE.Vector2())},
+  uFlow:{value:new THREE.Vector2(0.15,0.06)},
+  uSurge:{value:new THREE.Vector2(0,0)},
+  uFlowAmp:{value:0.045},
+  uJellyColor:{value:new THREE.Color(0x5ecad6)},
+  uJellyDeep:{value:new THREE.Color(0x083e4c)},
+  uJellyScatter:{value:new THREE.Color(0xe0fff8)},
+  uLightDir:{value:new THREE.Vector3(0.35,0.85,0.4).normalize()},
+  uSunColor:{value:new THREE.Color(0xfff2dd)},
+  uSunIntensity:{value:2.2},
+  uSkyZenith:{value:new THREE.Color(0x4a90d9)},
+  uSkyHorizon:{value:new THREE.Color(0xc8dff0)},
+  uGroundColor:{value:new THREE.Color(0x3a4038)},
+  uCamPos:{value:new THREE.Vector3()},
 };
-
-const jellyVert = `
-uniform float uTime;
-uniform vec4 uWakes[${MAX_WAKES}];
-uniform vec2 uWakeDir[${MAX_WAKES}];
-uniform vec2 uFlow;
-uniform vec2 uSurge;
-uniform float uFlowAmp;
-varying vec3 vWorldPos;
-varying vec3 vNormalW;
-varying float vThick;
-varying vec2 vLocal;
-
-float wakeH(vec2 p) {
-  float h = 0.0;
-  for (int i = 0; i < ${MAX_WAKES}; i++) {
-    vec4 w = uWakes[i];
-    if (w.z <= 0.001) continue;
-    vec2 dlt = p - w.xy;
-    float dist = length(dlt);
-    float age = w.w;
-    float fade = 1.0 - clamp(age / 2.2, 0.0, 1.0);
-    fade = fade * fade * (0.6 + 0.4 * fade); // viscous settle
-    vec2 dir = uWakeDir[i];
-    float along = dist > 1e-4 ? dot(normalize(dlt), dir) : 0.0;
-    float direct = 0.5 + 0.5 * along;
-    // jelly shove mound + trailing ripple
-    float mound = exp(-dist * dist * 7.5) * direct;
-    float rip = sin(dist * 11.0 - age * 7.5) * exp(-dist * dist * 2.6) * 0.65;
-    h += (mound * 1.15 + rip) * w.z * fade * 0.28;
+const jellyVert=`
+uniform float uTime; uniform vec4 uWakes[${MAX_WAKES}]; uniform vec2 uWakeDir[${MAX_WAKES}];
+uniform vec2 uFlow; uniform vec2 uSurge; uniform float uFlowAmp;
+varying vec3 vWorldPos; varying vec3 vNormalW; varying float vThick; varying vec2 vLocal;
+float wakeH(vec2 p){
+  float h=0.0;
+  for(int i=0;i<${MAX_WAKES};i++){
+    vec4 w=uWakes[i]; if(w.z<=0.001) continue;
+    vec2 dlt=p-w.xy; float dist=length(dlt); float age=w.w;
+    float fade=1.0-clamp(age/2.5,0.0,1.0); fade*=fade;
+    vec2 dir=uWakeDir[i];
+    float along=dist>1e-4?dot(normalize(dlt),dir):0.0;
+    float direct=0.55+0.45*along;
+    float mound=exp(-dist*dist*3.8)*direct;
+    float rip=sin(dist*15.0-age*8.5)*exp(-dist*dist*1.6)*0.42;
+    h+=(mound*0.62+rip*0.5)*w.z*fade*0.095;
   }
   return h;
 }
-
-float ambientH(vec2 p) {
-  vec2 f = p * 2.2 - uFlow * uTime;
-  float h = sin(f.x * 2.8 + f.y * 1.6) * uFlowAmp;
-  h += sin(f.y * 3.6 - uTime * 1.15 + f.x * 0.7) * uFlowAmp * 0.75;
-  h += sin((p.x + p.y) * 5.5 + uTime * 2.1) * uFlowAmp * 0.28;
-  float surgeDot = p.x * uSurge.x + p.y * uSurge.y;
-  h += surgeDot * 0.055;
-  h += sin(surgeDot * 4.5 - uTime * 2.8) * length(uSurge) * 0.05;
+float ambientH(vec2 p){
+  vec2 f=p*2.5-uFlow*uTime;
+  float h=sin(f.x*2.5+f.y*1.45)*uFlowAmp;
+  h+=sin(f.y*3.3-uTime*1.0+f.x*0.6)*uFlowAmp*0.82;
+  h+=sin((p.x+p.y)*5.0+uTime*1.85)*uFlowAmp*0.34;
+  h+=sin(p.x*9.5-uTime*0.65)*sin(p.y*8.0+uTime*0.5)*uFlowAmp*0.18;
+  float sd=p.x*uSurge.x+p.y*uSurge.y;
+  h+=sd*0.05; h+=sin(sd*4.0-uTime*2.4)*length(uSurge)*0.045;
   return h;
 }
-
-void main() {
-  vLocal = position.xy;
-  vec2 p = position.xy;
-  float h = ambientH(p) + wakeH(p);
-  // soft jelly thickness puff
-  float thick = 0.045 + abs(h) * 0.55 + length(uSurge) * 0.02;
-  vec3 pos = position;
-  pos.z += h;
-
-  // finite-diff normals in local plane
-  float e = 0.045;
-  float hx = ambientH(p + vec2(e,0.0)) + wakeH(p + vec2(e,0.0));
-  float hz = ambientH(p + vec2(0.0,e)) + wakeH(p + vec2(0.0,e));
-  vec3 nLocal = normalize(vec3(-(hx - h) / e, -(hz - h) / e, 1.0));
-
-  vec4 world = modelMatrix * vec4(pos, 1.0);
-  vWorldPos = world.xyz;
-  vNormalW = normalize(mat3(modelMatrix) * nLocal);
-  vThick = thick;
-  gl_Position = projectionMatrix * viewMatrix * world;
-}
-`;
-
-const jellyFrag = `
-uniform vec3 uJellyColor;
-uniform vec3 uJellyDeep;
-uniform vec3 uJellyScatter;
-uniform vec3 uLightDir;
-uniform vec3 uSunColor;
-uniform float uSunIntensity;
-uniform vec3 uSkyZenith;
-uniform vec3 uSkyHorizon;
-uniform vec3 uGroundColor;
-uniform vec3 uCamPos;
-uniform float uTime;
-varying vec3 vWorldPos;
-varying vec3 vNormalW;
-varying float vThick;
-varying vec2 vLocal;
-
-vec3 sampleSky(vec3 rd) {
-  float h = rd.y;
-  vec3 col = mix(uSkyHorizon, uSkyZenith, smoothstep(-0.05, 0.7, h));
-  col = mix(uGroundColor, col, smoothstep(-0.4, 0.02, h));
-  // sun reflection disc
-  vec3 L = normalize(uLightDir);
-  float sd = max(dot(rd, L), 0.0);
-  float disc = smoothstep(0.997, 1.0, sd);
-  float glow = pow(sd, 48.0) * 0.7 + pow(sd, 12.0) * 0.25;
-  col += uSunColor * (disc * 2.5 + glow) * max(uSunIntensity * 0.35, 0.02);
+void main(){
+  vLocal=position.xy; vec2 p=position.xy;
+  float h=ambientH(p)+wakeH(p);
+  float thick=0.06+abs(h)*0.95+length(uSurge)*0.03;
+  vec3 pos=position; pos.z+=h;
+  float e=0.035;
+  float hx=ambientH(p+vec2(e,0.0))+wakeH(p+vec2(e,0.0));
+  float hz=ambientH(p+vec2(0.0,e))+wakeH(p+vec2(0.0,e));
+  vec3 nLocal=normalize(vec3(-(hx-h)/e,-(hz-h)/e,1.0));
+  vec4 world=modelMatrix*vec4(pos,1.0);
+  vWorldPos=world.xyz; vNormalW=normalize(mat3(modelMatrix)*nLocal); vThick=thick;
+  gl_Position=projectionMatrix*viewMatrix*world;
+}`;
+const jellyFrag=`
+uniform vec3 uJellyColor,uJellyDeep,uJellyScatter,uLightDir,uSunColor,uSkyZenith,uSkyHorizon,uGroundColor,uCamPos;
+uniform float uSunIntensity,uTime;
+varying vec3 vWorldPos,vNormalW; varying float vThick; varying vec2 vLocal;
+vec3 sampleSky(vec3 rd){
+  float h=rd.y; vec3 col=mix(uSkyHorizon,uSkyZenith,smoothstep(-0.05,0.7,h));
+  col=mix(uGroundColor,col,smoothstep(-0.4,0.02,h));
+  vec3 L=normalize(uLightDir); float sd=max(dot(rd,L),0.0);
+  col+=uSunColor*(smoothstep(0.995,1.0,sd)*3.0+pow(sd,36.0)*0.9+pow(sd,8.0)*0.35)*max(uSunIntensity*0.42,0.02);
   return col;
 }
+float D_GGX(float NoH,float rough){float a=rough*rough; float a2=a*a; float d=(NoH*a2-NoH)*NoH+1.0; return a2/(3.14159265*d*d+1e-5);}
+float G_Schlick(float NoV,float NoL,float rough){float k=(rough+1.0); k=(k*k)/8.0; return (NoV/(NoV*(1.0-k)+k))*(NoL/(NoL*(1.0-k)+k));}
+void main(){
+  vec3 N=normalize(vNormalW), V=normalize(uCamPos-vWorldPos), L=normalize(uLightDir);
+  float NoV=max(dot(N,V),0.001), NoL=max(dot(N,L),0.0);
+  vec3 F0=vec3(0.06); vec3 F=F0+(1.0-F0)*pow(1.0-NoV,5.0);
+  vec3 R=normalize(reflect(-V,N)+N*0.12); vec3 env=sampleSky(R);
+  float depthMix=clamp(vThick*4.2+N.x*0.3+(1.0-NoV)*0.4,0.0,1.0);
+  vec3 body=mix(uJellyColor,uJellyDeep,depthMix);
+  float wrap=max(dot(N,L)*0.55+0.45,0.0);
+  body+=uJellyScatter*pow(wrap,1.2)*(0.5+vThick*3.8)*0.5;
+  body+=uSunColor*NoL*0.14*max(uSunIntensity*0.2,0.0);
+  vec3 T=refract(-V,N,0.96);
+  vec3 transCol=mix(uJellyDeep,sampleSky(normalize(T+vec3(0.0,-0.25,0.0))),0.4);
+  body=mix(body,transCol,0.32*NoV);
+  vec3 H=normalize(L+V); float NoH=max(dot(N,H),0.0); float rough=0.065+vThick*0.1;
+  vec3 spec=((D_GGX(NoH,rough)*G_Schlick(NoV,max(NoL,0.001),rough)*F)/max(4.0*NoV*max(NoL,0.001),1e-4))
+    *uSunColor*max(uSunIntensity*0.75,0.03)*NoL;
+  float soft=pow(NoH,20.0)*0.32*max(uSunIntensity*0.5,0.05);
+  float cau=sin(vLocal.x*12.0+uTime*1.8+N.x*5.0)*sin(vLocal.y*9.5-uTime*1.35);
+  body+=uJellyScatter*cau*0.055*NoV;
+  vec3 col=body*(1.0-F)+env*F+spec+uSunColor*soft+env*pow(1.0-NoV,2.6)*0.25;
+  float alpha=clamp(0.4+vThick*2.0+F.x*0.42,0.36,0.9);
+  gl_FragColor=vec4(col,alpha);
+}`;
+const waterMat=new THREE.ShaderMaterial({uniforms:waterUniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide,vertexShader:jellyVert,fragmentShader:jellyFrag});
 
-// GGX helpers
-float D_GGX(float NoH, float rough) {
-  float a = rough * rough;
-  float a2 = a * a;
-  float d = (NoH * a2 - NoH) * NoH + 1.0;
-  return a2 / (3.14159265 * d * d + 1e-5);
+let waterMesh=null, waterHit=null;
+const clock=new THREE.Clock();
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
+let prevWaterHit=null, wakeWrite=0;
+
+function pushWake(x,z,dirX,dirZ,speed){
+  const w=wakeData[wakeWrite++%MAX_WAKES];
+  const len=Math.hypot(dirX,dirZ)||1;
+  w.x=x; w.z=z; w.dirX=dirX/len; w.dirZ=dirZ/len;
+  w.amp=Math.min(0.8,0.2+speed*0.5); w.born=clock.getElapsedTime(); w.life=2.1+Math.min(0.6,speed*0.28);
 }
-float G_Schlick(float NoV, float NoL, float rough) {
-  float k = (rough + 1.0);
-  k = (k * k) / 8.0;
-  float gV = NoV / (NoV * (1.0 - k) + k);
-  float gL = NoL / (NoL * (1.0 - k) + k);
-  return gV * gL;
-}
-
-void main() {
-  vec3 N = normalize(vNormalW);
-  vec3 V = normalize(uCamPos - vWorldPos);
-  vec3 L = normalize(uLightDir);
-  float NoV = max(dot(N, V), 0.001);
-  float NoL = max(dot(N, L), 0.0);
-
-  // Schlick fresnel (F0 ~ 0.02 water / jelly ~0.04)
-  vec3 F0 = vec3(0.045);
-  vec3 F = F0 + (1.0 - F0) * pow(1.0 - NoV, 5.0);
-
-  // analytical environment reflection (synced with sky dome / sun)
-  vec3 R = reflect(-V, N);
-  // ripple-warped reflection for jelly
-  R = normalize(R + N * 0.08);
-  vec3 env = sampleSky(R);
-
-  // jelly body / transmission look
-  float warp = N.x * 0.3 + N.z * 0.2;
-  float depthMix = clamp(vThick * 5.0 + warp * 0.35 + (1.0 - NoV) * 0.3, 0.0, 1.0);
-  vec3 body = mix(uJellyColor, uJellyDeep, depthMix);
-
-  // subsurface wrap
-  float wrap = max(dot(N, L) * 0.5 + 0.5, 0.0);
-  float sss = pow(wrap, 1.35) * (0.4 + vThick * 3.2);
-  body += uJellyScatter * sss * 0.4;
-  body += uSunColor * NoL * 0.08 * max(uSunIntensity * 0.25, 0.0);
-
-  // GGX sun specular — follows sun tightly
-  vec3 H = normalize(L + V);
-  float NoH = max(dot(N, H), 0.0);
-  float rough = 0.085 + vThick * 0.15;
-  float D = D_GGX(NoH, rough);
-  float G = G_Schlick(NoV, max(NoL, 0.001), rough);
-  vec3 spec = (D * G * F) / max(4.0 * NoV * max(NoL, 0.001), 1e-4);
-  spec *= uSunColor * max(uSunIntensity * 0.55, 0.02) * NoL;
-
-  // soft wide lobe for jelly gloss
-  float soft = pow(NoH, 28.0) * 0.22 * max(uSunIntensity * 0.4, 0.05);
-
-  // caustic shimmer inside body
-  float cau = sin(vLocal.x * 10.0 + uTime * 1.6 + N.x * 5.0)
-            * sin(vLocal.y * 8.0 - uTime * 1.25);
-  body += uJellyScatter * cau * 0.035 * NoV;
-
-  // compose: body * (1-F) + env * F + specular
-  vec3 col = body * (1.0 - F) + env * F + spec + uSunColor * soft;
-  // rim boost
-  col += env * pow(1.0 - NoV, 3.0) * 0.15;
-
-  float alpha = clamp(0.52 + vThick * 2.6 + F.x * 0.35, 0.45, 0.92);
-  gl_FragColor = vec4(col, alpha);
-}
-
-`;
-
-const waterMat = new THREE.ShaderMaterial({
-  uniforms: waterUniforms,
-  transparent: true,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-  vertexShader: jellyVert,
-  fragmentShader: jellyFrag,
-});
-
-let waterMesh = null;
-let waterHit = null;
-const clock = new THREE.Clock();
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
-let prevWaterHit = null;
-let wakeWrite = 0;
-let focused = false;
-let focusT = 0;
-const camFar = new THREE.Vector3();
-const tgtFar = new THREE.Vector3();
-const camNear = new THREE.Vector3();
-const tgtNear = new THREE.Vector3();
-
-function pushWake(x, z, dirX, dirZ, speed) {
-  const w = wakeData[wakeWrite % MAX_WAKES];
-  wakeWrite++;
-  const len = Math.hypot(dirX, dirZ) || 1;
-  w.x = x; w.z = z;
-  w.dirX = dirX / len; w.dirZ = dirZ / len;
-  w.amp = Math.min(1.5, 0.3 + speed * 1.9);
-  w.born = clock.getElapsedTime();
-  w.life = 1.8 + Math.min(0.8, speed * 0.45);
-}
-
-function syncWakeUniforms(t) {
-  for (let i = 0; i < MAX_WAKES; i++) {
-    const w = wakeData[i];
-    const age = t - w.born;
-    const live = w.amp > 0 && age < w.life;
-    waterUniforms.uWakes.value[i].set(live ? w.x : 0, live ? w.z : 0, live ? w.amp : 0, live ? age : 0);
-    waterUniforms.uWakeDir.value[i].set(w.dirX, w.dirZ);
+function syncWakeUniforms(t){
+  for(let i=0;i<MAX_WAKES;i++){
+    const w=wakeData[i], age=t-w.born, live=w.amp>0&&age<w.life;
+    waterUniforms.uWakes.value[i].set(live?w.x:0, live?w.z:0, live?w.amp:0, live?age:0);
+    waterUniforms.uWakeDir.value[i].set(w.dirX,w.dirZ);
   }
 }
 
-const hotspotGroup = new THREE.Group(); scene.add(hotspotGroup);
-const hotspotMeshes = [];
-function addHotspot(x, y, z, sx, sy, sz) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz),
-    new THREE.MeshBasicMaterial({ color: 0x7ec8c4, transparent: true, opacity: 0, depthWrite: false }));
-  m.position.set(x, y, z); hotspotGroup.add(m); hotspotMeshes.push(m);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 32),
-    new THREE.MeshBasicMaterial({ color: 0x7ec8c4, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2; ring.position.set(x, 0.14, z); ring.userData.pulse = true;
-  hotspotGroup.add(ring);
+/* hotspots */
+const hotspotGroup=new THREE.Group(); scene.add(hotspotGroup);
+const hotspots=[]; // {mesh, type, ring?}
+function addHotspot(type,x,y,z,sx,sy,sz,ringY){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+  m.position.set(x,y,z); m.userData.type=type; hotspotGroup.add(m);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(0.18,0.26,40), new THREE.MeshBasicMaterial({color:0x7ec8c4,transparent:true,opacity:0.48,side:THREE.DoubleSide}));
+  ring.rotation.x=-Math.PI/2; ring.position.set(x, ringY??0.11, z); ring.userData.pulse=true; hotspotGroup.add(ring);
+  hotspots.push({mesh:m, type, ring});
+  return m;
 }
 
-function setFocus(on) {
-  focused = on; focusT = 0;
-  panelEl.classList.toggle('show', on);
-  controls.enabled = !on;
-  if (on) { camFar.copy(camera.position); tgtFar.copy(controls.target); }
-}
-panelClose.addEventListener('click', () => setFocus(false));
+let focusMode=null; // lounge|window|table|plant|null
+let focusT=0;
+const camFar=new THREE.Vector3(), tgtFar=new THREE.Vector3();
+const camNear=new THREE.Vector3(), tgtNear=new THREE.Vector3();
+const focusPos={
+  lounge:{cam:new THREE.Vector3(), tgt:new THREE.Vector3()},
+  window:{cam:new THREE.Vector3(), tgt:new THREE.Vector3()},
+  table:{cam:new THREE.Vector3(), tgt:new THREE.Vector3()},
+  plant:{cam:new THREE.Vector3(), tgt:new THREE.Vector3()},
+};
 
-function onPointer(e) {
-  const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-  const cy = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
-  pointer.x = ((cx - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((cy - rect.top) / rect.height) * 2 + 1;
-}
-
-canvas.addEventListener('pointermove', (e) => {
-  onPointer(e);
-  if (!desktopWater || focused || !waterHit || !waterMesh) return;
-  raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObject(waterHit, false);
-  if (!hits.length) { prevWaterHit = null; return; }
-  const local = waterMesh.worldToLocal(hits[0].point.clone());
-  const lx = local.x, ly = local.y;
-  const now = clock.getElapsedTime();
-  if (prevWaterHit) {
-    const dx = lx - prevWaterHit.x, dy = ly - prevWaterHit.y;
-    const dt = Math.max(0.008, now - prevWaterHit.t);
-    const speed = Math.hypot(dx, dy) / dt;
-    if (speed > 0.28) pushWake(lx, ly, dx, dy, Math.min(speed, 4.5));
+function setFocus(mode){
+  if(focusMode&&focusMode!==mode){ /* switch */ }
+  hidePanels(); stickerCard.classList.remove('show'); cardBar.classList.remove('show');
+  if(!mode){
+    focusMode=null; focusT=Math.max(focusT,0.001); // animate out
+    controls.enabled=true;
+    controls.maxDistance=4.15;
+    return;
   }
-  prevWaterHit = { x: lx, y: ly, t: now };
-});
-canvas.addEventListener('pointerleave', () => { prevWaterHit = null; });
-canvas.addEventListener('pointerup', (e) => {
-  if (focused) return;
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
-  onPointer(e);
-  raycaster.setFromCamera(pointer, camera);
-  if (raycaster.intersectObjects(hotspotMeshes, false).length) setFocus(true);
-});
+  focusMode=mode; focusT=0;
+  camFar.copy(camera.position); tgtFar.copy(controls.target);
+  camNear.copy(focusPos[mode].cam); tgtNear.copy(focusPos[mode].tgt);
+  controls.enabled=false;
+  if(mode==='lounge') loungePanel.classList.add('show');
+  if(mode==='window'){ windowPanel.classList.add('show'); controls.maxDistance=2.4; }
+  if(mode==='table'){ stickerCard.classList.add('show'); cardBar.classList.add('show'); }
+  if(mode==='plant') plantPanel.classList.add('show');
+}
+$('loungeClose').onclick=()=>setFocus(null);
+$('windowClose').onclick=()=>setFocus(null);
+$('plantClose').onclick=()=>setFocus(null);
+$('cardClose').onclick=()=>setFocus(null);
+$('loungeCta').onclick=()=>toast('VibeSticker · 贴纸探索占位');
+$('plantCta').onclick=()=>toast('VibeSticker · 生成贴纸占位');
+$('cardBuy').onclick=()=>toast('购买入口占位');
+$('cardGen').onclick=()=>toast('生成入口占位');
 
-let orientEnabled = false;
-let orientSupported = typeof window.DeviceOrientationEvent !== 'undefined';
-let surgeTarget = new THREE.Vector2(0, 0);
-let surgeSmooth = new THREE.Vector2(0, 0);
-let autoSurgePhase = 0;
+/* sticker card drag */
+let cardDrag=null, cardRot= -4;
+stickerCard.addEventListener('pointerdown',(e)=>{cardDrag={x:e.clientX,y:e.clientY,rot:cardRot}; stickerCard.setPointerCapture(e.pointerId); stickerCard.style.cursor='grabbing';});
+stickerCard.addEventListener('pointermove',(e)=>{
+  if(!cardDrag) return;
+  const dx=e.clientX-cardDrag.x;
+  cardRot=cardDrag.rot+dx*0.15;
+  stickerCard.style.transform=`translate(-50%,-50%) rotate(${cardRot}deg)`;
+});
+stickerCard.addEventListener('pointerup',()=>{cardDrag=null; stickerCard.style.cursor='grab';});
 
-function onDeviceOrient(ev) {
-  if (!orientEnabled) return;
-  const beta = ev.beta || 0, gamma = ev.gamma || 0;
-  surgeTarget.set(
-    THREE.MathUtils.clamp(gamma / 28, -1.25, 1.25),
-    THREE.MathUtils.clamp((beta - 45) / 35, -1.25, 1.25)
-  );
+/* plant leaf FX */
+const plantMeshes=[];
+function spawnLeaves(sx,sy){
+  for(let i=0;i<5;i++){
+    const el=document.createElement('div'); el.className='leafFx'; el.textContent=['🍃','🌿','☘️'][i%3];
+    el.style.left=(sx-20+Math.random()*40)+'px'; el.style.top=(sy-10)+'px';
+    document.body.appendChild(el);
+    requestAnimationFrame(()=>{
+      el.classList.add('fall');
+      el.style.transform=`translate(${(Math.random()-0.5)*120}px,${140+Math.random()*80}px) rotate(${(Math.random()-0.5)*80}deg)`;
+    });
+    setTimeout(()=>el.remove(),1200);
+  }
 }
 
-async function enableOrientation() {
-  try {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      const state = await DeviceOrientationEvent.requestPermission();
-      if (state !== 'granted') {
-        orientBtn.textContent = '已拒绝 · 使用自动涌浪';
-        orientBtn.classList.add('show');
-        orientEnabled = false;
-        return;
-      }
+function onPointer(e){
+  const rect=canvas.getBoundingClientRect();
+  const cx=e.clientX??e.touches?.[0]?.clientX??0;
+  const cy=e.clientY??e.touches?.[0]?.clientY??0;
+  pointer.x=((cx-rect.left)/rect.width)*2-1;
+  pointer.y=-((cy-rect.top)/rect.height)*2+1;
+  return {cx,cy};
+}
+canvas.addEventListener('pointermove',(e)=>{
+  onPointer(e);
+  if(!desktopWater||focusMode||!waterHit||!waterMesh) return;
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObject(waterHit,false);
+  if(!hits.length){prevWaterHit=null; return;}
+  const local=waterMesh.worldToLocal(hits[0].point.clone());
+  const now=clock.getElapsedTime();
+  if(prevWaterHit){
+    const dx=local.x-prevWaterHit.x, dy=local.y-prevWaterHit.y;
+    const dt=Math.max(0.008,now-prevWaterHit.t);
+    const speed=Math.hypot(dx,dy)/dt;
+    if(speed>0.2) pushWake(local.x,local.y,dx,dy,Math.min(speed,3.0));
+  }
+  prevWaterHit={x:local.x,y:local.y,t:now};
+});
+canvas.addEventListener('pointerleave',()=>{prevWaterHit=null;});
+canvas.addEventListener('pointerup',(e)=>{
+  if(e.pointerType==='mouse'&&e.button!==0) return;
+  if(focusMode==='table') return;
+  const {cx,cy}=onPointer(e);
+  raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(hotspots.map(h=>h.mesh),false);
+  if(!hits.length){ if(focusMode&&focusMode!=='table') setFocus(null); return; }
+  const type=hits[0].object.userData.type;
+  if(type==='plant'){ spawnLeaves(cx,cy); setFocus('plant'); return; }
+  setFocus(type);
+});
+
+/* window mode micro zoom */
+canvas.addEventListener('wheel',(e)=>{
+  if(focusMode==='window'){
+    e.preventDefault();
+    const d=e.deltaY*0.0012;
+    camera.position.lerp(controls.target, -d*0.15);
+  }
+},{passive:false});
+
+/* orientation */
+let orientEnabled=false;
+const surgeTarget=new THREE.Vector2(), surgeSmooth=new THREE.Vector2();
+let autoSurgePhase=0;
+function onDeviceOrient(ev){
+  if(!orientEnabled) return;
+  surgeTarget.set(THREE.MathUtils.clamp((ev.gamma||0)/28,-1.25,1.25), THREE.MathUtils.clamp(((ev.beta||0)-45)/35,-1.25,1.25));
+}
+async function enableOrientation(){
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      const st=await DeviceOrientationEvent.requestPermission();
+      if(st!=='granted'){orientBtn.textContent='已拒绝 · 自动涌浪'; orientBtn.classList.add('show'); return;}
     }
-    window.addEventListener('deviceorientation', onDeviceOrient, true);
-    orientEnabled = true;
-    orientBtn.classList.remove('show');
-    hudEl.textContent = '拖动环视 · 点躺椅靠近 · 倾斜手机涌浪';
-  } catch (err) {
-    console.warn('orientation permission', err);
-    orientBtn.textContent = '陀螺仪不可用 · 自动涌浪';
-    orientBtn.classList.add('show');
-    orientEnabled = false;
-  }
+    window.addEventListener('deviceorientation',onDeviceOrient,true);
+    orientEnabled=true; orientBtn.classList.remove('show');
+    hudEl.textContent='拖动环视 · 点热点 · 倾斜手机涌浪';
+  }catch{orientBtn.textContent='陀螺仪不可用 · 自动涌浪'; orientBtn.classList.add('show');}
+}
+if(isMobile||!desktopWater){
+  waterUniforms.uFlowAmp.value=0.06; waterUniforms.uFlow.value.set(0.36,0.16);
+  if(typeof DeviceOrientationEvent!=='undefined'){
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){orientBtn.classList.add('show'); orientBtn.onclick=()=>enableOrientation();}
+    else enableOrientation();
+  } else {orientBtn.textContent='无陀螺仪 · 自动涌浪'; orientBtn.classList.add('show');}
+} else waterUniforms.uFlowAmp.value=0.038;
+
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight,false);});
+
+function placeJellyWater(center,size){
+  const segs=isMobile?[72,44]:[128,72];
+  const geo=new THREE.PlaneGeometry(Math.max(0.5,size.x*0.99), Math.max(0.5,size.z*0.99), segs[0], segs[1]);
+  waterMesh=new THREE.Mesh(geo,waterMat);
+  waterMesh.rotation.x=-Math.PI/2;
+  waterMesh.position.set(center.x, center.y+0.02, center.z);
+  waterMesh.renderOrder=3; scene.add(waterMesh);
+  waterHit=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(0.5,size.x*0.99), Math.max(0.5,size.z*0.99)), new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide}));
+  waterHit.rotation.copy(waterMesh.rotation); waterHit.position.copy(waterMesh.position); scene.add(waterHit);
 }
 
-if (isMobile || !desktopWater) {
-  waterUniforms.uFlowAmp.value = 0.065;
-  waterUniforms.uFlow.value.set(0.32, 0.14);
-  if (orientSupported) {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      orientBtn.classList.add('show');
-      orientBtn.addEventListener('click', () => { enableOrientation(); });
-    } else enableOrientation();
+function loadMarble(){
+  const tl=new THREE.TextureLoader();
+  const load=(name,rep)=>{
+    const t=tl.load('/models/pool/textures/'+encodeURIComponent(name));
+    t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rep,rep); return t;
+  };
+  const black={map:load('Black Marbel Tiles Base Color.png',3.0), normalMap:load('Black Marbel Tiles Normal.png',3.0), roughnessMap:load('Black Marbel Tiles Roughness.png',3.0)};
+  black.map.colorSpace=THREE.SRGBColorSpace;
+  const blue={map:load('Blue Marbel Tiles Base Color.png',2.4), normalMap:load('Blue Marbel Tiles Normal.png',2.4), roughnessMap:load('Blue Marbel Tiles Roughness.png',2.4)};
+  blue.map.colorSpace=THREE.SRGBColorSpace;
+  return {black,blue};
+}
+
+function styleMaterials(root, marble){
+  root.traverse((o)=>{
+    if(!o.isMesh) return;
+    const nn=normName(o.name);
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    mats.forEach((m)=>{
+      if(!m) return;
+      const mn=m.name||'';
+      if(/Marbel Tiles\.001/i.test(mn)||nn==='cube'){
+        Object.assign(m,{map:marble.black.map,normalMap:marble.black.normalMap,roughnessMap:marble.black.roughnessMap,color:new THREE.Color(0xffffff),roughness:0.52,metalness:0.02,needsUpdate:true});
+      }
+      if(/Marbel Tiles\.003/i.test(mn)||nn==='cube003'||nn==='cube019'||nn==='cube020'){
+        Object.assign(m,{map:marble.blue.map,normalMap:marble.blue.normalMap,roughnessMap:marble.blue.roughnessMap,color:new THREE.Color(0xffffff),roughness:0.42,metalness:0.04,needsUpdate:true});
+      }
+      if(/Material\.049/i.test(mn)||nn==='cube004'){ m.color.set(0xe9dcc8); m.roughness=0.88; m.metalness=0; }
+      if(/Material\.044/i.test(mn)){ m.color.set(0xd5dbe2); m.roughness=0.32; m.metalness=0.06; }
+      if(/Material\.047/i.test(mn)){ m.color.set(0xf3f0e8); m.roughness=0.4; m.metalness=0.08; }
+      if(/Material\.046/i.test(mn)){ m.color.set(0xf8f5ef); m.roughness=0.8; }
+      if(/Material\.048/i.test(mn)){ m.color.set(0x26262c); m.roughness=0.5; m.metalness=0.12; }
+      if(/Material\.041/i.test(mn)){ m.color.set(0xb6b6ba); m.roughness=0.38; m.metalness=0.18; }
+      if(/Material\.040/i.test(mn)){ m.color.set(0x3a2414); m.roughness=0.95; }
+      if(/Material\.039/i.test(mn)||nn.startsWith('plane')){ m.color.set(0x4f9624); m.roughness=0.68; }
+      if(/Material\.050/i.test(mn)||nn==='cube021'||nn==='cube022'){
+        if('transmission' in m){ m.transmission=0.9; m.thickness=0.12; m.roughness=0.04; m.color.set(0xd0e4f4); m.metalness=0; m.transparent=true; }
+        else { m.color.set(0xc0d6e8); m.transparent=true; m.opacity=0.18; m.roughness=0.06; }
+        m.needsUpdate=true;
+      }
+      if(/Material\.045/i.test(mn)||nn==='béziercircle'||nn==='beziercircle'){ m.color.set(0xf2f5f7); m.roughness=0.35; m.metalness=0.05; }
+      if(m.map) m.map.colorSpace=THREE.SRGBColorSpace;
+      if('envMapIntensity' in m) m.envMapIntensity=0.5;
+    });
+  });
+}
+
+function hideOriginalWater(root){
+  let main=null; const boxes=[];
+  root.traverse((o)=>{
+    if(!o.isMesh) return;
+    const nn=normName(o.name);
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    const isWaterName=nn==='cube017'||nn==='cube018';
+    const isWaterMat=mats.some(m=>m&&/Material\.043/i.test(m.name||''));
+    // IMPORTANT: do NOT hide glass (Material.050 / Cube021/022)
+    if(isWaterName||isWaterMat){
+      o.visible=false;
+      const b=new THREE.Box3().setFromObject(o);
+      const s=b.getSize(new THREE.Vector3());
+      boxes.push({mesh:o, area:s.x*s.z});
+      console.info('[pool] hide water', o.name, s.toArray());
+    }
+  });
+  boxes.sort((a,b)=>b.area-a.area);
+  return boxes[0]?.mesh||null;
+}
+
+new GLTFLoader().load('/models/pool/Swiming%20Pool.gltf', (gltf)=>{
+  const root=gltf.scene;
+  const marble=loadMarble();
+  root.traverse((o)=>{ if(o.isMesh){ o.castShadow=!isMobile; o.receiveShadow=!isMobile; }});
+  styleMaterials(root, marble);
+  scene.add(root);
+
+  const box=new THREE.Box3().setFromObject(root);
+  const center=box.getCenter(new THREE.Vector3());
+  root.position.x+=-center.x; root.position.z+=-center.z; root.position.y+=-box.min.y;
+  root.updateMatrixWorld(true);
+
+  root.traverse((o)=>{
+    if(!o.isMesh) return;
+    const b=new THREE.Box3().setFromObject(o);
+    const s=b.getSize(new THREE.Vector3());
+    console.info('[pool] mesh', o.name, 'vis', o.visible, 'size', s.toArray().map(v=>+v.toFixed(2)));
+  });
+
+  controls.target.set(0.4,0.68,-0.45);
+  camera.position.set(0.55,1.62,2.65);
+  controls.maxDistance=4.15; controls.update();
+
+  const mainWater=hideOriginalWater(root);
+  if(mainWater){
+    mainWater.visible=true;
+    const wb=new THREE.Box3().setFromObject(mainWater);
+    mainWater.visible=false;
+    placeJellyWater(wb.getCenter(new THREE.Vector3()), wb.getSize(new THREE.Vector3()));
+  } else placeJellyWater(new THREE.Vector3(0.55,0.15,0), new THREE.Vector3(5.7,0,3.35));
+
+  // also secondary jacuzzi water already hidden; optional small jelly — skip for clarity
+
+  const loungeCenters=[], tableCenters=[], plantCenters=[], windowCenters=[];
+  root.traverse((o)=>{
+    if(!o.isMesh) return;
+    const nn=normName(o.name);
+    const c=new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+    if(/^cube00(7|8|9)$/.test(nn)||/^cube01(0|1|2)$/.test(nn)) loungeCenters.push(c.clone());
+    if(nn==='cube013'||nn==='cube014') tableCenters.push(c.clone());
+    if(nn.startsWith('plane')||nn==='cube015'||nn==='cube016'||nn==='cube023'||nn==='cube024'||nn==='cube025'||nn==='cube026') plantCenters.push(c.clone());
+    if(nn==='cube005'||nn==='cube021') windowCenters.push(c.clone());
+    if(nn.startsWith('plane')) plantMeshes.push(o);
+  });
+
+  function avg(arr){return arr.reduce((a,v)=>a.add(v),new THREE.Vector3()).multiplyScalar(1/arr.length);}
+
+  if(loungeCenters.length){
+    const a=avg(loungeCenters);
+    addHotspot('lounge', a.x, a.y+0.1, a.z, 2.0, 0.85, 2.3, 0.1);
+    focusPos.lounge.cam.set(a.x+0.95, a.y+0.85, a.z+1.35);
+    focusPos.lounge.tgt.set(a.x, a.y+0.12, a.z);
+  }
+  if(tableCenters.length){
+    const a=avg(tableCenters);
+    addHotspot('table', a.x, a.y+0.15, a.z, 0.9, 0.6, 0.9, a.y+0.02);
+    focusPos.table.cam.set(a.x+0.9, a.y+0.95, a.z+1.1);
+    focusPos.table.tgt.set(a.x, a.y+0.1, a.z);
   } else {
-    orientBtn.textContent = '无陀螺仪 · 自动涌浪';
-    orientBtn.classList.add('show');
+    addHotspot('table', -3.9, 0.55, -0.35, 0.9, 0.55, 0.9, 0.42);
+    focusPos.table.cam.set(-2.9,1.4,0.7); focusPos.table.tgt.set(-3.9,0.4,-0.35);
   }
-} else {
-  waterUniforms.uFlowAmp.value = 0.028;
-}
+  if(windowCenters.length){
+    const a=avg(windowCenters);
+    addHotspot('window', a.x*0.3+0.4, 1.4, a.z+0.6, 3.2, 2.0, 0.6, 0.12);
+    focusPos.window.cam.set(0.4,1.45,-1.15);
+    focusPos.window.tgt.set(0.4,1.2,-3.0);
+  } else {
+    focusPos.window.cam.set(0.4,1.45,-1.1); focusPos.window.tgt.set(0.4,1.15,-3.0);
+    addHotspot('window',0.4,1.4,-2.4,3.2,2.0,0.5,0.12);
+  }
+  if(plantCenters.length){
+    // pick a plant near left window
+    const a=plantCenters.slice().sort((p,q)=>p.x-q.x)[0];
+    addHotspot('plant', a.x, a.y+0.2, a.z, 0.7, 0.9, 0.7, 0.12);
+    focusPos.plant.cam.set(a.x+1.0, a.y+0.7, a.z+1.1);
+    focusPos.plant.tgt.set(a.x, a.y+0.2, a.z);
+  }
 
-window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight, false);
-});
+  loadingEl.classList.add('hide');
+  console.info('[pool] v3 ready');
+  window.__poolReady=true;
+}, (ev)=>{ if(ev.total) loadingEl.textContent='加载泳池场景… '+Math.round(ev.loaded/ev.total*100)+'%'; },
+(err)=>showErr(String(err?.message||err)));
 
-function placeJellyWater(wbCenter, wbSize) {
-  const segs = isMobile ? [56, 34] : [96, 56];
-  const geo = new THREE.PlaneGeometry(wbSize.x * 0.985, wbSize.z * 0.985, segs[0], segs[1]);
-  waterMesh = new THREE.Mesh(geo, waterMat);
-  waterMesh.rotation.x = -Math.PI / 2;
-  waterMesh.position.set(wbCenter.x, wbCenter.y + 0.02, wbCenter.z);
-  waterMesh.renderOrder = 2;
-  scene.add(waterMesh);
-  waterHit = new THREE.Mesh(
-    new THREE.PlaneGeometry(wbSize.x * 0.985, wbSize.z * 0.985),
-    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
-  );
-  waterHit.rotation.copy(waterMesh.rotation);
-  waterHit.position.copy(waterMesh.position);
-  scene.add(waterHit);
-}
-
-const loader = new GLTFLoader();
-loader.load(
-  '/models/pool/Swiming%20Pool.gltf',
-  (gltf) => {
-    const root = gltf.scene;
-    root.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = !isMobile;
-      o.receiveShadow = !isMobile;
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      mats.forEach((m) => {
-        if (!m) return;
-        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
-        // slightly bump env response on room materials for live light
-        if ('envMapIntensity' in m) m.envMapIntensity = 0.35;
-        if ('roughness' in m && m.roughness > 0.9) m.roughness = 0.85;
-      });
-    });
-    scene.add(root);
-
-    const box = new THREE.Box3().setFromObject(root);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    root.position.x += -center.x;
-    root.position.z += -center.z;
-    root.position.y += -box.min.y;
-    root.updateMatrixWorld(true);
-
-    const box2 = new THREE.Box3().setFromObject(root);
-    const c2 = box2.getCenter(new THREE.Vector3());
-    controls.target.set(c2.x, Math.min(1.35, c2.y * 0.55 + 0.4), c2.z * 0.15);
-    camera.position.set(c2.x + 0.8, 3.2, box2.max.z + 4.6);
-    controls.update();
-
-    let mainWater = null;
-    const loungeCenters = [];
-    root.traverse((o) => {
-      if (!o.isMesh) return;
-      // hide original flat water planes — replaced by jelly shader mesh
-      if (o.name === 'Cube.017' || o.name === 'Cube.018') {
-        o.visible = false;
-        if (o.name === 'Cube.017') mainWater = o;
-      }
-      if (/^Cube\.00([7-9]|1[0-2])$/.test(o.name)) {
-        loungeCenters.push(new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()));
-      }
-    });
-
-    if (mainWater) {
-      const wb = new THREE.Box3().setFromObject(mainWater);
-      placeJellyWater(wb.getCenter(new THREE.Vector3()), wb.getSize(new THREE.Vector3()));
-    } else {
-      placeJellyWater(new THREE.Vector3(c2.x, 0.14, c2.z), new THREE.Vector3(5.5, 0, 3.2));
-    }
-
-    if (loungeCenters.length) {
-      const avg = loungeCenters.reduce((a, v) => a.add(v), new THREE.Vector3()).multiplyScalar(1 / loungeCenters.length);
-      addHotspot(avg.x, avg.y + 0.15, avg.z, 2.2, 0.9, 2.8);
-      camNear.set(avg.x + 1.6, avg.y + 1.1, avg.z + 2.0);
-      tgtNear.set(avg.x, avg.y + 0.2, avg.z);
-    } else {
-      addHotspot(-3.5, 0.6, 0.4, 2.0, 0.9, 2.5);
-      camNear.set(-2.1, 1.55, 2.4);
-      tgtNear.set(-3.6, 0.55, 0.35);
-    }
-
-    loadingEl.classList.add('hide');
-    console.info('[pool] jelly ready', { size: size.toArray(), az: [AZ_MIN, AZ_MAX], mobile: isMobile });
-  },
-  (ev) => { if (ev.total) loadingEl.textContent = '加载泳池场景… ' + Math.round((ev.loaded / ev.total) * 100) + '%'; },
-  (err) => showErr(String(err && err.message ? err.message : err))
-);
-
-function animate() {
+function animate(){
   requestAnimationFrame(animate);
-  const dt = Math.min(0.05, clock.getDelta());
-  const t = clock.getElapsedTime();
-  const cycleT = ((performance.now() - dayT0) % DAY_CYCLE_MS) / DAY_CYCLE_MS;
-  const timeOfDay = cycleT * 24;
+  const dt=Math.min(0.05,clock.getDelta());
+  const t=clock.getElapsedTime();
+  const cycleT=((performance.now()-dayT0)%DAY_CYCLE_MS)/DAY_CYCLE_MS;
+  const timeOfDay=forcedHour!=null?forcedHour:cycleT*24;
   applyDayCycle(timeOfDay);
 
-  waterUniforms.uTime.value = t;
+  waterUniforms.uTime.value=t;
   waterUniforms.uCamPos.value.copy(camera.position);
   syncWakeUniforms(t);
 
-  if (!orientEnabled) {
-    autoSurgePhase += dt;
-    surgeTarget.set(Math.sin(autoSurgePhase * 0.55) * 0.35, Math.cos(autoSurgePhase * 0.37) * 0.22);
-  }
-  surgeSmooth.lerp(surgeTarget, 1 - Math.exp(-3.5 * dt));
+  if(!orientEnabled){ autoSurgePhase+=dt; surgeTarget.set(Math.sin(autoSurgePhase*0.48)*0.42, Math.cos(autoSurgePhase*0.31)*0.28); }
+  surgeSmooth.lerp(surgeTarget,1-Math.exp(-3.2*dt));
   waterUniforms.uSurge.value.copy(surgeSmooth);
-  if (isMobile || !desktopWater) {
-    waterUniforms.uFlow.value.set(0.22 + surgeSmooth.x * 0.2, 0.1 + surgeSmooth.y * 0.15);
-  }
+  if(isMobile||!desktopWater) waterUniforms.uFlow.value.set(0.25+surgeSmooth.x*0.22, 0.12+surgeSmooth.y*0.16);
 
-  for (const car of cars) {
-    car.position.x += car.userData.speed * dt;
-    if (car.position.x > 12) car.position.x = -12;
-    car.position.z = car.userData.laneZ + Math.sin(t * 0.7 + car.position.x) * 0.02;
-  }
-  hotspotGroup.children.forEach((ch) => {
-    if (ch.userData.pulse) {
-      const s = 1 + Math.sin(t * 2.4) * 0.08;
-      ch.scale.set(s, s, s);
-      ch.material.opacity = 0.35 + Math.sin(t * 2.4) * 0.2;
-    }
+  cars.forEach(car=>{
+    const dir=car.rotation.y>1?-1:1;
+    car.position.x+=car.userData.speed*dt*dir;
+    if(dir>0&&car.position.x>14) car.position.x=-14;
+    if(dir<0&&car.position.x<-14) car.position.x=14;
+    car.position.z=car.userData.laneZ+Math.sin(t*0.7+car.position.x)*0.012;
   });
 
-  if (focused) {
-    focusT = Math.min(1, focusT + dt * 1.35);
-    const k = focusT * focusT * (3 - 2 * focusT);
-    camera.position.lerpVectors(camFar, camNear, k);
-    controls.target.lerpVectors(tgtFar, tgtNear, k);
-  } else if (focusT > 0) {
-    focusT = Math.max(0, focusT - dt * 1.2);
-    const k = focusT * focusT * (3 - 2 * focusT);
-    camera.position.lerpVectors(camFar, camNear, k);
-    controls.target.lerpVectors(tgtFar, tgtNear, k);
-    if (focusT === 0) controls.enabled = true;
+  // gentle plant sway
+  plantMeshes.forEach((p,i)=>{
+    p.rotation.z=Math.sin(t*1.3+i)*0.04;
+    p.rotation.x=Math.sin(t*0.9+i*0.7)*0.02;
+  });
+
+  hotspotGroup.children.forEach(ch=>{
+    if(ch.userData.pulse){ const s=1+Math.sin(t*2.3)*0.07; ch.scale.set(s,s,s); ch.material.opacity=0.3+Math.sin(t*2.3)*0.16; }
+  });
+
+  if(focusMode){
+    focusT=Math.min(1,focusT+dt*1.4);
+    const k=focusT*focusT*(3-2*focusT);
+    camera.position.lerpVectors(camFar,camNear,k);
+    controls.target.lerpVectors(tgtFar,tgtNear,k);
+  } else if(focusT>0){
+    focusT=Math.max(0,focusT-dt*1.25);
+    const k=focusT*focusT*(3-2*focusT);
+    camera.position.lerpVectors(camFar,camNear,k);
+    controls.target.lerpVectors(tgtFar,tgtNear,k);
+    if(focusT===0) controls.enabled=true;
   }
 
   controls.update();
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
 animate();
 
-} catch (e) {
-  showErr(e && e.stack ? e.stack : String(e));
-}
+} catch(e){ showErr(e?.stack||String(e)); }
 </script>
 </body>
 </html>
