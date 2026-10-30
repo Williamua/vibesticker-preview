@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VibeSticker · 3D 房间 · 窗外城市</title>
+<title>VibeSticker · 3D 房间 · 电影光·写实城市</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{width:100%;height:100%;overflow:hidden;background:#1a1210;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
@@ -44,6 +44,10 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const CYCLE_MS = 75000;
 const phaseEl = document.getElementById('phase');
@@ -78,6 +82,8 @@ renderer.shadowMap.type = isMobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
+let composer = null;
+let bloomPass = null;
 
 // —— 房间再 ×2（相对上一版），全程室内 ——
 const ROOM_W = 24, ROOM_D = 20, WALL_H = 10;
@@ -203,20 +209,30 @@ floorBounce.position.set(0, 0.6, 1.5);
 scene.add(floorBounce);
 
 // 前墙方向极弱补光（反弹）
-const fill = new THREE.DirectionalLight(0xa8c0d8, 0.08);
+const fill = new THREE.DirectionalLight(0x9eb6d8, 0.12);
 fill.position.set(0, 6, 10);
 scene.add(fill);
+
+// 电影感冷补光（逆光侧）
+const rimFill = new THREE.DirectionalLight(0x6a90c8, 0.06);
+rimFill.position.set(-8, 5, 4);
+scene.add(rimFill);
+
+// 城市夜光回灌（夜晚从窗外渗入的冷暖混合）
+const cityGlow = new THREE.PointLight(0xffaa66, 0.0, 28, 1.6);
+cityGlow.position.set(0, 4.8, WALL_Z + 1.2);
+scene.add(cityGlow);
 
 const lamp = new THREE.PointLight(0xffcc88, 0.18, 16, 2);
 lamp.position.set(2.0, 5.2, 0.4);
 scene.add(lamp);
 
 const mat = {
-  floor: new THREE.MeshStandardMaterial({ color: 0x5a3c2c, roughness: 0.92, metalness: 0.02 }),
-  wall:  new THREE.MeshStandardMaterial({ color: 0xd6c8b4, roughness: 0.9, metalness: 0.0 }),
-  wallBack: new THREE.MeshStandardMaterial({ color: 0xcec0ac, roughness: 0.88, metalness: 0.0 }),
-  ceiling: new THREE.MeshStandardMaterial({ color: 0xebe3d6, roughness: 0.96, metalness: 0.0 }),
-  wood:  new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.78, metalness: 0.04 }),
+  floor: new THREE.MeshStandardMaterial({ color: 0x5a3c2c, roughness: 0.88, metalness: 0.04 }),
+  wall:  new THREE.MeshStandardMaterial({ color: 0xd6c8b4, roughness: 0.86, metalness: 0.0 }),
+  wallBack: new THREE.MeshStandardMaterial({ color: 0xcec0ac, roughness: 0.84, metalness: 0.0 }),
+  ceiling: new THREE.MeshStandardMaterial({ color: 0xebe3d6, roughness: 0.94, metalness: 0.0 }),
+  wood:  new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.72, metalness: 0.06 }),
   woodDark: new THREE.MeshStandardMaterial({ color: 0x4f3424, roughness: 0.82, metalness: 0.04 }),
   black: new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.55, metalness: 0.25 }),
   screen: new THREE.MeshStandardMaterial({ color: 0x1e3a55, emissive: 0x163850, emissiveIntensity: 0.45, roughness: 0.4 }),
@@ -316,6 +332,7 @@ skyTex.colorSpace = THREE.SRGBColorSpace;
 const skyEnv = skyTex.clone();
 skyEnv.mapping = THREE.EquirectangularReflectionMapping;
 skyEnv.colorSpace = THREE.SRGBColorSpace;
+scene.environment = skyEnv;
 
 function drawSky(topHex, midHex, botHex, disc) {
   const g = skyCtx.createLinearGradient(0, 0, 0, 512);
@@ -368,29 +385,146 @@ for (const [px, py] of panePositions) {
   room.add(inner);
 }
 
-// —— 窗外：高楼 + 街道 + 来回车辆（仅窗外，不进室内）——
-// 全部几何 z < WALL_Z - 0.5，由不透明后墙遮挡；只能透过窗洞看见。
+// —— 窗外：写实向城市（程序贴图 PBR + 成形车辆 + 路灯）——
+// 全部几何 z < WALL_Z - 0.5；只能透过窗洞看见。
 const outside = new THREE.Group();
 scene.add(outside);
 
+function makeCanvasTex(draw, w = 256, h = 256, opts = {}) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  draw(ctx, w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = opts.colorSpace === 'none' ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = isMobile ? 2 : 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function noise(ctx, w, h, a = 18) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (Math.random() - 0.5) * a;
+    d[i] = Math.max(0, Math.min(255, d[i] + n));
+    d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
+    d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function makeFacadePair(seed, baseRGB, accentRGB) {
+  // albedo + emissiveMap（夜间窗发光）
+  const W = 256, H = 512;
+  const map = makeCanvasTex((ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, `rgb(${baseRGB[0]+12},${baseRGB[1]+12},${baseRGB[2]+14})`);
+    g.addColorStop(1, `rgb(${baseRGB[0]-10},${baseRGB[1]-10},${baseRGB[2]-8})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+    // 竖向幕墙分缝
+    ctx.strokeStyle = `rgba(${accentRGB[0]},${accentRGB[1]},${accentRGB[2]},0.35)`;
+    ctx.lineWidth = 2;
+    for (let x = 8; x < w; x += 32) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = 8; y < h; y += 28) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    // 窗：暗玻璃
+    let rng = seed;
+    const rnd = () => { rng = (rng * 16807) % 2147483647; return (rng & 0xffff) / 0xffff; };
+    for (let y = 14; y < h - 18; y += 28) {
+      for (let x = 12; x < w - 12; x += 32) {
+        const ww = 18 + rnd() * 6, hh = 14 + rnd() * 4;
+        const glass = 22 + rnd() * 28;
+        ctx.fillStyle = `rgb(${glass},${glass + 10},${glass + 22})`;
+        ctx.fillRect(x, y, ww, hh);
+        ctx.fillStyle = 'rgba(180,210,240,0.22)';
+        ctx.fillRect(x + 1, y + 1, ww * 0.4, hh * 0.45);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(x, y, ww, 1);
+        ctx.fillRect(x, y, 1, hh);
+      }
+    }
+    noise(ctx, w, h, 10);
+  }, W, H);
+  map.repeat.set(1, 1);
+
+  const emissiveMap = makeCanvasTex((ctx, w, h) => {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    let rng = seed + 91;
+    const rnd = () => { rng = (rng * 16807) % 2147483647; return (rng & 0xffff) / 0xffff; };
+    for (let y = 14; y < h - 18; y += 28) {
+      for (let x = 12; x < w - 12; x += 32) {
+        if (rnd() < 0.42) continue;
+        const ww = 18 + rnd() * 6, hh = 14 + rnd() * 4;
+        const warm = rnd() > 0.35;
+        ctx.fillStyle = warm ? `rgb(255,${180 + rnd()*50|0},${90 + rnd()*40|0})` : `rgb(${140|0},${180|0},255)`;
+        ctx.fillRect(x, y, ww, hh);
+      }
+    }
+  }, W, H, { colorSpace: 'none' });
+  return { map, emissiveMap };
+}
+
+const facadeStyles = [
+  makeFacadePair(11, [58, 64, 74], [36, 40, 48]),
+  makeFacadePair(29, [72, 66, 58], [42, 38, 34]),
+  makeFacadePair(47, [48, 58, 68], [30, 36, 44]),
+  makeFacadePair(67, [64, 66, 72], [38, 40, 46]),
+];
+
+const asphaltMap = makeCanvasTex((ctx, w, h) => {
+  ctx.fillStyle = '#2a2c30';
+  ctx.fillRect(0, 0, w, h);
+  noise(ctx, w, h, 28);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  for (let i = 0; i < 80; i++) {
+    ctx.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 20, 1);
+  }
+}, 256, 256);
+asphaltMap.repeat.set(12, 2);
+
+const sidewalkMap = makeCanvasTex((ctx, w, h) => {
+  ctx.fillStyle = '#7a7e84';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  ctx.lineWidth = 2;
+  for (let y = 0; y < h; y += 32) {
+    for (let x = 0; x < w; x += 32) {
+      ctx.strokeRect(x + 1, y + 1, 30, 30);
+    }
+  }
+  noise(ctx, w, h, 14);
+}, 256, 256);
+sidewalkMap.repeat.set(16, 1);
+
 const cityMats = {
   sky: new THREE.MeshBasicMaterial({ map: skyTex, color: 0x87b8e0, depthWrite: true, fog: false }),
-  asphalt: new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.95, metalness: 0.05 }),
-  sidewalk: new THREE.MeshStandardMaterial({ color: 0x6a6e74, roughness: 0.92, metalness: 0.02 }),
-  stripe: new THREE.MeshBasicMaterial({ color: 0xe8e0c8 }),
-  facadeA: new THREE.MeshStandardMaterial({ color: 0xb8c0c8, roughness: 0.78, metalness: 0.08 }),
-  facadeB: new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.82, metalness: 0.06 }),
-  facadeC: new THREE.MeshStandardMaterial({ color: 0xc8b8a8, roughness: 0.8, metalness: 0.04 }),
-  facadeD: new THREE.MeshStandardMaterial({ color: 0x7a8894, roughness: 0.75, metalness: 0.12 }),
-  glassLite: new THREE.MeshStandardMaterial({ color: 0x6a90b0, roughness: 0.35, metalness: 0.55, emissive: 0x1a3048, emissiveIntensity: 0.15 }),
-  roof: new THREE.MeshStandardMaterial({ color: 0x3a4048, roughness: 0.9, metalness: 0.1 }),
-  carBody: new THREE.MeshStandardMaterial({ color: 0xd45848, roughness: 0.45, metalness: 0.35 }),
-  carDark: new THREE.MeshStandardMaterial({ color: 0x1a1e24, roughness: 0.55, metalness: 0.4 }),
-  carGlass: new THREE.MeshStandardMaterial({ color: 0x88a8c0, roughness: 0.25, metalness: 0.5 }),
-  head: new THREE.MeshStandardMaterial({ color: 0xfff0c0, emissive: 0xffe080, emissiveIntensity: 0.6, roughness: 0.4 }),
-  tail: new THREE.MeshStandardMaterial({ color: 0xff3030, emissive: 0xff1010, emissiveIntensity: 0.45, roughness: 0.5 }),
-  winGlow: new THREE.MeshStandardMaterial({ color: 0xffe8b0, emissive: 0xffcc66, emissiveIntensity: 0.0, roughness: 0.6 }),
+  asphalt: new THREE.MeshStandardMaterial({ map: asphaltMap, color: 0xffffff, roughness: 0.92, metalness: 0.04 }),
+  sidewalk: new THREE.MeshStandardMaterial({ map: sidewalkMap, color: 0xffffff, roughness: 0.88, metalness: 0.02 }),
+  stripe: new THREE.MeshStandardMaterial({ color: 0xe8e0c0, roughness: 0.65, metalness: 0.05, emissive: 0x222010, emissiveIntensity: 0.15 }),
+  roof: new THREE.MeshStandardMaterial({ color: 0x2e3238, roughness: 0.85, metalness: 0.15 }),
+  curb: new THREE.MeshStandardMaterial({ color: 0x8a8e94, roughness: 0.8, metalness: 0.05 }),
+  pole: new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.55, metalness: 0.45 }),
+  lampGlass: new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffe0a0, emissiveIntensity: 0.0, roughness: 0.35 }),
+  carDark: new THREE.MeshPhysicalMaterial({ color: 0x14181e, roughness: 0.4, metalness: 0.6, clearcoat: 0.4, clearcoatRoughness: 0.25 }),
+  carGlass: new THREE.MeshStandardMaterial({ color: 0x1a2838, roughness: 0.12, metalness: 0.75, envMapIntensity: 1.2 }),
+  head: new THREE.MeshStandardMaterial({ color: 0xfff6d0, emissive: 0xffe8a0, emissiveIntensity: 0.8, roughness: 0.25 }),
+  tail: new THREE.MeshStandardMaterial({ color: 0xff2a2a, emissive: 0xff1010, emissiveIntensity: 0.55, roughness: 0.35 }),
 };
+
+const facadeMats = facadeStyles.map(({ map, emissiveMap }) =>
+  new THREE.MeshStandardMaterial({
+    map, emissiveMap, emissive: 0xffc878, emissiveIntensity: 0.0,
+    color: 0xffffff, roughness: 0.72, metalness: 0.12, envMapIntensity: 0.55,
+  })
+);
+const cityWindowMats = facadeMats; // 夜间整体调 emissiveIntensity
 
 function cityBox(w, h, d, material, x, y, z, parent) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
@@ -401,107 +535,154 @@ function cityBox(w, h, d, material, x, y, z, parent) {
   return m;
 }
 
-// 远天空（窗外）
 const citySky = new THREE.Mesh(new THREE.PlaneGeometry(180, 100), cityMats.sky);
 citySky.position.set(0, 22, WALL_Z - 70);
 outside.add(citySky);
 
-// 街道更靠近窗，正对窗洞下方，保证能看见车流
 const STREET_Z = WALL_Z - 6.2;
-const STREET_Y = 2.15; // 抬高到窗台附近，保证车流在下半窗洞可读
+const STREET_Y = 2.15;
 const STREET_W = 56;
 cityBox(STREET_W, 0.14, 8.5, cityMats.asphalt, 0, STREET_Y - 0.05, STREET_Z);
-cityBox(STREET_W, 0.16, 2.2, cityMats.sidewalk, 0, STREET_Y + 0.04, STREET_Z + 4.0);
-cityBox(STREET_W, 0.16, 2.0, cityMats.sidewalk, 0, STREET_Y + 0.04, STREET_Z - 4.0);
+cityBox(STREET_W, 0.18, 2.3, cityMats.sidewalk, 0, STREET_Y + 0.05, STREET_Z + 4.05);
+cityBox(STREET_W, 0.18, 2.1, cityMats.sidewalk, 0, STREET_Y + 0.05, STREET_Z - 4.05);
+cityBox(STREET_W, 0.22, 0.28, cityMats.curb, 0, STREET_Y + 0.12, STREET_Z + 2.85);
+cityBox(STREET_W, 0.22, 0.28, cityMats.curb, 0, STREET_Y + 0.12, STREET_Z - 2.85);
 for (let i = -12; i <= 12; i++) {
-  cityBox(1.2, 0.03, 0.16, cityMats.stripe, i * 2.3, STREET_Y + 0.04, STREET_Z);
+  cityBox(1.35, 0.04, 0.14, cityMats.stripe, i * 2.4, STREET_Y + 0.04, STREET_Z);
 }
 
-const facades = [cityMats.facadeA, cityMats.facadeB, cityMats.facadeC, cityMats.facadeD];
-// 对面楼：中间留街景空隙；左右近楼推到窗洞外侧
 const buildingDefs = [
-  // x, w, d, h, z (绝对), facadeIdx
   [-20, 4.4, 4.2, 28, STREET_Z - 10, 0],
   [-15.2, 3.8, 3.8, 34, STREET_Z - 8, 1],
   [-10.8, 3.6, 4.0, 22, STREET_Z - 12, 2],
   [-6.6, 3.4, 3.6, 30, STREET_Z - 9, 3],
-  // 中央更远、稍矮，露出天空与街景
   [-2.2, 3.0, 3.2, 18, STREET_Z - 16, 0],
   [2.0, 3.2, 3.4, 20, STREET_Z - 15, 1],
   [6.4, 3.6, 3.8, 28, STREET_Z - 9, 2],
   [10.6, 3.8, 4.0, 24, STREET_Z - 11, 3],
   [15.0, 4.0, 3.8, 32, STREET_Z - 8, 0],
   [19.6, 4.4, 4.2, 26, STREET_Z - 10, 1],
-  // 第二排更远
   [-12, 5.0, 4.5, 40, STREET_Z - 22, 2],
   [0.0, 4.5, 4.0, 36, STREET_Z - 24, 3],
   [12, 5.0, 4.5, 38, STREET_Z - 21, 0],
-  // 近侧左右（窗外两侧，不挡正中街景）
   [-9.8, 2.8, 2.6, 11, WALL_Z - 2.8, 1],
   [9.8, 2.8, 2.6, 12, WALL_Z - 2.6, 2],
 ];
-const cityWindows = [];
 buildingDefs.forEach(([bx, bw, bd, bh, bz, fi]) => {
-  cityBox(bw, bh, bd, facades[fi], bx, STREET_Y + bh / 2, bz);
-  cityBox(bw * 0.92, 0.4, bd * 0.92, cityMats.roof, bx, STREET_Y + bh + 0.15, bz);
-  const cols = Math.max(2, Math.floor(bw / 0.95));
-  const rows = Math.max(3, Math.floor(bh / 1.5));
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (Math.random() < 0.18) continue;
-      const wx = bx - bw / 2 + 0.5 + c * ((bw - 0.8) / Math.max(1, cols - 1));
-      const wy = STREET_Y + 1.2 + r * ((bh - 2.2) / Math.max(1, rows - 1));
-      const wz = bz + bd / 2 + 0.05;
-      const lit = Math.random() > 0.5;
-      const wm = lit ? cityMats.winGlow.clone() : cityMats.glassLite.clone();
-      cityBox(0.4, 0.52, 0.06, wm, wx, wy, wz);
-      if (lit) cityWindows.push(wm);
-    }
-  }
+  const matB = facadeMats[fi % facadeMats.length];
+  cityBox(bw, bh, bd, matB, bx, STREET_Y + bh / 2, bz);
+  cityBox(bw * 0.9, 0.45, bd * 0.9, cityMats.roof, bx, STREET_Y + bh + 0.2, bz);
+  // 顶部设备间
+  if (bh > 20) cityBox(bw * 0.35, 1.2, bd * 0.35, cityMats.roof, bx + bw * 0.15, STREET_Y + bh + 0.9, bz);
 });
 
-function makeCar(colorHex) {
+// 路灯
+const streetLamps = [];
+const lampMats = [];
+for (let i = -3; i <= 3; i++) {
+  if (i === 0) continue;
+  for (const side of [1, -1]) {
+    const g = new THREE.Group();
+    const px = i * 7.5;
+    const pz = STREET_Z + side * 3.35;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 4.2, 8), cityMats.pole);
+    pole.position.y = 2.1;
+    g.add(pole);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.08), cityMats.pole);
+    arm.position.set(side * -0.45, 4.05, 0);
+    g.add(arm);
+    const glassMat = cityMats.lampGlass.clone();
+    lampMats.push(glassMat);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.12, 0.25), glassMat);
+    glass.position.set(side * -0.95, 3.95, 0);
+    g.add(glass);
+    g.position.set(px, STREET_Y, pz);
+    outside.add(g);
+    if (!isMobile || streetLamps.length < 4) {
+      const pl = new THREE.PointLight(0xffd8a0, 0, 10, 2);
+      pl.position.set(px + side * -0.95, STREET_Y + 3.9, pz);
+      outside.add(pl);
+      streetLamps.push(pl);
+    }
+  }
+}
+
+function makeCar(colorHex, kind = 0) {
   const g = new THREE.Group();
-  const bodyMat = cityMats.carBody.clone();
-  bodyMat.color.setHex(colorHex);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.55, 1.1), bodyMat);
-  body.position.y = 0.5;
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: colorHex, roughness: 0.28, metalness: 0.72,
+    clearcoat: 0.85, clearcoatRoughness: 0.12, envMapIntensity: 1.1,
+  });
+  // 底盘
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.22, 1.05), cityMats.carDark);
+  chassis.position.y = 0.28;
+  g.add(chassis);
+  // 车身主块
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.42, 1.08), bodyMat);
+  body.position.y = 0.55;
   g.add(body);
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.5, 1.0), cityMats.carGlass);
-  cabin.position.set(-0.15, 0.95, 0);
+  // 引擎盖微斜
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 1.02), bodyMat);
+  hood.position.set(0.72, 0.72, 0);
+  hood.rotation.z = -0.12;
+  g.add(hood);
+  // 车厢
+  const cabinW = kind === 1 ? 1.35 : 1.1;
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(cabinW, 0.48, 0.98), cityMats.carGlass);
+  cabin.position.set(kind === 1 ? -0.05 : -0.2, 0.98, 0);
   g.add(cabin);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.1, 0.98), cityMats.carDark);
-  roof.position.set(-0.15, 1.22, 0);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(cabinW * 0.92, 0.08, 0.94), bodyMat);
+  roof.position.set(cabin.position.x, 1.24, 0);
   g.add(roof);
-  for (const [sx, sz] of [[0.7, 0.55], [0.7, -0.55], [-0.7, 0.55], [-0.7, -0.55]]) {
-    const wh = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.18), cityMats.carDark);
-    wh.position.set(sx, 0.2, sz);
+  // 保险杠
+  const bumperF = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 1.05), cityMats.carDark);
+  bumperF.position.set(1.18, 0.38, 0);
+  g.add(bumperF);
+  const bumperR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 1.05), cityMats.carDark);
+  bumperR.position.set(-1.18, 0.38, 0);
+  g.add(bumperR);
+  // 轮子
+  const wheelGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.18, 12);
+  for (const [sx, sz] of [[0.72, 0.52], [0.72, -0.52], [-0.72, 0.52], [-0.72, -0.52]]) {
+    const wh = new THREE.Mesh(wheelGeo, cityMats.carDark);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(sx, 0.22, sz);
     g.add(wh);
+  }
+  // 后视镜
+  for (const sz of [0.58, -0.58]) {
+    const mir = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.08), cityMats.carDark);
+    mir.position.set(0.35, 0.9, sz);
+    g.add(mir);
   }
   const headMat = cityMats.head.clone();
   const tailMat = cityMats.tail.clone();
-  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.28), headMat);
-  hl.position.set(1.12, 0.52, 0);
-  g.add(hl);
-  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.28), tailMat);
-  tl.position.set(-1.12, 0.52, 0);
-  g.add(tl);
+  for (const sz of [0.32, -0.32]) {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.22), headMat);
+    hl.position.set(1.14, 0.52, sz);
+    g.add(hl);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.28), tailMat);
+    tl.position.set(-1.14, 0.52, sz);
+    g.add(tl);
+  }
   g.userData.head = headMat;
   g.userData.tail = tailMat;
+  g.userData.body = bodyMat;
   outside.add(g);
   return g;
 }
 
-const CAR_COLORS = [0xd45848, 0x3a7bd5, 0xf0c040, 0x2ecc71, 0xe8e8ec, 0x8e44ad, 0xff7a3c, 0x1abc9c];
+const CAR_COLORS = [0xc0392b, 0x1a5276, 0xf4d03f, 0x196f3d, 0xeceff1, 0x5b2c6f, 0xe67e22, 0x1abc9c, 0x2c3e50];
 const cars = [];
 const lanes = [
-  { z: STREET_Z + 1.55, dir: 1, y: STREET_Y, speed: 5.5 },
-  { z: STREET_Z - 1.45, dir: -1, y: STREET_Y, speed: 6.4 },
+  { z: STREET_Z + 1.55, dir: 1, y: STREET_Y, speed: 5.2 },
+  { z: STREET_Z - 1.45, dir: -1, y: STREET_Y, speed: 6.1 },
 ];
 let ci = 0;
 lanes.forEach((lane, li) => {
   for (let i = 0; i < 5; i++) {
-    const car = makeCar(CAR_COLORS[ci++ % CAR_COLORS.length]);
+    const car = makeCar(CAR_COLORS[ci % CAR_COLORS.length], ci % 3 === 0 ? 1 : 0);
+    ci++;
     car.userData.lane = lane;
     car.userData.phase = (i / 5) + li * 0.11;
     car.rotation.y = lane.dir > 0 ? 0 : Math.PI;
@@ -518,20 +699,26 @@ function tickCity(dt, sunK) {
     const x = (u * 2 - 1) * CAR_SPAN * lane.dir;
     car.position.set(x, lane.y, lane.z);
     const night = 1 - sunK;
-    car.userData.head.emissiveIntensity = 0.35 + night * 1.5;
-    car.userData.tail.emissiveIntensity = 0.25 + night * 1.0;
+    car.userData.head.emissiveIntensity = 0.4 + night * 2.2;
+    car.userData.tail.emissiveIntensity = 0.3 + night * 1.6;
   }
 }
 
-// 廉价日光轴：透明加色平面，无 transmission
-const shaftMat = new THREE.MeshBasicMaterial({
-  color: 0xfff2d0, transparent: true, opacity: 0.0,
-  depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
-});
-const shaft = new THREE.Mesh(new THREE.PlaneGeometry(5.8, 9.2), shaftMat);
-shaft.position.set(0, 4.5, WALL_Z + 3.0);
-shaft.rotation.x = -0.48;
-scene.add(shaft);
+// 多层柔和日光轴（加色，无 transmission）
+const shaftGroup = new THREE.Group();
+scene.add(shaftGroup);
+const shaftMats = [];
+for (let i = 0; i < 3; i++) {
+  const sm = new THREE.MeshBasicMaterial({
+    color: 0xfff2d0, transparent: true, opacity: 0,
+    depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2 + i * 0.7, 8.5 + i * 1.1), sm);
+  mesh.position.set(i * 0.15 - 0.15, 4.4 - i * 0.15, WALL_Z + 2.6 + i * 0.55);
+  mesh.rotation.x = -0.46 - i * 0.03;
+  shaftGroup.add(mesh);
+  shaftMats.push(sm);
+}
 
 // —— 家具 ——
 const deskY = 3.05;
@@ -577,79 +764,91 @@ trash.add(cyl(0.55, 0.48, 1.5, mat.trash, 0, 0.75, 0));
 trash.add(cyl(0.6, 0.6, 0.1, mat.trash, 0, 1.55, 0));
 room.add(trash);
 
-// sunPos = 窗外光源位置（z 更负 = 窗外），窗光洒向室内
+// sunPos = 窗外光源位置；bloom = 电影辉光强度
 const KEYS = [
   {
     t: 0, name: '黎明',
-    amb: [0xffb090, 0.035],
-    sunCol: 0xff9a6a, sunInt: 1.15,
-    sunPos: [-10, 6.0, WALL_Z - 16],
-    spotCol: 0xffb080, spotInt: 0.95,
-    fillInt: 0.05, hemiInt: 0.18,
-    lampInt: 0.12,
-    sky: ['#6a4a7a', '#e8a070', '#f0c090'],
-    disc: { x: 160, y: 300, r: 55, color: '#ffc090' },
-    exposure: 0.95, seaSparkle: 0.7, seaDeep: 0x0d5c68, seaShallow: 0x4ecfc6, wallTint: 0xd4c4b0,
+    amb: [0xff9a78, 0.028],
+    sunCol: 0xff8a5a, sunInt: 1.35,
+    sunPos: [-11, 5.5, WALL_Z - 16],
+    spotCol: 0xffa878, spotInt: 1.15,
+    fillInt: 0.06, hemiInt: 0.16, rimInt: 0.04,
+    lampInt: 0.18, cityGlow: 0.12, bloom: 0.42,
+    sky: ['#4a3568', '#e89070', '#f0b898'],
+    disc: { x: 150, y: 310, r: 58, color: '#ffb080' },
+    exposure: 0.98, wallTint: 0xd2b8a4,
   },
   {
-    t: 0.15, name: '清晨',
-    amb: [0xffe8d0, 0.05],
-    sunCol: 0xfff2dc, sunInt: 3.15,
-    sunPos: [-9.5, 12.5, WALL_Z - 18],
-    spotCol: 0xfff2d8, spotInt: 2.55,
-    fillInt: 0.12, hemiInt: 0.42,
-    lampInt: 0.02,
-    sky: ['#6ab0e8', '#a8d4f0', '#e8f0f8'],
-    disc: { x: 180, y: 160, r: 42, color: '#fff6d0' },
-    exposure: 1.32, seaSparkle: 1.05, seaDeep: 0x087a82, seaShallow: 0x3fd4cc, wallTint: 0xd8c8b4,
+    t: 0.14, name: '清晨',
+    amb: [0xffe6d0, 0.04],
+    sunCol: 0xfff0d4, sunInt: 3.4,
+    sunPos: [-9.5, 12.0, WALL_Z - 18],
+    spotCol: 0xfff2dc, spotInt: 2.85,
+    fillInt: 0.14, hemiInt: 0.38, rimInt: 0.08,
+    lampInt: 0.0, cityGlow: 0.0, bloom: 0.2,
+    sky: ['#5aa8e8', '#9ed0f4', '#e6f2fc'],
+    disc: { x: 175, y: 155, r: 44, color: '#fff4c8' },
+    exposure: 1.18, wallTint: 0xd8c8b4,
   },
   {
-    t: 0.38, name: '午后',
-    amb: [0xfff5e8, 0.055],
-    sunCol: 0xfff8ef, sunInt: 3.35,
-    sunPos: [2.0, 16.5, WALL_Z - 14],
-    spotCol: 0xfff8e8, spotInt: 2.75,
-    fillInt: 0.14, hemiInt: 0.48,
-    lampInt: 0.0,
-    sky: ['#4a90d0', '#7eb8e8', '#d0e8f8'],
-    disc: { x: 256, y: 90, r: 48, color: '#fffce8' },
-    exposure: 1.38, seaSparkle: 1.15, seaDeep: 0x0a6e78, seaShallow: 0x40e0d0, wallTint: 0xdcccb8,
+    t: 0.36, name: '午后',
+    amb: [0xfff4ea, 0.048],
+    sunCol: 0xfff8f0, sunInt: 3.65,
+    sunPos: [1.5, 16.8, WALL_Z - 14],
+    spotCol: 0xfff6e8, spotInt: 3.05,
+    fillInt: 0.16, hemiInt: 0.45, rimInt: 0.1,
+    lampInt: 0.0, cityGlow: 0.0, bloom: 0.16,
+    sky: ['#3f88d0', '#74b4ea', '#c8e4f8'],
+    disc: { x: 256, y: 85, r: 50, color: '#fffce8' },
+    exposure: 1.22, wallTint: 0xdcccb8,
   },
   {
-    t: 0.55, name: '傍晚',
-    amb: [0xffc9a0, 0.04],
-    sunCol: 0xff8f48, sunInt: 1.65,
-    sunPos: [9.5, 6.8, WALL_Z - 16],
-    spotCol: 0xffb070, spotInt: 1.2,
-    fillInt: 0.05, hemiInt: 0.2,
-    lampInt: 0.28,
-    sky: ['#3a2a50', '#e07040', '#f0a060'],
-    disc: { x: 360, y: 280, r: 60, color: '#ff9040' },
-    exposure: 1.0, seaSparkle: 0.55, seaDeep: 0x1a3a50, seaShallow: 0xc88860, wallTint: 0xd4b898,
+    t: 0.52, name: '黄金时刻',
+    amb: [0xffc090, 0.038],
+    sunCol: 0xff9a48, sunInt: 2.35,
+    sunPos: [9.8, 7.2, WALL_Z - 15],
+    spotCol: 0xffb060, spotInt: 2.0,
+    fillInt: 0.07, hemiInt: 0.22, rimInt: 0.12,
+    lampInt: 0.15, cityGlow: 0.2, bloom: 0.48,
+    sky: ['#3a2858', '#e86838', '#f09858'],
+    disc: { x: 370, y: 270, r: 62, color: '#ff8530' },
+    exposure: 1.12, wallTint: 0xd8b090,
   },
   {
-    t: 0.75, name: '夜晚',
-    amb: [0x283848, 0.03],
-    sunCol: 0x6078a8, sunInt: 0.06,
-    sunPos: [-4.5, 13.0, WALL_Z - 14],
-    spotCol: 0x6080b0, spotInt: 0.05,
-    fillInt: 0.04, hemiInt: 0.1,
-    lampInt: 1.15,
-    sky: ['#0a0e1c', '#1a2040', '#2a3048'],
-    disc: { x: 340, y: 100, r: 22, color: '#d0d8e8' },
-    exposure: 0.88, seaSparkle: 0.2, seaDeep: 0x061018, seaShallow: 0x143048, wallTint: 0x8a7a6a,
+    t: 0.62, name: '暮蓝',
+    amb: [0x6070a0, 0.032],
+    sunCol: 0x7090c8, sunInt: 0.45,
+    sunPos: [10.5, 4.0, WALL_Z - 14],
+    spotCol: 0x8098d0, spotInt: 0.35,
+    fillInt: 0.08, hemiInt: 0.2, rimInt: 0.14,
+    lampInt: 0.55, cityGlow: 0.85, bloom: 0.55,
+    sky: ['#121830', '#2a3868', '#4860a0'],
+    disc: { x: 390, y: 300, r: 28, color: '#d0a090' },
+    exposure: 0.95, wallTint: 0xa09088,
+  },
+  {
+    t: 0.78, name: '夜晚',
+    amb: [0x1c2838, 0.025],
+    sunCol: 0x405878, sunInt: 0.04,
+    sunPos: [-3.0, 14.0, WALL_Z - 14],
+    spotCol: 0x506888, spotInt: 0.04,
+    fillInt: 0.05, hemiInt: 0.12, rimInt: 0.06,
+    lampInt: 1.25, cityGlow: 1.35, bloom: 0.72,
+    sky: ['#060a14', '#101828', '#1c2840'],
+    disc: { x: 340, y: 90, r: 18, color: '#c8d0e0' },
+    exposure: 0.9, wallTint: 0x7a7068,
   },
   {
     t: 1.0, name: '黎明',
-    amb: [0xffb090, 0.035],
-    sunCol: 0xff9a6a, sunInt: 1.15,
-    sunPos: [-10, 6.0, WALL_Z - 16],
-    spotCol: 0xffb080, spotInt: 0.95,
-    fillInt: 0.05, hemiInt: 0.18,
-    lampInt: 0.12,
-    sky: ['#6a4a7a', '#e8a070', '#f0c090'],
-    disc: { x: 160, y: 300, r: 55, color: '#ffc090' },
-    exposure: 0.95, seaSparkle: 0.7, seaDeep: 0x0d5c68, seaShallow: 0x4ecfc6, wallTint: 0xd4c4b0,
+    amb: [0xff9a78, 0.028],
+    sunCol: 0xff8a5a, sunInt: 1.35,
+    sunPos: [-11, 5.5, WALL_Z - 16],
+    spotCol: 0xffa878, spotInt: 1.15,
+    fillInt: 0.06, hemiInt: 0.16, rimInt: 0.04,
+    lampInt: 0.18, cityGlow: 0.12, bloom: 0.42,
+    sky: ['#4a3568', '#e89070', '#f0b898'],
+    disc: { x: 150, y: 310, r: 58, color: '#ffb080' },
+    exposure: 0.98, wallTint: 0xd2b8a4,
   },
 ];
 
@@ -713,6 +912,9 @@ function applyDayCycle(t) {
   fill.intensity = a.fillInt + (b.fillInt - a.fillInt) * e;
   hemi.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * e;
   lamp.intensity = a.lampInt + (b.lampInt - a.lampInt) * e;
+  rimFill.intensity = (a.rimInt ?? 0.05) + ((b.rimInt ?? 0.05) - (a.rimInt ?? 0.05)) * e;
+  cityGlow.intensity = (a.cityGlow ?? 0) + ((b.cityGlow ?? 0) - (a.cityGlow ?? 0)) * e;
+  cityGlow.color.set(a.spotCol).lerp(_cA.set(b.spotCol), e).lerp(_cB.set(0xff9955), 0.35);
 
   const skyTop = mixHex(a.sky[0], b.sky[0], e);
   const skyMid = mixHex(a.sky[1], b.sky[1], e);
@@ -730,23 +932,27 @@ function applyDayCycle(t) {
   scene.background.set(0x161210);
   renderer.toneMappingExposure = a.exposure + (b.exposure - a.exposure) * e;
 
-  // 窗外城市 + 室内日光轴随昼夜
+  // 窗外城市 + 电影日光轴 + bloom
   const sunK = Math.min(1, Math.max(0, sun.intensity / SUN_PEAK));
   cityMats.sky.color.set(skyMid);
-  // 建筑窗灯光：夜晚亮起
-  const nightK = Math.pow(1 - sunK, 1.4);
-  for (const wm of cityWindows) wm.emissiveIntensity = 0.15 + nightK * 1.35;
-  // 窗光更强回弹：阳光直射时室内明显变亮
+  const nightK = Math.pow(1 - sunK, 1.35);
+  for (const fm of facadeMats) fm.emissiveIntensity = nightK * 1.55;
+  for (const lm of lampMats) lm.emissiveIntensity = 0.15 + nightK * 2.4;
+  for (const pl of streetLamps) pl.intensity = nightK * 1.8;
   const spotNow = a.spotInt + (b.spotInt - a.spotInt) * e;
-  windowBounce.intensity = spotNow * (0.55 + 0.35 * sunK);
-  floorBounce.intensity = 0.14 + spotNow * (0.12 + 0.1 * sunK);
-  // 廉价日光轴（加色平面）
-  shaftMat.opacity = 0.02 + sunK * 0.07;
-  shaftMat.color.set(a.spotCol).lerp(_cA.set(b.spotCol), e);
-  shaft.position.x = sun.position.x * 0.08;
-  shaft.rotation.z = -sun.position.x * 0.012;
-  glassMat.envMapIntensity = 1.05;
-  glassTint.envMapIntensity = 0.5;
+  windowBounce.intensity = spotNow * (0.62 + 0.4 * sunK);
+  floorBounce.intensity = 0.16 + spotNow * (0.14 + 0.12 * sunK);
+  const shaftCol = _cOut.set(a.spotCol).lerp(_cA.set(b.spotCol), e);
+  shaftMats.forEach((sm, i) => {
+    sm.opacity = (0.018 + sunK * 0.055) * (1 - i * 0.22);
+    sm.color.copy(shaftCol);
+  });
+  shaftGroup.position.x = sun.position.x * 0.09;
+  shaftGroup.rotation.z = -sun.position.x * 0.014;
+  glassMat.envMapIntensity = 1.15;
+  glassTint.envMapIntensity = 0.55;
+  const bloomT = (a.bloom ?? 0.3) + ((b.bloom ?? 0.3) - (a.bloom ?? 0.3)) * e;
+  if (bloomPass) bloomPass.strength = isMobile ? bloomT * 0.55 : bloomT;
 
   mixColor(_cOut, a.wallTint, b.wallTint, e);
   mat.wall.color.copy(_cOut);
@@ -796,16 +1002,40 @@ if (visualViewport) visualViewport.addEventListener('resize', fit);
 const START_T = 0.2;
 const t0 = performance.now() - START_T * CYCLE_MS;
 let lastNow = performance.now();
+
+try {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(innerWidth, innerHeight),
+    isMobile ? 0.22 : 0.35,
+    isMobile ? 0.35 : 0.5,
+    0.82
+  );
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+  composer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.15 : 1.75));
+} catch (eBloom) {
+  console.warn('bloom disabled', eBloom);
+  composer = null;
+  bloomPass = null;
+}
+
 function fit() {
   const w = innerWidth, h = innerHeight;
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
+  if (composer) {
+    composer.setSize(w, h);
+    if (bloomPass) bloomPass.resolution.set(w, h);
+  }
 }
 fit();
 clampIndoor();
 applyDayCycle(START_T);
-renderer.render(scene, camera);
+if (composer) composer.render();
+else renderer.render(scene, camera);
 
 function tick(now) {
   requestAnimationFrame(tick);
@@ -833,7 +1063,8 @@ function tick(now) {
     softAzimuth(dt);
     clampIndoor();
   }
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
 }
 requestAnimationFrame(tick);
 
