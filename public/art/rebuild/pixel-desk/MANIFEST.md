@@ -1,26 +1,69 @@
-# pixel-desk art pack
+# pixel-desk asset manifest (HARD ANCHOR)
 
-Source (when ready): `/workspace/vibesticker/cartoon/cards/rebuild/pixel-desk/` → copy here.
+## Hard visual anchor
+- `/workspace/vibesticker/refs/teardown/hamza-target-look.png`
+- `/workspace/vibesticker/refs/teardown/hamza-target-look-1280.jpg`
 
-## Design tokens (U10 locked)
-- `--warm-black: #141210` (body)
-- `--ink: #F5EDE4` (text on dark)
-- `--pink: #FF9EBB` (primary accent / CTA)
-- `--amber: #E8A04A` (lamp accents only)
-- `--glass-edge: #FF9EBB33`
-- `--charcoal-ui: #2A2520` (panel chrome)
-- Space Mono + light scanlines; no cold CRT blue; no phosphor green; no warm-paper wash
+Every GenerateImage call used `reference_image_paths: [hamza-target-look.png]`.
 
+## Tokens
+| token | hex |
+|-------|-----|
+| warm-black | `#141210` |
+| pink accent | `#FF9EBB` |
+| amber desk | `#E8A04A` |
+| ink | `#F5EDE4` |
 
-## Expected layers (missing — CSS placeholders in page)
-- `room-far.png` — far room / desk environment
-- `char-sit.png` — full-body pixel figure at desk
-- `desk-surface.png` — desk plane (optional)
-- `monitor-bezel.png` — monitor chrome
-- `screen-glow.png` — screen fill / glow (optional)
-- `panel-chrome.png` — in-screen design panel chrome (optional)
+## Look DNA (clone)
+White boxy robot, pink screen face (two black eyes + mouth), black gear shoulders; warm-black 3D low-poly room; amber desk edge; pink neon diamonds; pegboard + white neon; peach sunset city window; glass capsule nav; subtle scanlines. NOT cold blue CRT, NOT human hoodie character, NOT cream paper forest.
 
-## Borrowed placeholders (from roof pack, temporary)
-- `style-*.png`, `ui-upload-plate.png`, `result-frame.png`, `tier-*.png`
+## Phase A
+- `hero-wide-2560.jpg` 2560×1440
+- `hero-wide-1080m.jpg` 1080×1920
+- `hero-near-2560.jpg` 2560×1440
+- `layer-room.png`
+- `layer-character.png`
+- `char-sit.png`
 
-Replace when pixel-desk originals land; keep filenames or update `pixel.js` `ART` map.
+## Phase B layers / camera
+- `layer-desk.png` `layer-monitor.png` `layer-screen-ui.png` `layer-glow.png`
+- `push-camera-spec.json` `motion-physics.md`
+
+## U01 character frames
+- `char-idle.png` `char-walk-01.png` `char-walk-02.png` `char-wave.png` `char-power.png` (+ `char-sit.png`)
+
+## U03 boot
+- `boot-screen-off.png` `boot-bios.png` `boot-logo.png`
+
+## U02 panels
+- `panel-L0-overview.png` … `panel-L5-help.png`
+
+## U06 hand-drawn bgs
+- `bg-L0-overview.png` … `bg-L5-help.png` `bg-detail-card.png`
+
+## U04 / U05 / U08
+- trash: `ui-trash-closed.png` `ui-trash-open.png` `ui-trash-shred.png`
+- rulers: `ui-ruler-h.png` `ui-ruler-v.png` `ui-ruler.svg` `ui-ruler-digit-sheet.png`
+- planner: `ui-planner-closed.png` `ui-planner-open.png` `ui-task-bubble.png`
+
+## Styles / tiers / misc UI
+- styles: `style-pixel.png` `style-anime.png` `style-chibi.png` `style-toy3d.png` `style-watercolor.png`
+- tiers: `tier-single.png` `tier-pack.png` `tier-pro.png`
+- `ui-upload-plate.png` `ui-generate-btn.png` `result-frame.png` `ui-style-rail.png` `ui-layer-ticks.png`
+- `cursor-dot.png` `cursor-pill.png` `hint-drag.png`
+
+## Raw gen sources
+- `_gen/` (src jpgs from GenerateImage)
+
+## Product structure kept
+far room → push into monitor → PANEL layer stack (upload/style/generate). English nav labels in art; product Chinese copy stays in DOM.
+
+## Runtime CSS tokens (override art-manifest pink/black)
+- `--warm-brown: #1E1712`
+- `--warm-charcoal: #33261D`
+- `--warm-pink: #F4A3A0`
+- `--apricot: #F2A66E`
+- `--amber: #E8A04A`
+- `--ink: #F5EDE4`
+- `--glass-edge: #F4A3A033`
+Warm re-render of art may follow; UI already on these tokens.

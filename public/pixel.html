@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="VibeSticker 像素桌面 — 推镜进设计面板">
+  <meta name="description" content="VibeSticker Pixel Desk">
   <title>VibeSticker · Pixel Desk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Caveat:wght@600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/pixel.css">
 </head>
 <body>
@@ -16,6 +16,7 @@
 
   <header class="px-bar" id="px-bar">
     <a class="logo" href="/pixel.html">Vibe<span class="logo-em">Sticker</span></a>
+    <span class="px-id">PIXEL DESK</span>
     <nav class="px-nav" aria-label="预览切换">
       <a href="/">Roof</a>
       <a href="/hamza.html">Hamza</a>
@@ -23,75 +24,64 @@
     </nav>
   </header>
 
-  <!-- Intro title (R23 / H04-lite) -->
   <div class="intro-title" id="intro-title" aria-hidden="true">
     <span class="intro-word">把照片</span>
     <span class="intro-word accent">做成贴纸</span>
   </div>
 
   <div class="stage" id="stage" data-state="FAR">
-    <p class="far-claim" id="far-claim">像素小人坐在电脑前。<em>拖或滚</em>靠近屏幕。</p>
-    <p class="drag-hint" id="drag-hint">拖动或滚动靠近电脑</p>
+    <p class="drag-hint" id="drag-hint">
+      <img src="/art/rebuild/pixel-desk/hint-drag.png" alt="" width="24" height="24"> DRAG / SCROLL TO APPROACH
+    </p>
 
     <div class="cam" id="cam" aria-hidden="true">
-      <div class="layer room" id="layer-room">
-        <div class="room-wall"><span class="vibe-tex">VIBE</span></div>
-        <div class="room-floor"></div>
+      <!-- FAR / DOLLY heroes (push-camera-spec) -->
+      <div class="layer heroes" id="layer-heroes">
+        <picture class="hero hero-wide" id="hero-wide">
+          <source media="(max-width:720px)" srcset="/art/rebuild/pixel-desk/hero-wide-1080m.jpg">
+          <img src="/art/rebuild/pixel-desk/hero-wide-2560.jpg" alt="" width="2560" height="1440" decoding="async" fetchpriority="high">
+        </picture>
+        <img class="hero hero-near" id="hero-near" src="/art/rebuild/pixel-desk/hero-near-2560.jpg" alt="" width="2560" height="1440" decoding="async">
       </div>
-      <div class="layer char-seat" id="layer-char-seat">
-        <div class="px-fig seated" title="placeholder character">
-          <span class="px-hair"></span><span class="px-head"></span><span class="px-body"></span>
-          <span class="px-arm-l"></span><span class="px-arm-r"></span>
-          <span class="px-pen"></span>
-          <span class="px-leg-l"></span><span class="px-leg-r"></span>
-          <span class="px-chair"></span>
-        </div>
+
+      <!-- Parallax layers (dock / near) -->
+      <div class="layer stack" id="layer-stack">
+        <img class="pl" data-depth="0.15" src="/art/rebuild/pixel-desk/layer-room.png" alt="">
+        <img class="pl" data-depth="0.35" src="/art/rebuild/pixel-desk/layer-desk.png" alt="">
+        <img class="pl" data-depth="0.55" src="/art/rebuild/pixel-desk/layer-character.png" alt="">
+        <img class="pl" data-depth="0.7" src="/art/rebuild/pixel-desk/layer-monitor.png" alt="">
+        <img class="pl pl-screen" data-depth="0.85" src="/art/rebuild/pixel-desk/layer-screen-ui.png" alt="">
+        <img class="pl pl-glow" data-depth="0.95" src="/art/rebuild/pixel-desk/layer-glow.png" alt="">
       </div>
-      <div class="layer desk" id="layer-desk">
-        <div class="desk-top"></div>
-        <div class="desk-leg desk-leg-l"></div>
-        <div class="desk-leg desk-leg-r"></div>
-      </div>
-      <div class="layer monitor" id="layer-monitor">
-        <div class="bezel">
-          <div class="screen" id="screen">
-            <div class="screen-boot" id="screen-boot">VibeSticker</div>
-          </div>
-        </div>
-        <div class="monitor-stand"></div>
-        <div class="monitor-base"></div>
+
+      <div class="layer markers" id="markers">
+        <button type="button" class="diamond" data-layer="0" style="--x:54%;--y:36%" aria-label="Overview"></button>
+        <button type="button" class="diamond" data-layer="1" style="--x:46%;--y:58%" aria-label="Upload"></button>
+        <button type="button" class="diamond" data-layer="2" style="--x:78%;--y:40%" aria-label="Styles"></button>
+        <button type="button" class="diamond" data-layer="4" style="--x:22%;--y:50%" aria-label="Pricing"></button>
       </div>
     </div>
 
-    <!-- Power-on (U03) -->
+    <!-- U03 boot -->
     <div class="boot-seq" id="boot-seq" hidden aria-hidden="true">
-      <div class="boot-inner">
-        <p class="boot-logo">VibeSticker BIOS</p>
-        <div class="boot-bar"><span id="boot-fill"></span></div>
-        <p class="boot-msg" id="boot-msg">POST…</p>
-      </div>
+      <img class="boot-frame" id="boot-frame" src="/art/rebuild/pixel-desk/boot-screen-off.png" alt="">
+      <p class="boot-msg" id="boot-msg">POST…</p>
     </div>
 
-    <!-- PANEL: layer stack U02 -->
     <section class="panel" id="panel" aria-label="设计面板" data-locked="true" data-layer="0">
       <div class="panel-chrome">
         <div class="panel-top">
           <span class="scan"></span>
           <div class="panel-clock" id="panel-clock">00:00</div>
-          <button type="button" class="btn-undock" id="undock" hidden>← 看小人</button>
+          <button type="button" class="btn-undock" id="undock" hidden>← ROOM</button>
         </div>
 
-        <!-- Walker nav (U01) -->
+        <!-- U01 walker (art frames) -->
         <div class="walker-dock" id="walker-dock">
           <div class="walker" id="walker" aria-hidden="true">
-            <div class="px-fig walker-fig">
-              <span class="px-hair"></span><span class="px-head"></span><span class="px-body"></span>
-              <span class="px-arm-l"></span><span class="px-arm-r"></span>
-              <span class="px-pen"></span>
-              <span class="px-leg-l"></span><span class="px-leg-r"></span>
-            </div>
+            <img class="walker-img" id="walker-img" src="/art/rebuild/pixel-desk/char-idle.png" alt="">
           </div>
-          <nav class="mod-nav" id="mod-nav" aria-label="面板模块">
+          <nav class="mod-nav" id="mod-nav" hidden aria-hidden="true">
             <button type="button" class="mod" data-layer="0" data-mod="overview">总览</button>
             <button type="button" class="mod" data-layer="1" data-mod="upload">上传</button>
             <button type="button" class="mod" data-layer="2" data-mod="style">风格</button>
@@ -102,113 +92,131 @@
         </div>
 
         <div class="layers" id="layers">
-          <!-- L0 overview -->
           <article class="ply is-active" data-layer="0" id="ply-0">
-            <h2 class="ply-title">桌面墙 · 总览</h2>
-            <p class="ply-lede">滚轮切层，或点模块名让小人走过去。</p>
-            <div class="overview-grid">
-              <button type="button" class="ov-card" data-goto="1"><span>①</span>上传照片</button>
-              <button type="button" class="ov-card" data-goto="2"><span>②</span>选风格</button>
-              <button type="button" class="ov-card" data-goto="3"><span>③</span>生成结果</button>
-              <button type="button" class="ov-card" data-goto="4"><span>④</span>价档</button>
-            </div>
-          </article>
-
-          <!-- L1 upload -->
-          <article class="ply" data-layer="1" id="ply-1" hidden>
-            <h2 class="ply-title">上传</h2>
-            <p class="ply-lede">拖入照片或点击选择。</p>
-            <button type="button" class="upload" id="upload-zone" aria-label="上传照片">
-              <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
-              <img class="upload-plate" src="/art/rebuild/pixel-desk/ui-upload-plate.png" alt="" width="320" height="180">
-              <img id="upload-thumb" alt="" hidden>
-              <span class="upload-hint" id="upload-hint">拖入照片或点击</span>
-            </button>
-            <p class="hint" id="quota"></p>
-            <button type="button" class="btn btn-primary" data-goto="2">下一步 · 风格</button>
-          </article>
-
-          <!-- L2 styles -->
-          <article class="ply" data-layer="2" id="ply-2" hidden>
-            <h2 class="ply-title">风格</h2>
-            <p class="ply-lede">点选一种；再点瓦片可看详情。</p>
-            <div class="styles" id="styles" role="listbox" aria-label="风格"></div>
-            <p class="hint" id="style-label">当前：像素</p>
-            <div class="panel-actions">
-              <button type="button" class="btn btn-primary" id="gen-btn" disabled>生成贴纸</button>
-              <button type="button" class="btn btn-ghost" data-goto="1">返回上传</button>
-            </div>
-          </article>
-
-          <!-- L3 result -->
-          <article class="ply" data-layer="3" id="ply-3" hidden>
-            <h2 class="ply-title">结果</h2>
-            <p class="ply-lede">生成后在这里预览与下载。</p>
-            <div class="result" id="result">
-              <img class="result-frame" src="/art/rebuild/pixel-desk/result-frame.png" alt="">
-              <img id="result-img" alt="生成结果" hidden>
-              <p id="result-empty" class="result-empty">还没有贴纸 · 去风格层生成</p>
-              <div class="result-actions" id="result-actions" hidden>
-                <a class="btn btn-primary" id="dl-png" download>下载 PNG</a>
-                <a class="btn btn-ghost" id="dl-gif" download>下载 GIF</a>
-                <button type="button" class="btn btn-ghost" id="open-lightbox">放大</button>
+            <img class="ply-bg" src="/art/rebuild/pixel-desk/bg-L0-overview.png" alt="">
+            <img class="ply-chrome" src="/art/rebuild/pixel-desk/panel-L0-overview.png" alt="">
+            <div class="ply-body">
+              <h2 class="ply-title">01 · OVERVIEW</h2>
+              <p class="ply-lede">滚轮切层，或点底栏 / 粉钻。机器人会走到模块。</p>
+              <div class="overview-grid">
+                <button type="button" class="ov-card" data-goto="1"><span>02</span>UPLOAD</button>
+                <button type="button" class="ov-card" data-goto="2"><span>03</span>STYLES</button>
+                <button type="button" class="ov-card" data-goto="3"><span>04</span>RESULT</button>
+                <button type="button" class="ov-card" data-goto="4"><span>05</span>PRICING</button>
               </div>
             </div>
-            <button type="button" class="btn btn-ghost" data-goto="4">看价档</button>
           </article>
-
-          <!-- L4 pricing -->
-          <article class="ply" data-layer="4" id="ply-4" hidden>
-            <h2 class="ply-title">价档</h2>
-            <p class="ply-lede">演示模式可走 mock 结账。</p>
-            <div class="tier-row skew-tiers">
-              <div class="tier-card"><img src="/art/rebuild/pixel-desk/tier-single.png" alt=""><h3>单张 · $1</h3>
-                <button type="button" class="btn btn-ghost buy" data-tier="single">买</button></div>
-              <div class="tier-card featured"><img src="/art/rebuild/pixel-desk/tier-pack.png" alt=""><h3>小包 · $4.99</h3>
-                <button type="button" class="btn btn-primary buy" data-tier="pack">买</button></div>
-              <div class="tier-card"><img src="/art/rebuild/pixel-desk/tier-pro.png" alt=""><h3>大包 · $8.99</h3>
-                <button type="button" class="btn btn-ghost buy" data-tier="pro">买</button></div>
+          <article class="ply" data-layer="1" id="ply-1" hidden>
+            <img class="ply-bg" src="/art/rebuild/pixel-desk/bg-L1-upload.png" alt="">
+            <img class="ply-chrome" src="/art/rebuild/pixel-desk/panel-L1-upload.png" alt="">
+            <div class="ply-body">
+              <h2 class="ply-title">02 · UPLOAD</h2>
+              <p class="ply-lede">拖入照片或点击选择。</p>
+              <button type="button" class="upload" id="upload-zone" aria-label="上传照片">
+                <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
+                <img class="upload-plate" src="/art/rebuild/pixel-desk/ui-upload-plate.png" alt="">
+                <img id="upload-thumb" alt="" hidden>
+                <span class="upload-hint" id="upload-hint">DROP / CLICK</span>
+              </button>
+              <p class="hint" id="quota"></p>
+              <button type="button" class="btn btn-primary" data-goto="2">NEXT · STYLES</button>
             </div>
           </article>
-
-          <!-- L5 help -->
+          <article class="ply" data-layer="2" id="ply-2" hidden>
+            <img class="ply-bg" src="/art/rebuild/pixel-desk/bg-L2-styles.png" alt="">
+            <img class="ply-chrome" src="/art/rebuild/pixel-desk/panel-L2-styles.png" alt="">
+            <div class="ply-body">
+              <h2 class="ply-title">03 · STYLES</h2>
+              <p class="ply-lede">点选风格；再点瓦片看详情。</p>
+              <div class="styles" id="styles" role="listbox" aria-label="风格"></div>
+              <p class="hint" id="style-label">CURRENT · PIXEL</p>
+              <div class="panel-actions">
+                <button type="button" class="btn btn-primary gen-art" id="gen-btn" disabled>
+                  <img src="/art/rebuild/pixel-desk/ui-generate-btn.png" alt=""> GENERATE
+                </button>
+                <button type="button" class="btn btn-ghost" data-goto="1">BACK</button>
+              </div>
+            </div>
+          </article>
+          <article class="ply" data-layer="3" id="ply-3" hidden>
+            <img class="ply-bg" src="/art/rebuild/pixel-desk/bg-L3-result.png" alt="">
+            <img class="ply-chrome" src="/art/rebuild/pixel-desk/panel-L3-result.png" alt="">
+            <div class="ply-body">
+              <h2 class="ply-title">04 · RESULT</h2>
+              <p class="ply-lede">预览与下载。</p>
+              <div class="result" id="result">
+                <img class="result-frame" src="/art/rebuild/pixel-desk/result-frame.png" alt="">
+                <img id="result-img" alt="生成结果" hidden>
+                <p id="result-empty" class="result-empty">NO STICKER YET</p>
+                <div class="result-actions" id="result-actions" hidden>
+                  <a class="btn btn-primary" id="dl-png" download>PNG</a>
+                  <a class="btn btn-ghost" id="dl-gif" download>GIF</a>
+                  <button type="button" class="btn btn-ghost" id="open-lightbox">FULL</button>
+                </div>
+              </div>
+              <button type="button" class="btn btn-ghost" data-goto="4">PRICING</button>
+            </div>
+          </article>
+          <article class="ply" data-layer="4" id="ply-4" hidden>
+            <img class="ply-bg" src="/art/rebuild/pixel-desk/bg-L4-pricing.png" alt="">
+            <img class="ply-chrome" src="/art/rebuild/pixel-desk/panel-L4-pricing.png" alt="">
+            <div class="ply-body">
+              <h2 class="ply-title">05 · PRICING</h2>
+              <p class="ply-lede">演示模式 mock 结账。</p>
+              <div class="tier-row skew-tiers">
+                <div class="tier-card"><img src="/art/rebuild/pixel-desk/tier-single.png" alt=""><h3>$1 SINGLE</h3>
+                  <button type="button" class="btn btn-ghost buy" data-tier="single">BUY</button></div>
+                <div class="tier-card featured"><img src="/art/rebuild/pixel-desk/tier-pack.png" alt=""><h3>$4.99 PACK</h3>
+                  <button type="button" class="btn btn-primary buy" data-tier="pack">BUY</button></div>
+                <div class="tier-card"><img src="/art/rebuild/pixel-desk/tier-pro.png" alt=""><h3>$8.99 PRO</h3>
+                  <button type="button" class="btn btn-ghost buy" data-tier="pro">BUY</button></div>
+              </div>
+            </div>
+          </article>
           <article class="ply" data-layer="5" id="ply-5" hidden>
-            <h2 class="ply-title">帮助</h2>
-            <p class="ply-lede">FAR 拖/滚推镜 → dock 后滚轮切层 → 点模块名让小人走过去。</p>
-            <ul class="help-list">
-              <li>滚轮 / 触控板：切图层并吸附</li>
-              <li>点「总览/上传/风格…」：小人持笔走到落点</li>
-              <li>「看小人」：退回远景</li>
-              <li>演示模式：无 Gemini Key 时用 mock</li>
-            </ul>
+            <img class="ply-bg" src="/art/rebuild/pixel-desk/bg-L5-help.png" alt="">
+            <img class="ply-chrome" src="/art/rebuild/pixel-desk/panel-L5-help.png" alt="">
+            <div class="ply-body">
+              <h2 class="ply-title">06 · HELP</h2>
+              <p class="ply-lede">FAR 推镜 → BOOT → PANEL。底栏与粉钻切模块。</p>
+              <ul class="help-list">
+                <li>滚轮切图层并吸附</li>
+                <li>胶囊底栏 / 粉钻 → 机器人走到模块</li>
+                <li>ROOM 退回远景</li>
+              </ul>
+            </div>
           </article>
         </div>
-
-        <!-- Side layer ticks -->
         <div class="layer-ticks" id="layer-ticks" aria-hidden="true"></div>
       </div>
     </section>
 
     <div class="push-dock" id="push-dock">
-      <label class="push-label" for="push-knob">推近镜头</label>
       <div class="push-track" id="push-track">
         <div class="push-fill" id="push-fill"></div>
         <button type="button" class="push-knob" id="push-knob" role="slider"
           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="镜头远近"></button>
       </div>
-      <p class="push-tip" id="push-tip">拖动或滚轮 · 远 → 近</p>
+      <p class="push-tip" id="push-tip">APPROACH</p>
     </div>
+
+    <nav class="capsule" id="capsule" aria-label="模块导航">
+      <button type="button" class="cap-item is-on" data-layer="0" data-mod="overview"><span>01</span> OVERVIEW</button>
+      <span class="cap-sep" aria-hidden="true">|</span>
+      <button type="button" class="cap-item" data-layer="1" data-mod="upload"><span>02</span> UPLOAD</button>
+      <span class="cap-sep" aria-hidden="true">|</span>
+      <button type="button" class="cap-item" data-layer="2" data-mod="style"><span>03</span> STYLES</button>
+      <span class="cap-sep" aria-hidden="true">|</span>
+      <button type="button" class="cap-item" data-layer="4" data-mod="pricing"><span>04</span> PRICING</button>
+    </nav>
   </div>
 
-  <!-- Style detail card -->
   <div class="overlay" id="detail-overlay" hidden>
     <div class="sheet" role="dialog" aria-modal="true">
       <button type="button" class="sheet-close" id="detail-close" aria-label="关闭">×</button>
       <div id="detail-body"></div>
     </div>
   </div>
-
-  <!-- Pricing / generic / lightbox -->
   <div class="overlay" id="overlay" hidden>
     <div class="sheet" id="sheet" role="dialog" aria-modal="true">
       <button type="button" class="sheet-close" id="sheet-close" aria-label="关闭">×</button>
@@ -216,8 +224,10 @@
     </div>
   </div>
 
-  <!-- Custom cursor (fine pointer) -->
-  <div id="cursor" class="cursor" aria-hidden="true"><span class="cursor-dot"></span><span class="cursor-label">打开</span></div>
+  <div id="cursor" class="cursor" aria-hidden="true">
+    <img class="cursor-dot-img" src="/art/rebuild/pixel-desk/cursor-dot.png" alt="">
+    <span class="cursor-label">OPEN</span>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script src="/js/api.js"></script>

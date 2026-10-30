@@ -1,67 +1,49 @@
 /**
- * Pixel Desk P0 — FAR→DOLLY→DOCKED→PANEL
- * U01 walker nav · U02 layer stack + wheel · U03 boot · P01–P05
- * 2D + GSAP. Do not touch Roof/Hamza.
+ * Pixel Desk — FAR→DOLLY→DOCKED→BOOT→PANEL
+ * push-camera-spec + U01 walk frames + U02 layers + product API
  */
 (function () {
   'use strict';
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
-
+  const ART = '/art/rebuild/pixel-desk';
   const STYLES = [
     { id: 'anime', name: '日漫', blurb: '赛璐璐线与亮色块。' },
-    { id: 'chibi', name: 'Q版', blurb: '大头短身，软软的。' },
-    { id: 'toy3d', name: '潮玩', blurb: '乙烯基玩具质感。' },
-    { id: 'pixel', name: '像素', blurb: '16-bit 精灵感。' },
+    { id: 'chibi', name: 'Q版', blurb: '大头短身。' },
+    { id: 'toy3d', name: '潮玩', blurb: '乙烯基质感。' },
+    { id: 'pixel', name: '像素', blurb: '16-bit。' },
     { id: 'watercolor', name: '水彩', blurb: '湿画法晕染。' },
   ];
   const LAYERS = [
-    { id: 0, key: 'overview', label: '总览' },
-    { id: 1, key: 'upload', label: '上传' },
-    { id: 2, key: 'style', label: '风格' },
-    { id: 3, key: 'result', label: '结果' },
-    { id: 4, key: 'pricing', label: '价档' },
-    { id: 5, key: 'help', label: '帮助' },
+    { id: 0, key: 'overview' }, { id: 1, key: 'upload' }, { id: 2, key: 'style' },
+    { id: 3, key: 'result' }, { id: 4, key: 'pricing' }, { id: 5, key: 'help' },
   ];
-  const ART = '/art/rebuild/pixel-desk';
-  const DOCK_AT = 0.92;
-  const UNLOCK = 0.72;
-  const FAR_SNAP = 0.08;
+  const BOOT = [`${ART}/boot-screen-off.png`, `${ART}/boot-bios.png`, `${ART}/boot-logo.png`];
+  const WALK = [`${ART}/char-walk-01.png`, `${ART}/char-walk-02.png`];
+  const CHAR = {
+    idle: `${ART}/char-idle.png`, wave: `${ART}/char-wave.png`,
+    power: `${ART}/char-power.png`, sit: `${ART}/char-sit.png`,
+  };
 
-  let progress = 0;
-  let state = 'FAR';
-  let layer = 0;
+  const DOCK_AT = 0.92, UNLOCK = 0.72, FAR_SNAP = 0.08;
+  let progress = 0, state = 'FAR', layer = 0;
   let selectedStyle = localStorage.getItem('vibe-style') || 'pixel';
-  let photoFile = null, photoUrl = null;
-  let bootedOnce = false;
-  let walking = false;
-  let walkGen = 0;
-    let reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let camTween = null;
-  let wheelAcc = 0;
-  let wheelLock = false;
+  let photoFile = null, photoUrl = null, bootedOnce = false;
+  let walking = false, walkGen = 0, walkTween = null, walkTimer = null;
+  let wheelAcc = 0, wheelLock = false, camTween = null;
+  const reduce = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   async function boot() {
     try { await VibeAPI.loadConfig(); } catch (_) {}
     showDemo(window.VibeAPI ? VibeAPI.isDemo() : true);
     updateQuota();
-    forceClose($('#overlay'));
-    forceClose($('#detail-overlay'));
-    buildStyles();
-    buildTicks();
-    bindPush();
-    bindPanelWheel();
-    bindMods();
-    bindUpload();
-    bindGenerate();
-    bindPricing();
-    bindOverlay();
-    bindUndock();
-    bindCursor();
-    tickClock();
-    setInterval(tickClock, 15000);
+    forceClose($('#overlay')); forceClose($('#detail-overlay'));
+    buildStyles(); buildTicks();
+    bindPush(); bindPanelWheel(); bindMods(); bindCapsule(); bindDiamonds();
+    bindUpload(); bindGenerate(); bindPricing(); bindOverlay(); bindUndock(); bindCursor();
+    tickClock(); setInterval(tickClock, 15000);
     playIntro();
-    applyProgress(0, false);
+    applyProgress(0);
     setState('FAR');
     goLayer(0, { instant: true, silent: true });
   }
@@ -70,36 +52,26 @@
   function updateQuota() {
     const el = $('#quota'); if (!el) return;
     const c = window.VibeAPI ? VibeAPI.getConfig() : {};
-    el.textContent = ((c.demoMode || c.provider === 'mock') ? '演示模式 · ' : '') + `免费剩余 ${c.freeLeft ?? 0}`;
+    el.textContent = ((c.demoMode || c.provider === 'mock') ? 'DEMO · ' : '') + `FREE ${c.freeLeft ?? 0}`;
   }
   function tickClock() {
     const el = $('#panel-clock'); if (!el) return;
-    const d = new Date();
-    el.textContent = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    el.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
-
-  /* Intro title stagger */
   function playIntro() {
-    const words = $$('.intro-word');
-    const wrap = $('#intro-title');
+    const words = $$('.intro-word'), wrap = $('#intro-title');
     if (!wrap || !words.length) return;
     if (typeof gsap === 'undefined' || reduce()) {
       words.forEach((w) => { w.style.opacity = '1'; w.style.transform = 'none'; });
-      setTimeout(() => { wrap.style.display = 'none'; }, 400);
+      setTimeout(() => { wrap.style.display = 'none'; }, 300);
       return;
     }
     gsap.to(words, {
-      opacity: 1, y: 0, duration: 0.55, stagger: 0.12, ease: 'power3.out',
-      onComplete: () => {
-        gsap.to(wrap, {
-          opacity: 0, duration: 0.45, delay: 0.35, ease: 'power2.in',
-          onComplete: () => { wrap.style.display = 'none'; },
-        });
-      },
+      opacity: 1, y: 0, duration: 0.5, stagger: 0.1, ease: 'power3.out',
+      onComplete: () => gsap.to(wrap, { opacity: 0, duration: 0.4, delay: 0.3, onComplete: () => { wrap.style.display = 'none'; } }),
     });
   }
 
-  /* —— Camera state machine —— */
   function setState(next) {
     state = next;
     const stage = $('#stage');
@@ -128,41 +100,47 @@
       knob.style.left = (p * 100) + '%';
       knob.setAttribute('aria-valuenow', String(Math.round(p * 100)));
     }
-    if (tip) {
-      tip.textContent = p < FAR_SNAP ? '拖动或滚轮 · 远 → 近'
-        : p < DOCK_AT ? '继续推近 · 松手吸附'
-        : '已停靠 · 滚轮切层';
-    }
+    if (tip) tip.textContent = p < FAR_SNAP ? 'APPROACH' : p < DOCK_AT ? 'CLOSER…' : 'DOCKED';
   }
 
+  /* push-camera-spec: 0 wide · 0.45 blend scale1.35 · 0.75 near 1.7 · 1 dock layers */
   function paintCam(p) {
-    const cam = $('#cam'); if (!cam) return;
-    const scale = 1 + p * 3.4;
-    const x = p * -8, y = p * 6;
-    const props = { scale, xPercent: x, yPercent: y };
-    if (typeof gsap === 'undefined') {
-      cam.style.transform = `translate(${x}%, ${y}%) scale(${scale})`;
-    } else {
-      if (camTween) camTween.kill();
-      gsap.set(cam, props);
+    const cam = $('#cam');
+    const wide = $('#hero-wide');
+    const near = $('#hero-near');
+    const stack = $('#layer-stack');
+    let scale = 1;
+    if (p < 0.45) scale = 1 + (p / 0.45) * 0.35;
+    else if (p < 0.75) scale = 1.35 + ((p - 0.45) / 0.3) * 0.35;
+    else scale = 1.7 + ((p - 0.75) / 0.25) * 0.15;
+
+    const blend = p < 0.35 ? 0 : p < 0.75 ? (p - 0.35) / 0.4 : 1;
+    if (wide) wide.style.opacity = String(1 - blend * 0.85);
+    if (near) near.style.opacity = String(blend);
+    if (stack) stack.style.opacity = String(p > 0.7 ? (p - 0.7) / 0.3 : 0);
+
+    const x = p * -3, y = p * 3;
+    if (cam) {
+      if (typeof gsap !== 'undefined') gsap.set(cam, { scale, xPercent: x, yPercent: y });
+      else cam.style.transform = `translate(${x}%, ${y}%) scale(${scale})`;
     }
-    const boot = $('#screen-boot');
-    if (boot) boot.style.opacity = String(Math.max(0, 1 - p * 1.5));
-    // env darken near dock
-    document.body.style.setProperty('--fog', '#141210');
+    // parallax
+    $$('#layer-stack .pl').forEach((el) => {
+      const d = parseFloat(el.dataset.depth || '0.5');
+      const shift = (0.5 - p) * d * 18;
+      el.style.transform = `translate3d(0, ${shift}px, 0)`;
+    });
   }
-  function mixFog(p) { return '#141210'; }
 
   function paintPanelVis(p) {
     const panel = $('#panel'); if (!panel) return;
     const t = p < UNLOCK ? 0 : (p - UNLOCK) / (1 - UNLOCK);
-    if (typeof gsap !== 'undefined') gsap.set(panel, { opacity: t, scale: 0.92 + t * 0.08 });
-    else { panel.style.opacity = String(t); panel.style.transform = `scale(${0.92 + t * 0.08})`; }
+    if (typeof gsap !== 'undefined') gsap.set(panel, { opacity: t, scale: 0.94 + t * 0.06 });
+    else { panel.style.opacity = String(t); panel.style.transform = `scale(${0.94 + t * 0.06})`; }
   }
 
   function snap() {
-    const target = progress >= DOCK_AT * 0.55 ? 1 : 0;
-    animateTo(target);
+    animateTo(progress >= DOCK_AT * 0.55 ? 1 : 0);
   }
 
   function animateTo(target) {
@@ -171,79 +149,48 @@
       if (target >= DOCK_AT) {
         setState('DOCKED');
         await runBootThenPanel();
-      } else {
-        setState('FAR');
-        bootedOnce = bootedOnce; // keep
-      }
+      } else setState('FAR');
     };
     if (typeof gsap === 'undefined' || reduce()) { finish(); return; }
     const obj = { p: progress };
     gsap.to(obj, {
       p: target, duration: 0.55, ease: 'power3.inOut',
-      onUpdate: () => { applyProgress(obj.p); setState(obj.p > FAR_SNAP && obj.p < DOCK_AT ? 'DOLLY' : state); },
+      onUpdate: () => {
+        applyProgress(obj.p);
+        if (obj.p > FAR_SNAP && obj.p < DOCK_AT) setState('DOLLY');
+      },
       onComplete: finish,
     });
   }
 
-  /* U03 boot */
   async function runBootThenPanel() {
     if (reduce() || bootedOnce) {
-      hideBoot();
-      setState('PANEL');
-      goLayer(layer, { instant: true, silent: true });
-      return;
+      hideBoot(); setState('PANEL'); goLayer(layer, { instant: true, silent: true }); return;
     }
-    const seq = $('#boot-seq');
-    const fill = $('#boot-fill');
-    const msg = $('#boot-msg');
-    if (!seq) { setState('PANEL'); return; }
+    const seq = $('#boot-seq'), frame = $('#boot-frame'), msg = $('#boot-msg');
+    if (!seq || !frame) { setState('PANEL'); return; }
     seq.hidden = false;
-    if (fill) fill.style.width = '0%';
-    if (msg) msg.textContent = 'POST…';
-    if (typeof gsap !== 'undefined') {
-      await new Promise((res) => {
-        gsap.to(fill, {
-          width: '100%', duration: 0.85, ease: 'power1.inOut',
-          onUpdate: () => {
-            const w = parseFloat(fill.style.width) || 0;
-            if (msg) {
-              if (w > 30) msg.textContent = 'Loading panel…';
-              if (w > 70) msg.textContent = 'OK';
-            }
-          },
-          onComplete: res,
-        });
-      });
-    } else {
-      if (fill) fill.style.width = '100%';
-      await wait(400);
+    for (let i = 0; i < BOOT.length; i++) {
+      frame.src = BOOT[i];
+      if (msg) msg.textContent = i === 0 ? 'POWER…' : i === 1 ? 'BIOS…' : 'OK';
+      await wait(reduce() ? 80 : 320);
     }
     bootedOnce = true;
     hideBoot();
     setState('PANEL');
     goLayer(0, { instant: false, silent: true });
   }
-  function hideBoot() {
-    const seq = $('#boot-seq');
-    if (seq) seq.hidden = true;
-  }
+  function hideBoot() { const seq = $('#boot-seq'); if (seq) seq.hidden = true; }
   function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
   function undock() {
-    forceClose($('#overlay'));
-    forceClose($('#detail-overlay'));
-    hideBoot();
-    animateTo(0);
+    forceClose($('#overlay')); forceClose($('#detail-overlay')); hideBoot(); animateTo(0);
   }
 
-  /* —— Push input (FAR/DOLLY only) —— */
   function bindPush() {
-    const stage = $('#stage');
-    const track = $('#push-track');
-    const knob = $('#push-knob');
-
+    const stage = $('#stage'), track = $('#push-track'), knob = $('#push-knob');
     stage?.addEventListener('wheel', (e) => {
-      if (state === 'DOCKED' || state === 'PANEL') return; // panel handler owns it
+      if (state === 'DOCKED' || state === 'PANEL') return;
       e.preventDefault();
       applyProgress(progress + e.deltaY * 0.0012);
       setState(progress > FAR_SNAP ? 'DOLLY' : 'FAR');
@@ -254,7 +201,7 @@
     let ptr = false, y0 = 0, p0 = 0;
     stage?.addEventListener('pointerdown', (e) => {
       if (state === 'DOCKED' || state === 'PANEL') return;
-      if (e.target.closest('.push-dock,.panel,a,button,input,.mod-nav')) return;
+      if (e.target.closest('.push-dock,.panel,a,button,input,.capsule,.diamond')) return;
       ptr = true; y0 = e.clientY; p0 = progress;
       try { stage.setPointerCapture(e.pointerId); } catch (_) {}
     });
@@ -286,26 +233,19 @@
     knob?.addEventListener('pointerup', up);
     knob?.addEventListener('pointercancel', up);
   }
+  function bindUndock() { $('#undock')?.addEventListener('click', undock); }
 
-  function bindUndock() {
-    $('#undock')?.addEventListener('click', undock);
-  }
-
-  /* —— U02 layer stack —— */
   function buildTicks() {
     const root = $('#layer-ticks'); if (!root) return;
-    root.innerHTML = LAYERS.map((l) => `<span data-layer="${l.id}" title="${l.label}"></span>`).join('');
+    root.innerHTML = LAYERS.map((l) => `<span data-layer="${l.id}"></span>`).join('');
     root.addEventListener('click', (e) => {
-      const s = e.target.closest('span'); if (!s) return;
-      requestLayer(+s.dataset.layer);
+      const s = e.target.closest('span'); if (s) requestLayer(+s.dataset.layer);
     });
   }
 
   function bindPanelWheel() {
-    const chrome = $('.panel-chrome');
-    chrome?.addEventListener('wheel', (e) => {
+    $('.panel-chrome')?.addEventListener('wheel', (e) => {
       if (state !== 'DOCKED' && state !== 'PANEL') return;
-      // if scrolling inside a tall ply that can scroll and not at edge, let it
       const ply = $('.ply.is-active');
       if (ply && ply.scrollHeight > ply.clientHeight + 4) {
         const atTop = ply.scrollTop <= 0 && e.deltaY < 0;
@@ -317,31 +257,47 @@
       wheelAcc += e.deltaY;
       if (Math.abs(wheelAcc) < 40) return;
       const dir = wheelAcc > 0 ? 1 : -1;
-      wheelAcc = 0;
-      wheelLock = true;
+      wheelAcc = 0; wheelLock = true;
       requestLayer(layer + dir);
       setTimeout(() => { wheelLock = false; }, 380);
     }, { passive: false });
   }
 
+  function approachThen(i) {
+    animateTo(1);
+    const t = setInterval(() => {
+      if (state === 'PANEL' || state === 'DOCKED') { clearInterval(t); requestLayer(i); }
+    }, 120);
+    setTimeout(() => clearInterval(t), 3500);
+  }
+
+  function bindCapsule() {
+    $('#capsule')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.cap-item'); if (!btn) return;
+      const i = +btn.dataset.layer;
+      if (state === 'FAR' || state === 'DOLLY') return approachThen(i);
+      requestLayer(i);
+    });
+  }
+  function bindDiamonds() {
+    $('#markers')?.addEventListener('click', (e) => {
+      const d = e.target.closest('.diamond'); if (!d) return;
+      const i = +d.dataset.layer;
+      if (state === 'FAR' || state === 'DOLLY') return approachThen(i);
+      requestLayer(i);
+    });
+  }
   function bindMods() {
     $('#mod-nav')?.addEventListener('click', (e) => {
-      const btn = e.target.closest('.mod'); if (!btn) return;
-      requestLayer(+btn.dataset.layer);
+      const btn = e.target.closest('.mod'); if (btn) requestLayer(+btn.dataset.layer);
     });
     $('#layers')?.addEventListener('click', (e) => {
-      const g = e.target.closest('[data-goto]'); if (!g) return;
-      requestLayer(+g.dataset.goto);
+      const g = e.target.closest('[data-goto]'); if (g) requestLayer(+g.dataset.goto);
     });
   }
 
   function requestLayer(i) {
     i = Math.max(0, Math.min(LAYERS.length - 1, i | 0));
-    if (i === layer && !walking) {
-      goLayer(i, { instant: true, silent: true });
-      return;
-    }
-    // U01: walk then open
     walkToModule(i, () => goLayer(i, { instant: false }));
   }
 
@@ -354,82 +310,82 @@
       el.classList.toggle('is-active', on);
       el.hidden = !on;
       if (on && typeof gsap !== 'undefined' && !instant && !reduce()) {
-        gsap.fromTo(el, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.32, ease: 'power3.out' });
+        gsap.fromTo(el, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: 'power3.out' });
       }
     });
     $$('.mod').forEach((b) => b.classList.toggle('is-on', +b.dataset.layer === i));
+    $$('.cap-item').forEach((b) => b.classList.toggle('is-on', +b.dataset.layer === i));
     $$('#layer-ticks span').forEach((s) => s.classList.toggle('is-on', +s.dataset.layer === i));
-    // park walker under active mod
     parkWalker(i, instant || silent || reduce());
   }
 
-  /* U01 walker */
   function modAnchorX(i) {
-    const btn = $(`.mod[data-layer="${i}"]`);
+    const btn = $(`.cap-item[data-layer="${i}"]`) || $(`.mod[data-layer="${i}"]`);
     const dock = $('#walker-dock');
-    if (!btn || !dock) return 8 + i * (84 / Math.max(1, LAYERS.length - 1));
-    const br = btn.getBoundingClientRect();
-    const dr = dock.getBoundingClientRect();
-    return ((br.left + br.width / 2 - dr.left) / dr.width) * 100 - 4;
+    if (!btn || !dock) return 8 + i * 14;
+    // map capsule x into walker-dock width roughly by index
+    return 6 + (i / Math.max(1, LAYERS.length - 1)) * 82;
   }
-
   function parkWalker(i, instant) {
     const w = $('#walker'); if (!w) return;
     const x = modAnchorX(i);
+    const img = $('#walker-img');
+    if (img && !walking) img.src = CHAR.idle;
     if (instant || typeof gsap === 'undefined') { w.style.left = x + '%'; return; }
     gsap.set(w, { left: x + '%' });
   }
 
-  let walkTween = null;
   function walkToModule(i, done) {
-    const w = $('#walker');
-    const fig = w?.querySelector('.px-fig');
+    const w = $('#walker'), img = $('#walker-img');
     if (!w) { done && done(); return; }
     const gen = ++walkGen;
     if (walkTween) { walkTween.kill(); walkTween = null; }
+    if (walkTimer) { clearInterval(walkTimer); walkTimer = null; }
     if (reduce() || typeof gsap === 'undefined') {
       parkWalker(i, true);
-      wave(fig, gen, done);
+      if (img) img.src = CHAR.wave;
+      setTimeout(() => { if (gen === walkGen) { if (img) img.src = CHAR.idle; done && done(); } }, 280);
       return;
     }
     walking = true;
+    let fi = 0;
+    if (img) {
+      img.src = WALK[0];
+      walkTimer = setInterval(() => {
+        if (gen !== walkGen) return;
+        fi = 1 - fi;
+        img.src = WALK[fi];
+      }, 140);
+    }
     const x = modAnchorX(i);
-    const cur = parseFloat(String(w.style.left || '8').replace('%','')) || 8;
-    fig?.classList.add('is-walk');
+    const cur = parseFloat(String(w.style.left || '8').replace('%', '')) || 8;
     walkTween = gsap.to(w, {
       left: x + '%',
-      duration: Math.min(0.7, 0.2 + Math.abs(x - cur) / 120),
+      duration: Math.min(0.75, 0.22 + Math.abs(x - cur) / 110),
       ease: 'none',
       onComplete: () => {
         if (gen !== walkGen) return;
-        fig?.classList.remove('is-walk');
-        walking = false;
-        walkTween = null;
-        wave(fig, gen, done);
+        if (walkTimer) { clearInterval(walkTimer); walkTimer = null; }
+        walking = false; walkTween = null;
+        if (img) img.src = CHAR.wave;
+        setTimeout(() => {
+          if (gen !== walkGen) return;
+          if (img) img.src = CHAR.idle;
+          done && done();
+        }, 380);
       },
     });
   }
 
-  function wave(fig, gen, done) {
-    if (!fig || reduce()) { if (gen === walkGen) done && done(); return; }
-    fig.classList.add('is-wave');
-    setTimeout(() => {
-      fig.classList.remove('is-wave');
-      if (gen === walkGen) done && done();
-    }, 400);
-  }
-
-  /* Product */
   function buildStyles() {
     const root = $('#styles'); if (!root) return;
     root.innerHTML = STYLES.map((s) => `
       <button type="button" class="style-chip" role="option" data-style="${s.id}"
-        aria-selected="${s.id === selectedStyle}" aria-label="${s.name}" title="${s.name}">
+        aria-selected="${s.id === selectedStyle}" aria-label="${s.name}">
         <img src="${ART}/style-${s.id}.png" alt="">
       </button>`).join('');
     root.addEventListener('click', (e) => {
       const btn = e.target.closest('.style-chip'); if (!btn) return;
-      // double intent: select; second click on selected opens detail
       if (btn.getAttribute('aria-selected') === 'true' && selectedStyle === btn.dataset.style) {
         const meta = STYLES.find((s) => s.id === selectedStyle);
         openDetail(`<h2>${meta.name}</h2><img src="${ART}/style-${meta.id}.png" alt=""><p>${meta.blurb}</p>`);
@@ -439,9 +395,8 @@
       localStorage.setItem('vibe-style', selectedStyle);
       $$('.style-chip', root).forEach((b) => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
       const lab = $('#style-label');
-      if (lab) lab.textContent = '当前：' + (STYLES.find((s) => s.id === selectedStyle)?.name || selectedStyle);
+      if (lab) lab.textContent = 'CURRENT · ' + (STYLES.find((s) => s.id === selectedStyle)?.name || selectedStyle).toUpperCase();
       syncGen();
-      if (typeof gsap !== 'undefined') gsap.fromTo(btn, { scale: 0.9 }, { scale: 1, duration: 0.2, ease: 'back.out(2)' });
     });
   }
 
@@ -472,7 +427,7 @@
     const btn = $('#gen-btn'); if (!btn) return;
     btn.addEventListener('click', async () => {
       if (btn.disabled || !photoFile) return;
-      btn.disabled = true; btn.textContent = '绘制中…';
+      btn.disabled = true;
       try {
         const j = await VibeAPI.generate(photoFile, selectedStyle);
         updateQuota();
@@ -482,21 +437,17 @@
         if (empty) empty.hidden = true;
         if (acts) acts.hidden = false;
         const dlP = $('#dl-png'), dlG = $('#dl-gif');
-        if (dlP) { dlP.href = `${j.png}?dl=1`; }
-        if (dlG) { dlG.href = `${j.gif}?dl=1`; }
-        if (typeof gsap !== 'undefined') gsap.from('#result-img', { scale: 0.75, opacity: 0, duration: 0.4, ease: 'back.out(1.7)' });
+        if (dlP) dlP.href = `${j.png}?dl=1`;
+        if (dlG) dlG.href = `${j.gif}?dl=1`;
         requestLayer(3);
       } catch (e) {
-        openSheet(`<h2>失败</h2><p>${e.message || '生成失败'}</p>`);
-      } finally {
-        btn.textContent = '生成贴纸';
-        syncGen();
-      }
+        openSheet(`<h2>FAILED</h2><p>${e.message || '生成失败'}</p>`);
+      } finally { syncGen(); }
     });
     $('#open-lightbox')?.addEventListener('click', () => {
       const img = $('#result-img');
       if (!img || img.hidden) return;
-      openSheet(`<h2>预览</h2><img src="${img.src}" alt="结果" style="width:100%">`);
+      openSheet(`<h2>PREVIEW</h2><img src="${img.src}" alt="" style="width:100%">`);
     });
   }
 
@@ -504,8 +455,7 @@
     $$('.buy').forEach((b) => b.addEventListener('click', async () => {
       try {
         const j = await VibeAPI.checkout(b.dataset.tier);
-        if (j.url) location.href = j.url;
-        else alert(j.error || '失败');
+        if (j.url) location.href = j.url; else alert(j.error || '失败');
       } catch (e) { alert(e.message); }
     }));
   }
@@ -513,19 +463,15 @@
   function openSheet(html) {
     const ov = $('#overlay'), body = $('#sheet-body');
     if (!ov || !body || !html?.trim()) return;
-    body.innerHTML = html;
-    ov.hidden = false; ov.classList.add('is-open');
-    if (typeof gsap !== 'undefined') gsap.fromTo('#sheet', { scale: 0.92, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.28, ease: 'power3.out' });
+    body.innerHTML = html; ov.hidden = false; ov.classList.add('is-open');
   }
   function openDetail(html) {
     const ov = $('#detail-overlay'), body = $('#detail-body');
     if (!ov || !body) return;
-    body.innerHTML = html;
-    ov.hidden = false; ov.classList.add('is-open');
+    body.innerHTML = html; ov.hidden = false; ov.classList.add('is-open');
   }
   function forceClose(ov) {
-    if (!ov) return;
-    ov.hidden = true; ov.classList.remove('is-open');
+    if (!ov) return; ov.hidden = true; ov.classList.remove('is-open');
   }
   function bindOverlay() {
     $('#sheet-close')?.addEventListener('click', () => forceClose($('#overlay')));
@@ -542,19 +488,11 @@
 
   function bindCursor() {
     const cur = $('#cursor');
-    if (!cur || !matchMedia('(pointer: fine)').matches) { cur && (cur.style.display = 'none'); return; }
-    document.body.classList.add('has-cursor');
-    addEventListener('pointermove', (e) => {
-      cur.style.left = e.clientX + 'px';
-      cur.style.top = e.clientY + 'px';
-    }, { passive: true });
-    const labelSel = '.mod,.ov-card,.style-chip,.btn-primary,.upload';
-    addEventListener('pointerover', (e) => {
-      if (e.target.closest(labelSel)) cur.classList.add('is-label');
-    });
-    addEventListener('pointerout', (e) => {
-      if (e.target.closest(labelSel)) cur.classList.remove('is-label');
-    });
+    if (!cur || !matchMedia('(pointer: fine)').matches) { if (cur) cur.style.display = 'none'; return; }
+    addEventListener('pointermove', (e) => { cur.style.left = e.clientX + 'px'; cur.style.top = e.clientY + 'px'; }, { passive: true });
+    const sel = '.cap-item,.ov-card,.style-chip,.btn-primary,.upload,.diamond';
+    addEventListener('pointerover', (e) => { if (e.target.closest(sel)) cur.classList.add('is-label'); });
+    addEventListener('pointerout', (e) => { if (e.target.closest(sel)) cur.classList.remove('is-label'); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
