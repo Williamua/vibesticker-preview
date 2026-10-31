@@ -389,12 +389,12 @@ async function mountProps(){
   const deskTop = new THREE.Group();
   deskTop.name = 'deskTop';
   const localPlace = {
-    // LAYOUT-CAMERA-SPEC §3 + LOCK framing
-    laptop: { pos: [-0.72, 0, 0.18], size: 0.58, rotY: 0.42 },
-    printer: { pos: [-0.28, 0, 0.08], size: 0.28, rotY: 0 }, // local −Z spit; slot uses min.z
-    book: { pos: [0.32, 0, -0.02], size: 0.52, rotY: -0.15 },
-    plant: { pos: [0.70, 0, -0.10], size: 0.30 },
-    lamp: { pos: [0.90, 0, 0.14], size: 0.62, rotY: -1.05 }, // shade toward book
+    // LAYOUT-CAMERA-SPEC §3 — accept mesh limits, tune for readability
+    laptop: { pos: [-0.68, 0, 0.16], size: 0.50, rotY: 0.38 },
+    printer: { pos: [-0.26, 0, 0.06], size: 0.20, rotY: 0 }, // smaller white thermal
+    book: { pos: [0.30, 0, 0.0], size: 0.50, rotY: -0.12 },
+    plant: { pos: [0.68, 0, -0.12], size: 0.26 },
+    lamp: { pos: [0.88, 0, 0.10], size: 0.40, rotY: -1.15 }, // shorter; shade → book
   };
 
   const results = {};
@@ -464,28 +464,59 @@ async function mountProps(){
     deskTop.add(wrap);
     loadedProps[id] = wrap;
     if (id === 'laptop'){
-      wrap.traverse((o)=>{
-        if(!o.isMesh||!o.material) return;
+      // Kill floating "browser pane" ghosts: hide oversized thin planes
+      const meshes = [];
+      wrap.traverse((o)=>{ if(o.isMesh) meshes.push(o); });
+      const warmScreen = (()=>{
+        const c=document.createElement('canvas'); c.width=256; c.height=160;
+        const g=c.getContext('2d');
+        const grd=g.createLinearGradient(0,0,0,160);
+        grd.addColorStop(0,'#F6C28B'); grd.addColorStop(0.45,'#E8876A');
+        grd.addColorStop(0.75,'#7A4E7A'); grd.addColorStop(1,'#2A2540');
+        g.fillStyle=grd; g.fillRect(0,0,256,160);
+        // soft sun
+        const sun=g.createRadialGradient(180,50,4,180,50,40);
+        sun.addColorStop(0,'rgba(255,240,200,0.95)'); sun.addColorStop(1,'rgba(255,200,120,0)');
+        g.fillStyle=sun; g.beginPath(); g.arc(180,50,40,0,Math.PI*2); g.fill();
+        const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; return tex;
+      })();
+      for (const o of meshes){
+        const bb=new THREE.Box3().setFromObject(o);
+        const sz=bb.getSize(new THREE.Vector3());
+        const dims=[sz.x,sz.y,sz.z].sort((a,b)=>a-b);
+        const thin = dims[0] < 0.02 && dims[2] > 0.35; // paper-thin huge plane
+        const n=(o.name||'').toLowerCase();
+        if (thin || n.includes('plane') || n.includes('quad') || n.includes('window')){
+          o.visible = false;
+          continue;
+        }
         const mats=Array.isArray(o.material)?o.material:[o.material];
         for(const m of mats){
+          if(!m) continue;
           if('transmission' in m) m.transmission = 0;
           if(m.transparent){ m.transparent=false; m.opacity=1; }
-          if(m.emissiveIntensity && m.emissiveIntensity>0.5){
-            // fake screen panes — mute
-            m.emissiveIntensity = 0.05;
-            m.emissive.setHex(0x000000);
+          // screen-like: dark base + warm emissive map
+          const isScreen = n.includes('screen')||n.includes('display')||n.includes('lcd');
+          // only treat as screen if named, OR thin vertical panel (height dominant)
+          const tallThin = sz.y > sz.x * 0.7 && sz.y > 0.12 && dims[0] < 0.025;
+          if (isScreen || tallThin){
+            m.map = warmScreen;
+            m.emissiveMap = warmScreen;
+            m.color.setHex(0xffffff);
+            m.emissive = new THREE.Color(0xffffff);
+            m.emissiveIntensity = 0.65;
+            m.roughness = 0.4; m.metalness = 0;
+          } else {
+            if(m.emissiveIntensity){ m.emissiveIntensity = 0; if(m.emissive) m.emissive.setHex(0x000000); }
+            // silver chassis
+            if(m.color){ m.color.setHex(0xC8CCD0); }
+            if(m.metalness!=null) m.metalness = Math.max(m.metalness||0, 0.55);
+            if(m.roughness!=null) m.roughness = 0.4;
           }
-          if(m.opacity < 0.99){ o.visible = false; }
           m.depthWrite = true;
           m.needsUpdate = true;
         }
-        // hide clearcoat / glass looking oversized planes
-        const n=(o.name||'').toLowerCase();
-        if(n.includes('screen')||n.includes('display')||n.includes('glass')){
-          // keep but darken screen
-          for(const m of mats){ if(m.color) m.color.setHex(0x1a1a1a); }
-        }
-      });
+      }
     }
     if (id === 'printer'){
       printerGroup = wrap;
@@ -545,9 +576,11 @@ async function mountProps(){
         }
       });
       // Shade tips toward sketchbook (local −X/−Z)
-      const lampLight = new THREE.SpotLight(MAT.lampEmissive, 2.0, 5.0, 0.7, 0.45, 1.0);
-      lampLight.position.set(0.05, 0.62, 0.02);
-      lampLight.target.position.set(-0.7, 0.02, -0.12);
+      // squash vertical presence a bit (accept mesh, fix proportion)
+      wrap.scale.y *= 0.82;
+      const lampLight = new THREE.SpotLight(MAT.lampEmissive, 2.2, 4.2, 0.75, 0.4, 1.0);
+      lampLight.position.set(0.02, 0.42, 0.0);
+      lampLight.target.position.set(-0.62, 0.0, -0.05);
       wrap.add(lampLight); wrap.add(lampLight.target);
       lampLight.castShadow = !isMobile;
       if (lampLight.castShadow){ lampLight.shadow.mapSize.set(1024,1024); lampLight.shadow.bias=-0.001; }
@@ -583,53 +616,53 @@ async function mountProps(){
 
 /** Spit a rigid thick-slab strip from printer mouth toward camera (LOCK). */
 function buildPrinterSpitStrip(){
-  if (!printerGroup || !stickerTexList.length) return;
+  if (!printerGroup) return;
+  const pool = lockScatterTexList.length ? lockScatterTexList : stickerTexList;
+  if (!pool.length) return;
   const strip = new THREE.Group();
   strip.name = 'printerSpitStrip';
-  const n = 3;
-  for (let i = 0; i < n; i++){
-    const pick = stickerTexList[(i * 3) % stickerTexList.length];
+  for (let i = 0; i < 3; i++){
+    const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = 0.11;
-    const w = h * Math.min(1.3, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.014);
-    // face up-ish toward camera; lined along −Z out of slot
-    // face-up thick slabs in a spit strip toward front (−Z)
-    slab.rotation.set(-Math.PI / 2, 0, (i - 1) * 0.05);
-    slab.position.set((i - 1) * 0.09, 0.012, -0.06 - i * 0.11);
+    const h = 0.07;
+    const w = h * Math.min(1.25, Math.max(0.8, aspect));
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.012);
+    slab.rotation.set(-Math.PI / 2, 0, (i - 1) * 0.04);
+    slab.position.set((i - 1) * 0.02, 0.01, -0.05 - i * 0.085);
     strip.add(slab);
   }
   strip.position.copy(printerSlotLocal);
-  strip.position.y = Math.max(0.02, printerSlotLocal.y * 0.3);
-  strip.position.z = Math.min(printerSlotLocal.z, -0.02) - 0.04;
+  strip.position.y = 0.015;
+  strip.position.z = Math.min(printerSlotLocal.z, -0.02) - 0.03;
   printerGroup.add(strip);
   printerGroup.userData.spitStrip = strip;
 }
 
-/** Decorate open sketchbook pages with flat-thick stickers (albedo PNGs). */
+/** Decorate open sketchbook: small readable page grid (not big floating cards). */
 function decorateSketchbookPages(){
-  if (!bookGroup || !stickerTexList.length) return;
+  if (!bookGroup) return;
+  const pool = (lockScatterTexList.length ? lockScatterTexList : stickerTexList);
+  if (!pool.length) return;
   const page = new THREE.Group();
   page.name = 'bookPageStickers';
-  const box = new THREE.Box3().setFromObject(bookGroup);
-  const size = box.getSize(new THREE.Vector3());
-  // local offsets on open spread (approx page plane)
+  // two-page grid, local coords on open Steno
   const slots = [
-    [-0.12, 0.012, -0.04], [-0.02, 0.012, 0.02], [0.1, 0.012, -0.03],
-    [-0.08, 0.014, 0.06], [0.06, 0.014, 0.05], [0.0, 0.013, -0.08],
+    // left page
+    [-0.10, 0.018, -0.06], [-0.10, 0.018, 0.02], [-0.04, 0.018, -0.03],
+    // right page
+    [0.04, 0.018, -0.05], [0.10, 0.018, 0.0], [0.05, 0.018, 0.05],
   ];
   for (let i = 0; i < slots.length; i++){
-    const pick = stickerTexList[(i * 5 + 2) % stickerTexList.length];
+    const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = 0.07 + (i % 3) * 0.012;
-    const w = h * Math.min(1.25, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.012);
-    slab.rotation.set(-Math.PI / 2, (Math.random() - 0.5) * 0.4, 0);
-    slab.position.set(slots[i][0], Math.max(0.01, size.y * 0.55), slots[i][2]);
-    // soft blob under each page sticker
-    const blob = makeBlobShadow(Math.max(w, h) * 1.1);
-    blob.position.set(slots[i][0] + 0.01, 0.008, slots[i][2] + 0.01);
-    blob.material.opacity = 0.35;
+    const h = 0.048;
+    const w = h * Math.min(1.2, Math.max(0.8, aspect));
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.01);
+    slab.rotation.set(-Math.PI / 2, (i % 2 === 0 ? -0.08 : 0.1), 0);
+    slab.position.set(slots[i][0], slots[i][1], slots[i][2]);
+    const blob = makeBlobShadow(Math.max(w, h) * 1.15);
+    blob.position.set(slots[i][0] + 0.008, 0.01, slots[i][2] + 0.008);
+    blob.material.opacity = 0.4;
     page.add(slab, blob);
   }
   bookGroup.add(page);
@@ -693,6 +726,28 @@ async function loadStickerTextures(){
   }
   if (!stickerTexList.length) throw new Error('贴纸 PNG 加载失败');
   console.info('[studio] stickers hot-plug', got.map((g) => g.file));
+}
+
+/** LOCK foreground row: strawberry / cat / lemon / VIBE from legacy stickers/ */
+const lockScatterTexList = [];
+async function loadLockScatterTextures(){
+  const files = [
+    'sticker-strawberry.png',
+    'sticker-cat.png',
+    'sticker-lemon.png',
+    'sticker-vibe.png',
+  ];
+  const loads = files.map((file) => new Promise((resolve) => {
+    texLoader.load(`${ASSET}/stickers/${file}`, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const img = tex.image;
+      resolve({ tex, w: img?.width || 512, h: img?.height || 512, file });
+    }, undefined, () => resolve(null));
+  }));
+  const got = (await Promise.all(loads)).filter(Boolean);
+  lockScatterTexList.push(...got);
+  console.info('[studio] LOCK scatter', got.map((g) => g.file));
 }
 
 function makeBackTex(){
@@ -952,7 +1007,7 @@ const clock = new THREE.Clock();
 const _tmp = new THREE.Vector3();
 const _push = new THREE.Vector3();
 let spawnAcc = 0;
-const SPAWN_EVERY = reduceMotion ? 1.15 : 0.45;
+let SPAWN_EVERY = reduceMotion ? 1.15 : 0.45;
 
 function updateSticker(s, dt){
   s.age += dt;
@@ -1135,37 +1190,69 @@ addEventListener('resize', () => {
 
 /* boot */
 await loadStickerTextures();
+await loadLockScatterTextures();
 await loadStudioHDRI();
 const mount = await mountProps();
 buildPrinterSpitStrip();
 decorateSketchbookPages();
 refreshCameras(); applyCamera();
-// LOCK foreground: 4 flat-thick slabs in a row near front edge (heavy contact shadow)
-const lockRow = [-0.25, -0.05, 0.15, 0.35];
-for (let i = 0; i < lockRow.length; i++){
-  const s = spawnSticker(true);
-  s.group.position.set(lockRow[i], topY + s.thickness * 0.5 + 0.012, 0.72);
-  s.group.rotation.set(-Math.PI / 2, (i - 1.5) * 0.12, 0);
-  s.landPos.copy(s.group.position);
-  s.home = s.group.position.clone();
-  syncStickerShadow(s);
+
+// LOCK foreground row: 草莓/猫/柠檬/VIBE — flat on desk + clear rear shadow
+function placeLockRow(){
+  const xs = [-0.22, -0.02, 0.18, 0.38];
+  const picks = lockScatterTexList.length >= 4
+    ? lockScatterTexList
+    : stickerTexList;
+  for (let i = 0; i < 4; i++){
+    const pick = picks[i % picks.length];
+    // temporarily bias spawn pool by pushing pick to front of stickerTexList usage
+    const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+    const size = 0.20;
+    const w = size * Math.min(1.25, Math.max(0.75, aspect));
+    const h = size;
+    const thickness = 0.02;
+    const group = createFlatThickSticker(w, h, pick.tex, thickness);
+    const sh = makeBlobShadow(size * 1.35);
+    const shSoft = makeBlobShadow(size * 1.7);
+    group.position.set(xs[i], topY + thickness * 0.5 + 0.01, 0.70);
+    group.rotation.set(-Math.PI / 2, (i - 1.5) * 0.08, 0);
+    scene.add(group); scene.add(sh); scene.add(shSoft);
+    const s = {
+      group, front: group.userData.front, shadow: sh, shadowSoft: shSoft,
+      state: 'landed', age: 0, t: 0, size, thickness,
+      spin: new THREE.Vector3(), willLand: true, floatDur: 1,
+      origin: group.position.clone(), home: group.position.clone(),
+      vel: new THREE.Vector3(), landPos: group.position.clone(),
+      peakY: 0, driftX: 0, driftZ: 0, bounce: 0, ejectT: 0, pathT: 0,
+      push: new THREE.Vector3(), pushVel: new THREE.Vector3(), breathe: 0,
+    };
+    stickers.push(s);
+    syncStickerShadow(s);
+  }
 }
-for (let i = 0; i < 4; i++){
+placeLockRow();
+
+// only 2 gentle floaters (don't clutter desk read)
+for (let i = 0; i < 2; i++){
   const s = spawnSticker(false);
   s.state = 'float';
-  s.pathT = 0.2 + Math.random() * 0.45;
-  s.age = s.pathT * s.floatDur;
+  s.pathT = 0.35 + i * 0.2;
+  s.peakY = 0.7 + i * 0.15;
+  s.driftX = 0.8 + i * 0.3;
   const u = s.pathT;
   const slot = getSlotWorld();
   s.group.position.set(
-    slot.x + s.driftX * u * 0.7,
-    slot.y + Math.sin(u * Math.PI) * s.peakY * 0.7 + u * 0.1,
-    slot.z + s.driftZ * u + u * 0.25
+    slot.x + s.driftX * u,
+    topY + 0.55 + i * 0.25,
+    slot.z + 0.2
   );
+  s.group.rotation.set(-0.4, 0.3 * i, 0.1);
   s.home = s.group.position.clone();
   syncStickerShadow(s);
 }
-console.info('[studio] LOCK-tune flat-thick + HDRI09@4000K pr=', renderer.getPixelRatio(), 'missing=', mount.missing, 'topY', tableTopY);
+// slower continuous spit so desk stays readable
+SPAWN_EVERY = reduceMotion ? 2.2 : 1.35;
+console.info('[studio] analyst-pass LOCK-row + readable props pr=', renderer.getPixelRatio(), 'missing=', mount.missing, 'topY', tableTopY);
 tick();
 
 } catch (e) {
