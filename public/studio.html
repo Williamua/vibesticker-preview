@@ -918,7 +918,7 @@ const backTex = makeBackTex();
 
 const stickers = [];
 const MAX_STICKERS = isMobile ? 18 : 28;
-const FLOAT_CAP = isMobile ? 14 : 18;
+const FLOAT_CAP = isMobile ? 12 : 16;
 const pointer = new THREE.Vector2(9999, 9999);
 const pointerWorld = new THREE.Vector3(9999, 9999, 9999);
 let pointerActive = false;
@@ -1129,63 +1129,90 @@ function pickFloatTex(){
 
 /** Tòpas-style continuous float layer: far=small/slow, near=large/faster. */
 function spawnFloatSticker(layer){
-  // layer: 0 far, 1 mid, 2 near
+  // layer: 0 far, 1 mid, 2 near — density target ~8:6:2 (total 12–16)
+  const nearN = stickers.filter(s => s.state === 'float' && s.layer === 2).length;
+  if (layer === 2 && nearN >= 3) layer = 1; // hard cap near ≤3
   if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) return null;
-  const pick = pickFloatTex();
+  let pick = pickFloatTex();
   if (!pick) return null;
+  // Text stickers (COZY/YAY/VIBE/MSB) never in near — re-pick or demote
+  let isText = /cozy|yay|vibe|msb/i.test(pick.file || '');
+  if (layer === 2 && isText){
+    for (let t = 0; t < 8; t++){
+      const p2 = pickFloatTex();
+      if (p2 && !/cozy|yay|vibe|msb/i.test(p2.file || '')){ pick = p2; isText = false; break; }
+    }
+    if (isText) layer = 1; // last resort demote
+  }
   const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+  // Near longest edge ≤ ~18% of short viewport → world size capped (~0.16–0.18)
   const sizeByLayer = [
-    0.11 + Math.random() * 0.06, // far small
-    0.18 + Math.random() * 0.08, // mid
-    0.28 + Math.random() * 0.10, // near large
+    0.09 + Math.random() * 0.04,  // far small
+    0.13 + Math.random() * 0.05,  // mid
+    0.12 + Math.random() * 0.03,  // near — capped ≤18% viewport
   ];
-  const size = sizeByLayer[layer] || sizeByLayer[1];
-  const w = size * Math.min(1.35, Math.max(0.7, aspect));
+  let size = sizeByLayer[layer] || sizeByLayer[1];
+  if (layer === 2) size = Math.min(size, 0.15); // ≤~18% short-side
+  if (isText){ size *= 0.72; if (layer < 1) layer = 0; } // text → far/small
+  const w = size * Math.min(1.3, Math.max(0.7, aspect));
   const h = size;
-  const thickness = 0.004 + (layer === 2 ? 0.002 : 0.001);
+  const thickness = 0.004 + (layer === 2 ? 0.0015 : 0.001);
   const group = createFlatThickSticker(w, h, pick.tex, thickness);
   const front = group.userData.front;
 
-  // Home anchors: leave mid-right desk + foreground L/R gaps for props / LOCK row
-  // Avoid x≈0.35..0.95 & z≈-0.15..0.25 (lamp/plant/book) and desk apron corners
+  // Place in camera frustum (desk azim -40°): reject off-screen + clear desk corridor/lamp
   let hx, hy, hz;
-  for (let tries = 0; tries < 12; tries++){
-    hx = (Math.random() - 0.5) * 1.7;
-    hz = -0.05 + (Math.random() - 0.25) * 1.15; // bias toward camera, avoid deep back
-    hy = topY + (layer === 0 ? 0.55 + Math.random()*0.35
-      : layer === 1 ? 0.32 + Math.random()*0.28
-      : 0.18 + Math.random()*0.22);
-    const midRightDesk = (hx > 0.25 && hx < 1.05 && hz > -0.35 && hz < 0.35 && hy < topY + 0.55);
-    const fgLeft = (hx < -0.55 && hz > 0.35 && hy < topY + 0.45);
-    const fgRight = (hx > 0.45 && hz > 0.35 && hy < topY + 0.45);
-    if (!midRightDesk && !fgLeft && !fgRight) break;
+  for (let tries = 0; tries < 28; tries++){
+    if (layer === 2){
+      // near wings — still in frame, not face-hugging
+      hx = (Math.random() < 0.55 ? -0.55 : 0.55) + (Math.random()-0.5)*0.35;
+      hz = 0.08 + Math.random()*0.28;
+      hy = topY + 0.26 + Math.random()*0.16;
+    } else if (layer === 1){
+      const wing = Math.random();
+      hx = wing < 0.45 ? -0.50 - Math.random()*0.35
+        : wing < 0.75 ? 0.55 + Math.random()*0.35
+        : (Math.random()-0.5)*0.55;
+      hz = -0.05 + Math.random()*0.40;
+      hy = topY + 0.30 + Math.random()*0.22;
+    } else {
+      hx = (Math.random()-0.5)*1.4;
+      hz = -0.25 + Math.random()*0.55;
+      hy = topY + 0.38 + Math.random()*0.28;
+    }
+    const deskCorridor = (hx > -0.70 && hx < 0.95 && hz > -0.18 && hz < 0.30 && hy < topY + 0.50);
+    const lampZone = (hx > 0.58 && hx < 1.15 && hz > -0.08 && hz < 0.30 && hy < topY + 0.72);
+    if (deskCorridor || lampZone) continue;
+    // Must project into viewport (desk camera already applied)
+    _tmp.set(hx, hy, hz).project(camera);
+    const sx = _tmp.x*0.5+0.5, sy = -_tmp.y*0.5+0.5;
+    if (sx > 0.08 && sx < 0.92 && sy > 0.10 && sy < 0.72) break;
   }
 
   group.position.set(hx, hy, hz);
-  // Face camera-ish with micro tilt (die-cut plane readable)
-  const basePitch = -0.25 + (Math.random() - 0.5) * 0.2;
-  const baseYaw = (Math.random() - 0.5) * 0.5;
-  const baseRoll = (Math.random() - 0.5) * 0.25;
+  const basePitch = -0.22 + (Math.random() - 0.5) * 0.18;
+  const baseYaw = (Math.random() - 0.5) * 0.45;
+  const baseRoll = (Math.random() - 0.5) * 0.22;
   group.rotation.set(basePitch, baseYaw, baseRoll);
 
   const sh = makeBlobShadow(size * 1.15);
   const shSoft = makeBlobShadow(size * 1.5);
-  // far softer / nearer stronger shadow
-  sh.material.opacity = layer === 0 ? 0.10 : layer === 1 ? 0.16 : 0.22;
-  shSoft.material.opacity = layer === 0 ? 0.06 : layer === 1 ? 0.10 : 0.14;
+  sh.material.opacity = layer === 0 ? 0.09 : layer === 1 ? 0.14 : 0.18;
+  shSoft.material.opacity = layer === 0 ? 0.05 : layer === 1 ? 0.09 : 0.12;
   scene.add(sh); scene.add(shSoft); scene.add(group);
 
   const period = 6 + Math.random() * 6; // 6–12s
   const phase = Math.random() * Math.PI * 2;
-  const ampY = (layer === 0 ? 0.04 : layer === 1 ? 0.055 : 0.07) * (0.85 + Math.random()*0.3);
-  const ampX = (layer === 0 ? 0.03 : 0.045) * (0.8 + Math.random()*0.4);
-  const ampZ = 0.025 + Math.random() * 0.03;
-  // micro yaw/roll ±3–8° in radians
+  const ampY = (layer === 0 ? 0.035 : layer === 1 ? 0.05 : 0.06) * (0.85 + Math.random()*0.3);
+  const ampX = (layer === 0 ? 0.028 : 0.04) * (0.8 + Math.random()*0.4);
+  const ampZ = 0.02 + Math.random() * 0.025;
   const yawAmp = (3 + Math.random() * 5) * Math.PI / 180;
   const rollAmp = (3 + Math.random() * 5) * Math.PI / 180;
-  // flee radius px: far 80, mid 110, near 140
-  const fleePx = layer === 0 ? 80 + Math.random()*10 : layer === 1 ? 100 + Math.random()*20 : 120 + Math.random()*20;
-  const returnSec = 0.6 + Math.random() * 0.6; // 0.6–1.2s
+  // flee radius: far 70, mid 100, near 140–180
+  const fleePx = layer === 0 ? 70 : layer === 1 ? 100 : (140 + Math.random() * 40);
+  const returnSec = 0.8 + Math.random() * 0.4; // 0.8–1.2s
+  const fleeStrength = layer === 0 ? 1.5 : layer === 1 ? 2.35 : 2.9; // visible soft hole, still watery
+  const pushCap = layer === 0 ? 0.65 : layer === 1 ? 1.05 : 1.25; // ≥40% width clear
 
   const s = {
     group, front, shadow: sh, shadowSoft: shSoft,
@@ -1203,7 +1230,7 @@ function spawnFloatSticker(layer){
     push: new THREE.Vector3(),
     pushVel: new THREE.Vector3(),
     breathe: phase,
-    period, phase, yawAmp, rollAmp, fleePx, returnSec,
+    period, phase, yawAmp, rollAmp, fleePx, returnSec, fleeStrength, pushCap,
     file: pick.file || '',
   };
   stickers.push(s);
@@ -1315,10 +1342,10 @@ function updateSticker(s, dt){
     s.group.rotation.y = br.y + Math.sin(ph * 0.9) * (s.yawAmp || 0.06);
     s.group.rotation.z = br.z + Math.cos(ph * 0.75) * (s.rollAmp || 0.06);
 
-    // Tòpas flee: screen-space soft push, ease-out, slow return (watery, not explode)
+    // Tòpas flee: clear ~120px cursor disk; displace ≥40% of own width (near)
     const halfW = canvas.clientWidth * 0.5;
     const halfH = canvas.clientHeight * 0.5;
-    s.pushVel.multiplyScalar(0.90);
+    s.pushVel.multiplyScalar(0.88);
     if (pointerActive && !reduceMotion){
       _ndc.copy(s.group.position).project(camera);
       const dx = (_ndc.x - pointer.x) * halfW;
@@ -1327,29 +1354,32 @@ function updateSticker(s, dt){
       const radius = s.fleePx || 110;
       if (distPx < radius && distPx > 0.5){
         const u = 1 - distPx / radius;
-        const ease = u * u * (3 - 2 * u); // smoothstep ease-out feel
-        // Push direction in world from camera plane
-        _push.set(dx, dy, 0).normalize();
-        // Convert screen push to world approx via camera right/up
+        const ease = u * u * (3 - 2 * u); // smoothstep
+        _push.set(dx, dy, 0);
+        if (_push.lengthSq() < 1e-6) _push.set(1, 0.15, 0); // avoid zero
+        _push.normalize();
         const right = _camRight.set(1,0,0).applyQuaternion(camera.quaternion);
         const up = _camUp.set(0,1,0).applyQuaternion(camera.quaternion);
         const worldPush = right.multiplyScalar(_push.x).addScaledVector(up, _push.y);
-        worldPush.y *= 0.45;
-        worldPush.normalize().multiplyScalar(ease * ease * 0.85); // soft Tòpas push, capped
-        // return spring strength from returnSec
-        const k = 1 / Math.max(0.45, s.returnSec || 0.9);
-        s.pushVel.addScaledVector(worldPush, dt * (10 + k * 4));
-        // hard cap velocity so stickers never explode across screen
-        if (s.pushVel.length() > 1.35) s.pushVel.setLength(1.35);
+        worldPush.y *= 0.40;
+        const strength = s.fleeStrength || 1.8;
+        worldPush.normalize().multiplyScalar(ease * strength);
+        // Extra boost when inside 120px clear disk
+        if (distPx < 120) worldPush.multiplyScalar(1.25);
+        const k = 1 / Math.max(0.5, s.returnSec || 1.0);
+        s.pushVel.addScaledVector(worldPush, dt * (14 + k * 5));
+        const vmax = 0.9 + (s.layer === 2 ? 0.7 : s.layer === 1 ? 0.35 : 0.15);
+        if (s.pushVel.length() > vmax) s.pushVel.setLength(vmax);
       }
     }
-    // Spring back to home (water settle) — returnSec governs feel
-    const returnK = 2.2 / Math.max(0.5, s.returnSec || 0.9);
+    // Spring back — watery settle over returnSec
+    const returnK = 1.6 / Math.max(0.6, s.returnSec || 1.0);
     _push.copy(s.home).sub(s.group.position).sub(s.push);
     s.pushVel.addScaledVector(_push, dt * returnK);
     s.push.addScaledVector(s.pushVel, dt);
-    s.push.multiplyScalar(0.94);
-    if (s.push.length() > 0.95) s.push.setLength(0.95); // soft clamp displacement
+    s.push.multiplyScalar(0.93);
+    const pcap = s.pushCap || Math.max(0.55, (s.size || 0.15) * 0.9);
+    if (s.push.length() > pcap) s.push.setLength(pcap);
     s.group.position.copy(s.home).add(s.push);
 
     syncStickerShadow(s);
@@ -1410,7 +1440,10 @@ function tick(){
   const floatCount = stickers.filter(s => s.state === 'float').length;
   if (floatCount < FLOAT_CAP && spawnAcc >= SPAWN_EVERY){
     spawnAcc = 0;
-    const layer = floatCount < 5 ? 0 : floatCount < 11 ? 1 : 2;
+    const farN = stickers.filter(s => s.state === 'float' && s.layer === 0).length;
+    const midN = stickers.filter(s => s.state === 'float' && s.layer === 1).length;
+    const nearN2 = stickers.filter(s => s.state === 'float' && s.layer === 2).length;
+    const layer = farN < 8 ? 0 : midN < 6 ? 1 : (nearN2 < 2 ? 2 : 0);
     spawnFloatSticker(layer);
   }
 
@@ -1492,27 +1525,65 @@ function placeLockRow(){
   }
 }
 placeLockRow();
+window.__stickers = stickers;
+window.__cam = camera;
 window.__floatQA = () => {
   const floats = stickers.filter(s=>s.state==='float');
-  let best=null, bestScore=1e9;
+  let best=null, bestScore=1e9, bestS=null;
   for (const s of floats){
     const v=s.group.position.clone().project(camera);
     const x=v.x*0.5+0.5, y=-v.y*0.5+0.5;
-    if (x<0.08||x>0.92||y<0.08||y>0.92) continue;
-    const score=Math.hypot(x-0.5,y-0.45)+(s.layer===2?0:0.12);
-    if (score<bestScore){ bestScore=score; best={x,y,layer:s.layer,file:s.file,push:+s.push.length().toFixed(3)}; }
+    if (x<0.05||x>0.95||y<0.05||y>0.95) continue;
+    if (y < 0.12 || y > 0.70) continue;
+    if (x < 0.12 || x > 0.88) continue;
+    const score=Math.hypot(x-0.35,y-0.36)
+      + (s.layer===0 ? 0.45 : 0)
+      + (s.layer===1 ? -0.05 : 0)
+      + (s.layer===2 ? -0.10 : 0)
+      - Math.min(0.25, (s.size||0.1)*1.1);
+    if (score<bestScore){ bestScore=score; bestS=s; best={x,y,layer:s.layer,file:s.file,push:+s.push.length().toFixed(3),size:s.size,
+      wp:s.group.position.toArray().map(n=>+n.toFixed(3))}; }
   }
+  // Pin tracked sticker once marked (don't retarget mid-flee)
+  const tracked = window.__fleePinned || bestS || null;
+  if (!window.__fleePinned) window.__fleeTarget = bestS || null;
+  const tv = tracked ? (()=>{ const v=tracked.group.position.clone().project(camera); return {x:v.x*0.5+0.5,y:-v.y*0.5+0.5}; })() : null;
   return {
     floatN: floats.length,
     landedN: stickers.filter(s=>s.state==='landed').length,
     layers: [0,1,2].map(L => floats.filter(s=>s.layer===L).length),
     hasSpit: !!(printerGroup && printerGroup.userData && printerGroup.userData.spitStrip),
-    sample: floats.slice(0,6).map(s=>({
-      layer:s.layer, fleePx:+(s.fleePx||0).toFixed?.(1), period:+(s.period||0).toFixed?.(2),
+    nearFiles: floats.filter(s=>s.layer===2).map(s=>s.file),
+    sample: floats.slice(0,8).map(s=>({
+      layer:s.layer, fleePx:+(s.fleePx||0).toFixed?.(1), size:+(s.size||0).toFixed?.(3),
       y:+s.group.position.y.toFixed(3), file:s.file, push:+s.push.length().toFixed(3)
     })),
+    allScr: floats.map(s=>{
+      const v=s.group.position.clone().project(camera);
+      return {layer:s.layer,file:s.file,size:+(s.size||0).toFixed(3),
+        x:+(v.x*0.5+0.5).toFixed(3), y:+(-v.y*0.5+0.5).toFixed(3),
+        push:+s.push.length().toFixed(3)};
+    }),
     nearScreen: best,
+    trackedScreen: tv,
+    trackedPush: tracked ? +tracked.push.length().toFixed(3) : 0,
+    trackedWp: tracked ? tracked.group.position.toArray().map(n=>+n.toFixed(3)) : null,
     maxPush: floats.reduce((m,s)=>Math.max(m,s.push.length()),0),
+    // Delta vs pinned home (excludes retarget noise); also report push length
+    targetDelta: (window.__fleeHome && tracked) ? tracked.group.position.distanceTo(window.__fleeHome) : 0,
+    pushLen: tracked ? +tracked.push.length().toFixed(3) : 0,
+  };
+};
+window.__markFleeHome = () => {
+  const s = window.__fleeTarget;
+  if (!s) return null;
+  window.__fleePinned = s;
+  window.__fleeHome = s.homeBase ? s.homeBase.clone() : s.group.position.clone();
+  const v=s.group.position.clone().project(camera);
+  return {
+    file:s.file, size:s.size, layer:s.layer,
+    wp:s.group.position.toArray().map(n=>+n.toFixed(3)),
+    x:v.x*0.5+0.5, y:-v.y*0.5+0.5,
   };
 };
 window.__studioDump = () => {
@@ -1550,10 +1621,15 @@ window.__studioDump = () => {
 
 // Tòpas float pool: seed far/mid/near immediately (desk/clean included)
 {
-  const plan = [0,0,0,0, 1,1,1,1,1,1, 2,2,2,2,2,2]; // ~16 → within 12–20
+  const plan = [0,0,0,0,0,0,0,0, 1,1,1,1,1,1]; // 8 far + 6 mid
   for (const layer of plan){
     if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) break;
     spawnFloatSticker(layer);
+  }
+  // Force 2 near (non-text) after mid/far filled
+  for (let n = 0; n < 2; n++){
+    if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) break;
+    spawnFloatSticker(2);
   }
 }
 SPAWN_EVERY = reduceMotion ? 1.6 : 0.85;
