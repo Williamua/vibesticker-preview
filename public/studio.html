@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<meta name="description" content="VibeSticker 贴纸工作室 · 首屏漂浮贴纸"/>
+<meta name="description" content="VibeSticker 贴纸工作室 · 漂浮贴纸与工作台"/>
 <title>VibeSticker · 贴纸工作室</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,8 +25,13 @@
   .tag{position:absolute;top:28px;right:28px;font-size:11px;letter-spacing:.22em;text-transform:uppercase;
     color:rgba(42,34,28,.45);font-weight:600}
   .hint{position:absolute;bottom:24px;left:0;right:0;text-align:center;font-size:13px;
-    color:rgba(42,34,28,.55);letter-spacing:.04em}
+    color:rgba(42,34,28,.55);letter-spacing:.04em;transition:opacity .35s ease}
   .hint em{font-style:normal;color:var(--coral);font-weight:600}
+  .scroll-cue{position:absolute;bottom:52px;left:0;right:0;text-align:center;font-size:11px;
+    letter-spacing:.2em;text-transform:uppercase;color:rgba(42,34,28,.4);font-weight:600;
+    transition:opacity .35s ease}
+  .scroll-cue span{display:inline-block;animation:bob 1.6s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
   #err{display:none;position:fixed;inset:0;z-index:20;align-items:center;justify-content:center;
     padding:24px;background:rgba(247,243,236,.95);color:var(--ink);font-size:15px;line-height:1.6;text-align:center}
   #err.show{display:flex}
@@ -35,6 +40,10 @@
     .tag{font-size:9px;top:20px;right:16px}
     .brand{top:16px;left:16px}
     .hint{font-size:12px;bottom:16px;padding:0 16px}
+    .scroll-cue{bottom:44px;font-size:10px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .scroll-cue span{animation:none}
   }
 </style>
 </head>
@@ -42,7 +51,8 @@
 <div id="hud">
   <div class="brand"><span class="vibe">VIBE</span><span class="sub">Sticker Studio</span></div>
   <div class="tag">Make Something Beautiful</div>
-  <p class="hint">打印机持续吐贴纸 · <em>鼠标靠近</em>贴纸会躲开</p>
+  <p class="scroll-cue" id="scrollCue"><span>↓ 滚轮看工作台</span></p>
+  <p class="hint" id="hint">打印机持续吐贴纸 · <em>鼠标靠近</em>贴纸会躲开</p>
 </div>
 <div id="err" role="alert"></div>
 <canvas id="c"></canvas>
@@ -60,10 +70,13 @@ const COLORS = {
   cream: 0xF7F3EC, apricot: 0xE8D9C8, oak: 0xC4A882,
   coral: 0xE87A6B, ink: 0x2A221C, mint: 0x7CB8A0,
   lemon: 0xF0C94A, berry: 0xD94A3D, white: 0xFFF8F0,
+  brass: 0xC9A56B,
 };
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const errEl = document.getElementById('err');
+const hintEl = document.getElementById('hint');
+const scrollCueEl = document.getElementById('scrollCue');
 function showErr(msg){
   console.error(msg);
   errEl.textContent = '加载失败\n' + msg;
@@ -86,48 +99,66 @@ renderer.setSize(innerWidth, innerHeight, false);
 renderer.setClearColor(COLORS.cream, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.08;
 renderer.shadowMap.enabled = !isMobile;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(COLORS.cream);
-scene.fog = new THREE.Fog(COLORS.cream, 14, 28);
+scene.fog = new THREE.Fog(COLORS.cream, 16, 32);
 
-const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 60);
-camera.position.set(0.35, 2.15, 6.4);
-camera.lookAt(0.15, 1.05, 0);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 60);
+
+/* scroll progress 0 = hero float, 1 = workbench */
+let scrollTarget = 0;
+let scrollProg = 0;
+
+const camHero = {
+  pos: new THREE.Vector3(0.55, 2.35, 5.8),
+  look: new THREE.Vector3(-0.8, 1.35, 0.2),
+};
+const camDesk = {
+  pos: new THREE.Vector3(0.15, 3.55, 5.2),
+  look: new THREE.Vector3(0.05, 1.15, 0.05),
+};
+const _camPos = new THREE.Vector3();
+const _camLook = new THREE.Vector3();
+
+function applyCamera(){
+  _camPos.lerpVectors(camHero.pos, camDesk.pos, scrollProg);
+  _camLook.lerpVectors(camHero.look, camDesk.look, scrollProg);
+  camera.position.copy(_camPos);
+  camera.lookAt(_camLook);
+}
+applyCamera();
 
 /* —— lights —— */
-const amb = new THREE.AmbientLight(0xFFF4E8, 0.72);
+const amb = new THREE.AmbientLight(0xFFF4E8, 0.7);
 scene.add(amb);
-const hemi = new THREE.HemisphereLight(0xFFF8F0, 0xE8D9C8, 0.55);
+const hemi = new THREE.HemisphereLight(0xFFF8F0, 0xE8D9C8, 0.5);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xFFF6EA, 1.15);
-key.position.set(-3.5, 7.5, 4.5);
+const key = new THREE.DirectionalLight(0xFFF6EA, 1.05);
+key.position.set(-2.8, 8.5, 5.2);
 key.castShadow = !isMobile;
-key.shadow.mapSize.set(1024, 1024);
+key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 1;
-key.shadow.camera.far = 24;
-key.shadow.camera.left = -8;
-key.shadow.camera.right = 8;
-key.shadow.camera.top = 8;
-key.shadow.camera.bottom = -4;
-key.shadow.bias = -0.0004;
-key.shadow.radius = 3;
+key.shadow.camera.far = 28;
+key.shadow.camera.left = -7;
+key.shadow.camera.right = 7;
+key.shadow.camera.top = 7;
+key.shadow.camera.bottom = -5;
+key.shadow.bias = -0.00035;
+key.shadow.radius = 3.5;
 scene.add(key);
-const fill = new THREE.DirectionalLight(0xFFE8D8, 0.35);
-fill.position.set(4, 3, 2);
+const fill = new THREE.DirectionalLight(0xFFE8D8, 0.32);
+fill.position.set(5, 4, 2.5);
 scene.add(fill);
-const rim = new THREE.PointLight(COLORS.coral, 0.22, 12);
-rim.position.set(-1.2, 1.6, 1.5);
-scene.add(rim);
 
-/* —— ground —— */
+/* soft void ground (studio seamless) */
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(40, 40),
+  new THREE.PlaneGeometry(50, 50),
   new THREE.MeshStandardMaterial({
-    color: COLORS.cream, roughness: 0.92, metalness: 0.0,
+    color: COLORS.cream, roughness: 0.95, metalness: 0.0,
   })
 );
 ground.rotation.x = -Math.PI / 2;
@@ -135,15 +166,59 @@ ground.position.y = 0;
 ground.receiveShadow = true;
 scene.add(ground);
 
-/* soft sunlit wall glow (sprite plane) */
-const wallGlow = new THREE.Mesh(
-  new THREE.PlaneGeometry(18, 12),
-  new THREE.MeshBasicMaterial({
-    color: 0xFFF8F0, transparent: true, opacity: 0.35, depthWrite: false,
-  })
-);
-wallGlow.position.set(-2, 4.5, -6);
-scene.add(wallGlow);
+/* ========== procedural textures ========== */
+function makeOakTexture(){
+  const S = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0,0,S,0);
+  g.addColorStop(0,'#D4B896');
+  g.addColorStop(0.35,'#C4A882');
+  g.addColorStop(0.55,'#B8956C');
+  g.addColorStop(0.8,'#C9AD88');
+  g.addColorStop(1,'#D0B490');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,S,S);
+  // grain lines
+  for (let i=0;i<70;i++){
+    const y = (i/70)*S + Math.sin(i*1.7)*4;
+    ctx.strokeStyle = `rgba(90,60,30,${0.035 + (i%5)*0.01})`;
+    ctx.lineWidth = 1 + (i%3)*0.6;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x=0;x<=S;x+=16){
+      ctx.lineTo(x, y + Math.sin(x*0.02 + i)*3 + Math.sin(x*0.07)*1.5);
+    }
+    ctx.stroke();
+  }
+  // subtle pores
+  ctx.fillStyle = 'rgba(80,50,25,0.06)';
+  for (let i=0;i<180;i++){
+    ctx.fillRect(Math.random()*S, Math.random()*S, 1.5, 1.5);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  return tex;
+}
+const oakTex = makeOakTexture();
+oakTex.repeat.set(2.2, 1.1);
+
+function makePaperTex(tint='#FFFDF8'){
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = tint;
+  ctx.fillRect(0,0,S,S);
+  ctx.fillStyle = 'rgba(196,168,130,0.12)';
+  for (let i=0;i<30;i++) ctx.fillRect(Math.random()*S, Math.random()*S, 2, 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 /* ========== sticker textures (canvas) ========== */
 function makeStickerTexture(kind){
@@ -152,10 +227,8 @@ function makeStickerTexture(kind){
   c.width = c.height = S;
   const ctx = c.getContext('2d');
   const pad = 18;
-  // rounded rect sticker die-cut
   const r = 36;
   ctx.clearRect(0,0,S,S);
-  // soft edge shadow
   ctx.save();
   ctx.shadowColor = 'rgba(42,34,28,0.18)';
   ctx.shadowBlur = 10;
@@ -164,11 +237,9 @@ function makeStickerTexture(kind){
   ctx.fillStyle = '#FFFDF8';
   ctx.fill();
   ctx.restore();
-  // white face
   roundRect(ctx, pad, pad, S-pad*2, S-pad*2, r);
   ctx.fillStyle = '#FFFDF8';
   ctx.fill();
-  // thin border
   ctx.strokeStyle = 'rgba(42,34,28,0.08)';
   ctx.lineWidth = 2;
   ctx.stroke();
@@ -181,6 +252,7 @@ function makeStickerTexture(kind){
   else if (kind === 'blossom') drawBlossom(ctx, cx, cy, 68);
   else if (kind === 'vibe') drawVibe(ctx, cx, cy);
   else if (kind === 'mint') drawMintLeaf(ctx, cx, cy, 70);
+  else if (kind === 'make') drawMake(ctx, cx, cy);
   else drawStar(ctx, cx, cy, 60);
 
   const tex = new THREE.CanvasTexture(c);
@@ -198,39 +270,34 @@ function roundRect(ctx,x,y,w,h,r){
   ctx.closePath();
 }
 function drawCat(ctx,cx,cy,s){
-  // head
-  ctx.fillStyle = '#E8B07A';
+  ctx.fillStyle = '#C9A88A';
   ctx.beginPath(); ctx.ellipse(cx, cy+4, s*0.55, s*0.48, 0, 0, Math.PI*2); ctx.fill();
-  // ears
   ctx.beginPath();
   ctx.moveTo(cx-s*0.42, cy-s*0.15); ctx.lineTo(cx-s*0.55, cy-s*0.62); ctx.lineTo(cx-s*0.12, cy-s*0.32); ctx.fill();
   ctx.beginPath();
   ctx.moveTo(cx+s*0.42, cy-s*0.15); ctx.lineTo(cx+s*0.55, cy-s*0.62); ctx.lineTo(cx+s*0.12, cy-s*0.32); ctx.fill();
-  // inner ears
-  ctx.fillStyle = '#F0C4A8';
+  ctx.fillStyle = '#E8C4A8';
   ctx.beginPath();
   ctx.moveTo(cx-s*0.38, cy-s*0.18); ctx.lineTo(cx-s*0.48, cy-s*0.48); ctx.lineTo(cx-s*0.18, cy-s*0.28); ctx.fill();
   ctx.beginPath();
   ctx.moveTo(cx+s*0.38, cy-s*0.18); ctx.lineTo(cx+s*0.48, cy-s*0.48); ctx.lineTo(cx+s*0.18, cy-s*0.28); ctx.fill();
-  // eyes (warm mint, not pool blue)
+  // tabby stripes
+  ctx.strokeStyle = 'rgba(90,60,40,0.35)'; ctx.lineWidth = 3;
+  for (let i=-1;i<=1;i++){
+    ctx.beginPath(); ctx.moveTo(cx+i*s*0.18, cy-s*0.25); ctx.quadraticCurveTo(cx+i*s*0.1, cy, cx+i*s*0.22, cy+s*0.25); ctx.stroke();
+  }
   ctx.fillStyle = '#5A9A88';
   ctx.beginPath(); ctx.ellipse(cx-s*0.2, cy-s*0.02, s*0.11, s*0.14, 0, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(cx+s*0.2, cy-s*0.02, s*0.11, s*0.14, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#2A221C';
   ctx.beginPath(); ctx.arc(cx-s*0.2, cy-s*0.02, s*0.045, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(cx+s*0.2, cy-s*0.02, s*0.045, 0, Math.PI*2); ctx.fill();
-  // nose
   ctx.fillStyle = '#E87A6B';
   ctx.beginPath();
   ctx.moveTo(cx, cy+s*0.12); ctx.lineTo(cx-s*0.06, cy+s*0.2); ctx.lineTo(cx+s*0.06, cy+s*0.2); ctx.fill();
-  // mouth
   ctx.strokeStyle = '#2A221C'; ctx.lineWidth = 2; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(cx, cy+s*0.2); ctx.quadraticCurveTo(cx-s*0.12, cy+s*0.3, cx-s*0.18, cy+s*0.22); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx, cy+s*0.2); ctx.quadraticCurveTo(cx+s*0.12, cy+s*0.3, cx+s*0.18, cy+s*0.22); ctx.stroke();
-  // blush
-  ctx.fillStyle = 'rgba(232,122,107,0.35)';
-  ctx.beginPath(); ctx.ellipse(cx-s*0.38, cy+s*0.12, s*0.1, s*0.06, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx+s*0.38, cy+s*0.12, s*0.1, s*0.06, 0, 0, Math.PI*2); ctx.fill();
 }
 function drawBerry(ctx,cx,cy,s){
   ctx.fillStyle = '#D94A3D';
@@ -239,14 +306,12 @@ function drawBerry(ctx,cx,cy,s){
   ctx.bezierCurveTo(cx+s*0.55, cy+s*0.2, cx+s*0.45, cy-s*0.35, cx, cy-s*0.25);
   ctx.bezierCurveTo(cx-s*0.45, cy-s*0.35, cx-s*0.55, cy+s*0.2, cx, cy+s*0.55);
   ctx.fill();
-  // seeds
   ctx.fillStyle = '#F7F3EC';
   for (let i=0;i<8;i++){
     const a = (i/8)*Math.PI*2 + 0.4;
     const r = s*0.22;
     ctx.beginPath(); ctx.ellipse(cx+Math.cos(a)*r, cy+Math.sin(a)*r*0.7, 3, 5, a, 0, Math.PI*2); ctx.fill();
   }
-  // leaves
   ctx.fillStyle = '#7CB8A0';
   ctx.beginPath(); ctx.ellipse(cx-s*0.12, cy-s*0.38, s*0.18, s*0.1, -0.6, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(cx+s*0.12, cy-s*0.38, s*0.18, s*0.1, 0.6, 0, Math.PI*2); ctx.fill();
@@ -259,14 +324,10 @@ function drawPeach(ctx,cx,cy,s){
   ctx.globalAlpha = 0.45;
   ctx.beginPath(); ctx.ellipse(cx+s*0.12, cy+s*0.08, s*0.32, s*0.4, 0.2, 0, Math.PI*2); ctx.fill();
   ctx.globalAlpha = 1;
-  // cleft
   ctx.strokeStyle = 'rgba(217,74,61,0.35)'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(cx, cy-s*0.35); ctx.quadraticCurveTo(cx-s*0.05, cy, cx, cy+s*0.4); ctx.stroke();
-  // leaf
   ctx.fillStyle = '#7CB8A0';
   ctx.beginPath(); ctx.ellipse(cx+s*0.1, cy-s*0.42, s*0.2, s*0.1, 0.5, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = '#2A221C'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(cx, cy-s*0.35); ctx.lineTo(cx, cy-s*0.55); ctx.stroke();
 }
 function drawLemon(ctx,cx,cy,s){
   ctx.fillStyle = '#F0C94A';
@@ -297,7 +358,6 @@ function drawVibe(ctx,cx,cy){
   ctx.font = 'bold 72px Caveat, cursive';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // white outline
   ctx.strokeStyle = '#FFFDF8';
   ctx.lineWidth = 14;
   ctx.lineJoin = 'round';
@@ -305,19 +365,25 @@ function drawVibe(ctx,cx,cy){
   ctx.fillStyle = '#E87A6B';
   ctx.fillText('VIBE', cx, cy+4);
 }
+function drawMake(ctx,cx,cy){
+  ctx.fillStyle = '#FFFDF8';
+  roundRect(ctx, 28, 70, 200, 116, 18);
+  ctx.fill();
+  ctx.fillStyle = '#E87A6B';
+  ctx.font = '600 22px DM Sans, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.letterSpacing = '0.08em';
+  ctx.fillText('MAKE', cx, cy-22);
+  ctx.fillText('SOMETHING', cx, cy+6);
+  ctx.fillText('BEAUTIFUL', cx, cy+34);
+}
 function drawMintLeaf(ctx,cx,cy,s){
   ctx.fillStyle = '#7CB8A0';
   ctx.beginPath();
   ctx.ellipse(cx, cy, s*0.35, s*0.55, 0.3, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle = '#5A9A80'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(cx-s*0.05, cy+s*0.5); ctx.quadraticCurveTo(cx+s*0.05, cy, cx-s*0.02, cy-s*0.5); ctx.stroke();
-  for (let i=-2;i<=2;i++){
-    if (!i) continue;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy+i*s*0.12);
-    ctx.quadraticCurveTo(cx+i*s*0.12, cy+i*s*0.08, cx+i*s*0.2, cy+i*s*0.05);
-    ctx.stroke();
-  }
 }
 function drawStar(ctx,cx,cy,s){
   ctx.fillStyle = '#F0C94A';
@@ -333,9 +399,8 @@ function drawStar(ctx,cx,cy,s){
   ctx.closePath(); ctx.fill();
 }
 
-const STICKER_KINDS = ['cat','berry','peach','lemon','blossom','vibe','mint','star'];
+const STICKER_KINDS = ['cat','berry','peach','lemon','blossom','vibe','mint','star','make'];
 const stickerTextures = STICKER_KINDS.map(makeStickerTexture);
-// paper back texture
 function makeBackTexture(){
   const S = 128;
   const c = document.createElement('canvas');
@@ -344,105 +409,351 @@ function makeBackTexture(){
   ctx.fillStyle = '#F3E6D4';
   ctx.fillRect(0,0,S,S);
   ctx.fillStyle = 'rgba(196,168,130,0.25)';
-  for (let i=0;i<40;i++){
-    ctx.fillRect(Math.random()*S, Math.random()*S, 2, 2);
-  }
+  for (let i=0;i<40;i++) ctx.fillRect(Math.random()*S, Math.random()*S, 2, 2);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 const backTex = makeBackTexture();
 
-/* ========== printer ========== */
+/* ========== WORKBENCH ========== */
+const bench = new THREE.Group();
+bench.position.set(0, 0, 0);
+scene.add(bench);
+
+const oakMat = new THREE.MeshStandardMaterial({
+  map: oakTex, color: 0xffffff, roughness: 0.62, metalness: 0.04,
+});
+const creamMat = new THREE.MeshStandardMaterial({
+  color: 0xF5EEE4, roughness: 0.48, metalness: 0.04,
+});
+const coralMat = new THREE.MeshStandardMaterial({
+  color: COLORS.coral, roughness: 0.38, metalness: 0.1,
+});
+const coralSoftMat = new THREE.MeshStandardMaterial({
+  color: 0xF0A898, roughness: 0.45, metalness: 0.06,
+});
+const darkMat = new THREE.MeshStandardMaterial({
+  color: 0x3A322C, roughness: 0.85, metalness: 0.05,
+});
+const brassMat = new THREE.MeshStandardMaterial({
+  color: COLORS.brass, roughness: 0.28, metalness: 0.75,
+});
+const potMat = new THREE.MeshStandardMaterial({
+  color: 0x9A9A98, roughness: 0.7, metalness: 0.05,
+});
+const leafMat = new THREE.MeshStandardMaterial({
+  color: COLORS.mint, roughness: 0.55, metalness: 0.0,
+});
+const leafDarkMat = new THREE.MeshStandardMaterial({
+  color: 0x5A9A80, roughness: 0.6, metalness: 0.0,
+});
+
+/* floating desk */
+const DESK_Y = 0.92;
+const desk = new THREE.Mesh(new RoundedBoxGeometry(4.6, 0.2, 2.35, 6, 0.1), oakMat);
+desk.position.set(0, DESK_Y, 0);
+desk.castShadow = true;
+desk.receiveShadow = true;
+bench.add(desk);
+
+/* underside rim for thickness */
+const deskRim = new THREE.Mesh(
+  new RoundedBoxGeometry(4.45, 0.06, 2.2, 4, 0.06),
+  new THREE.MeshStandardMaterial({ color: 0xB8956C, roughness: 0.7, metalness: 0.03 })
+);
+deskRim.position.set(0, DESK_Y - 0.12, 0);
+deskRim.castShadow = true;
+bench.add(deskRim);
+
+/* soft contact shadow under floating desk */
+const deskShadow = new THREE.Mesh(
+  new THREE.PlaneGeometry(5.4, 3.0),
+  new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.14, depthWrite: false })
+);
+deskShadow.rotation.x = -Math.PI/2;
+deskShadow.position.set(0.1, 0.02, 0.15);
+bench.add(deskShadow);
+// blur-ish outer shadow
+const deskShadow2 = new THREE.Mesh(
+  new THREE.PlaneGeometry(6.2, 3.6),
+  new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.06, depthWrite: false })
+);
+deskShadow2.rotation.x = -Math.PI/2;
+deskShadow2.position.set(0.15, 0.015, 0.2);
+bench.add(deskShadow2);
+
+const topY = DESK_Y + 0.11;
+
+/* —— cutting machine (left, coral/pink accent) —— */
+const cutter = new THREE.Group();
+cutter.position.set(-1.55, topY, -0.15);
+bench.add(cutter);
+{
+  const body = new THREE.Mesh(new RoundedBoxGeometry(1.25, 0.55, 1.05, 4, 0.1), creamMat);
+  body.position.y = 0.28;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  cutter.add(body);
+  // coral side panel / lid accent
+  const lid = new THREE.Mesh(new RoundedBoxGeometry(1.18, 0.08, 0.95, 3, 0.05), coralSoftMat);
+  lid.position.y = 0.58;
+  lid.castShadow = true;
+  cutter.add(lid);
+  // front coral strip
+  const strip = new THREE.Mesh(new RoundedBoxGeometry(1.05, 0.12, 0.06, 2, 0.03), coralMat);
+  strip.position.set(0, 0.22, 0.52);
+  cutter.add(strip);
+  // power button
+  const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 20), coralMat);
+  btn.rotation.x = Math.PI/2;
+  btn.position.set(0.4, 0.35, 0.54);
+  cutter.add(btn);
+  // roller slot
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.05, 0.12), darkMat);
+  slot.position.set(0, 0.18, 0.48);
+  cutter.add(slot);
+}
+
+/* —— printer on desk (mid-left) —— */
 const printerGroup = new THREE.Group();
-printerGroup.position.set(-2.6, 0, 0.2);
-scene.add(printerGroup);
+printerGroup.position.set(-0.25, topY, -0.05);
+bench.add(printerGroup);
 
 function buildPrinter(){
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0xF5EEE4, roughness: 0.55, metalness: 0.05,
-  });
+  const bodyMat = creamMat;
   const woodMat = new THREE.MeshStandardMaterial({
-    color: COLORS.oak, roughness: 0.7, metalness: 0.02,
+    map: oakTex, color: 0xffffff, roughness: 0.65, metalness: 0.03,
   });
-  const darkMat = new THREE.MeshStandardMaterial({
-    color: 0x3A322C, roughness: 0.85, metalness: 0.05,
-  });
-  const coralMat = new THREE.MeshStandardMaterial({
-    color: COLORS.coral, roughness: 0.4, metalness: 0.08,
-  });
+  woodMat.map = oakTex.clone();
+  woodMat.map.repeat.set(0.4, 0.6);
+  woodMat.map.needsUpdate = true;
 
-  // main body
-  const body = new THREE.Mesh(new RoundedBoxGeometry(1.55, 1.15, 1.35, 4, 0.12), bodyMat);
-  body.position.y = 0.72;
+  const body = new THREE.Mesh(new RoundedBoxGeometry(1.15, 0.95, 1.05, 4, 0.1), bodyMat);
+  body.position.y = 0.52;
   body.castShadow = true;
   body.receiveShadow = true;
   printerGroup.add(body);
 
-  // wood side panel (right)
-  const side = new THREE.Mesh(new RoundedBoxGeometry(0.08, 0.95, 1.15, 2, 0.04), woodMat);
-  side.position.set(0.78, 0.72, 0);
+  const side = new THREE.Mesh(new RoundedBoxGeometry(0.07, 0.78, 0.9, 2, 0.03), woodMat);
+  side.position.set(0.58, 0.52, 0);
   side.castShadow = true;
   printerGroup.add(side);
 
-  // coral button on wood side
-  const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 32), coralMat);
+  const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 28), coralMat);
   btn.rotation.z = Math.PI/2;
-  btn.position.set(0.84, 0.78, 0.15);
+  btn.position.set(0.63, 0.55, 0.12);
   btn.castShadow = true;
   printerGroup.add(btn);
 
-  // top lid slight darker
-  const lid = new THREE.Mesh(new RoundedBoxGeometry(1.4, 0.08, 1.2, 2, 0.04), bodyMat);
-  lid.position.y = 1.32;
+  const lid = new THREE.Mesh(new RoundedBoxGeometry(1.05, 0.07, 0.95, 2, 0.035), bodyMat);
+  lid.position.y = 1.02;
   printerGroup.add(lid);
 
-  // front slot recess
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.08, 0.18), darkMat);
-  slot.position.set(0, 0.55, 0.68);
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.06, 0.14), darkMat);
+  slot.position.set(0, 0.42, 0.52);
   printerGroup.add(slot);
 
-  // slot lip
-  const lip = new THREE.Mesh(new RoundedBoxGeometry(1.1, 0.05, 0.22, 2, 0.02), bodyMat);
-  lip.position.set(0, 0.5, 0.72);
+  const lip = new THREE.Mesh(new RoundedBoxGeometry(0.9, 0.04, 0.18, 2, 0.02), bodyMat);
+  lip.position.set(0, 0.38, 0.56);
   printerGroup.add(lip);
 
-  // feet
-  for (const [x,z] of [[-0.55,-0.45],[0.55,-0.45],[-0.55,0.45],[0.55,0.45]]){
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.08, 12), darkMat);
-    foot.position.set(x, 0.04, z);
+  for (const [x,z] of [[-0.4,-0.35],[0.4,-0.35],[-0.4,0.35],[0.4,0.35]]){
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.06, 12), darkMat);
+    foot.position.set(x, 0.03, z);
     printerGroup.add(foot);
   }
 
-  // soft contact shadow under printer
-  const pShadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.2, 1.8),
-    new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.1, depthWrite: false })
-  );
-  pShadow.rotation.x = -Math.PI/2;
-  pShadow.position.set(0, 0.01, 0.1);
-  printerGroup.add(pShadow);
+  // sheet emerging from slot (static floral sheet look)
+  const sheetGeo = new THREE.PlaneGeometry(0.7, 0.55, 8, 8);
+  const sheetTex = makeStickerTexture('blossom');
+  const sheet = new THREE.Mesh(sheetGeo, new THREE.MeshStandardMaterial({
+    map: sheetTex, roughness: 0.7, metalness: 0, side: THREE.DoubleSide,
+  }));
+  sheet.position.set(0, 0.42, 0.72);
+  sheet.rotation.x = -0.55;
+  sheet.castShadow = true;
+  printerGroup.add(sheet);
 
-  return { slotWorld: new THREE.Vector3(0, 0.55, 0.78) };
+  return { slotLocal: new THREE.Vector3(0, 0.42, 0.62) };
 }
 const printerMeta = buildPrinter();
 
 function getSlotWorld(){
-  const v = printerMeta.slotWorld.clone();
+  const v = printerMeta.slotLocal.clone();
   printerGroup.localToWorld(v);
   return v;
 }
 
-/* ========== soft paper sticker ========== */
+/* —— loose stickers on desk —— */
+function flatSticker(kind, x, z, rot, scale=0.38){
+  const tex = stickerTextures[STICKER_KINDS.indexOf(kind)] || stickerTextures[0];
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(scale, scale * (kind==='make' ? 0.72 : 1)),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, metalness: 0, transparent: true, alphaTest: 0.05 })
+  );
+  m.rotation.x = -Math.PI/2;
+  m.rotation.z = rot;
+  m.position.set(x, topY + 0.012, z);
+  m.receiveShadow = true;
+  m.castShadow = true;
+  bench.add(m);
+  return m;
+}
+flatSticker('berry', -0.85, 0.72, 0.2, 0.34);
+flatSticker('cat', -0.35, 0.85, -0.35, 0.36);
+flatSticker('lemon', 0.15, 0.78, 0.45, 0.32);
+flatSticker('make', 0.55, 0.95, 0.08, 0.52);
+
+/* —— open notebook —— */
+const book = new THREE.Group();
+book.position.set(1.15, topY, 0.15);
+book.rotation.y = -0.18;
+bench.add(book);
+{
+  const coverMat = new THREE.MeshStandardMaterial({ color: 0xE8D9C8, roughness: 0.65, metalness: 0.02 });
+  const pageMat = new THREE.MeshStandardMaterial({ color: 0xFFFDF8, roughness: 0.85, metalness: 0 });
+  // left page
+  const left = new THREE.Mesh(new RoundedBoxGeometry(0.72, 0.025, 0.95, 2, 0.02), pageMat);
+  left.position.set(-0.36, 0.02, 0);
+  left.rotation.z = 0.04;
+  left.castShadow = true;
+  book.add(left);
+  // right page
+  const right = new THREE.Mesh(new RoundedBoxGeometry(0.72, 0.025, 0.95, 2, 0.02), pageMat);
+  right.position.set(0.36, 0.02, 0);
+  right.rotation.z = -0.04;
+  right.castShadow = true;
+  book.add(right);
+  // cover under
+  const cover = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.04, 1.0, 2, 0.03), coverMat);
+  cover.position.y = -0.01;
+  cover.castShadow = true;
+  book.add(cover);
+  // stickers on pages
+  const pageStickers = [
+    ['mint', -0.5, -0.2, 0.5],
+    ['blossom', -0.25, 0.15, 0.35],
+    ['lemon', 0.25, -0.25, 0.32],
+    ['berry', 0.48, 0.1, 0.3],
+    ['peach', 0.2, 0.25, 0.28],
+    ['star', -0.45, 0.25, 0.22],
+  ];
+  for (const [k,x,z,sc] of pageStickers){
+    const tex = stickerTextures[STICKER_KINDS.indexOf(k)] || stickerTextures[0];
+    const s = new THREE.Mesh(
+      new THREE.PlaneGeometry(sc, sc),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, transparent: true, alphaTest: 0.05 })
+    );
+    s.rotation.x = -Math.PI/2;
+    s.position.set(x, 0.04, z);
+    book.add(s);
+  }
+}
+
+/* —— plant —— */
+const plant = new THREE.Group();
+plant.position.set(1.55, topY, -0.55);
+bench.add(plant);
+{
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.22, 24), potMat);
+  pot.position.y = 0.11;
+  pot.castShadow = true;
+  plant.add(pot);
+  const soil = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.14, 0.03, 20),
+    new THREE.MeshStandardMaterial({ color: 0x5A4030, roughness: 1 })
+  );
+  soil.position.y = 0.22;
+  plant.add(soil);
+  // foliage clusters
+  const leaves = [
+    [0, 0.42, 0, 0.18, leafMat],
+    [-0.1, 0.38, 0.08, 0.14, leafDarkMat],
+    [0.1, 0.4, -0.06, 0.15, leafMat],
+    [0.05, 0.5, 0.05, 0.12, leafDarkMat],
+    [-0.06, 0.48, -0.08, 0.13, leafMat],
+    [0, 0.55, 0, 0.1, leafDarkMat],
+  ];
+  for (const [x,y,z,r,mat] of leaves){
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), mat);
+    leaf.position.set(x,y,z);
+    leaf.scale.y = 1.25;
+    leaf.castShadow = true;
+    plant.add(leaf);
+  }
+}
+
+/* —— desk lamp (right, warm brass) —— */
+const lamp = new THREE.Group();
+lamp.position.set(1.85, topY, 0.55);
+bench.add(lamp);
+{
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.04, 24), brassMat);
+  base.position.y = 0.02;
+  base.castShadow = true;
+  lamp.add(base);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.85, 12), brassMat);
+  stem.position.set(-0.05, 0.45, -0.05);
+  stem.rotation.z = 0.22;
+  stem.castShadow = true;
+  lamp.add(stem);
+  const joint = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), brassMat);
+  joint.position.set(-0.15, 0.88, -0.08);
+  lamp.add(joint);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.45, 10), brassMat);
+  arm.position.set(-0.32, 0.78, -0.05);
+  arm.rotation.z = 1.15;
+  arm.castShadow = true;
+  lamp.add(arm);
+  // cone shade
+  const shade = new THREE.Mesh(
+    new THREE.ConeGeometry(0.22, 0.28, 24, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: 0xE8D5B8, roughness: 0.55, metalness: 0.15, side: THREE.DoubleSide,
+    })
+  );
+  shade.position.set(-0.48, 0.62, 0);
+  shade.rotation.z = 0.55;
+  shade.castShadow = true;
+  lamp.add(shade);
+  // inner glow disc
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.18, 20),
+    new THREE.MeshBasicMaterial({ color: 0xFFE4B8, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+  );
+  glow.position.set(-0.48, 0.52, 0);
+  glow.rotation.x = Math.PI/2;
+  glow.rotation.z = 0.55;
+  lamp.add(glow);
+
+  const lampLight = new THREE.SpotLight(0xFFD8A8, 2.4, 5.5, 0.55, 0.45, 1.2);
+  lampLight.position.set(-0.48, 0.58, 0);
+  lampLight.target.position.set(-0.9, 0.05, 0.2);
+  lamp.add(lampLight);
+  lamp.add(lampLight.target);
+  lampLight.castShadow = !isMobile;
+  if (lampLight.castShadow){
+    lampLight.shadow.mapSize.set(512, 512);
+    lampLight.shadow.bias = -0.001;
+  }
+  // fill point for soft bloom feel
+  const lampFill = new THREE.PointLight(0xFFCC88, 0.55, 3.2);
+  lampFill.position.set(-0.4, 0.5, 0.1);
+  lamp.add(lampFill);
+  lamp.userData.light = lampLight;
+  lamp.userData.fill = lampFill;
+}
+
+/* ========== soft paper sticker system ========== */
 const stickers = [];
-const MAX_STICKERS = isMobile ? 22 : 36;
+const MAX_STICKERS = isMobile ? 20 : 32;
 const pointer = new THREE.Vector2(9999, 9999);
 const pointerWorld = new THREE.Vector3(9999, 9999, 9999);
 let pointerActive = false;
 
 function createPaperGeo(w, h, segX=10, segY=12){
   const geo = new THREE.PlaneGeometry(w, h, segX, segY);
-  // store rest positions
   const pos = geo.attributes.position;
   const rest = new Float32Array(pos.count * 3);
   for (let i=0;i<pos.count;i++){
@@ -462,9 +773,8 @@ function bendPaper(geo, curlAmt, rollAmt, twist, time){
   const w = geo.userData.w, h = geo.userData.h;
   for (let i=0;i<pos.count;i++){
     const x = rest[i*3], y = rest[i*3+1];
-    const u = x / (w*0.5); // -1..1
+    const u = x / (w*0.5);
     const v = y / (h*0.5);
-    // soft S-curve bend along length + edge roll
     const wave = Math.sin(v * Math.PI * 0.85 + time) * curlAmt;
     const edgeRoll = (u*u) * rollAmt * (0.55 + 0.45*Math.sin(time*0.7 + v));
     const twistZ = twist * u * v * 0.15;
@@ -476,17 +786,17 @@ function bendPaper(geo, curlAmt, rollAmt, twist, time){
 
 function spawnSticker(forceLanded=false){
   if (stickers.length >= MAX_STICKERS){
-    // recycle oldest landed or oldest overall
     let victim = stickers.find(s => s.state === 'landed' && s.age > 4);
     if (!victim) victim = stickers[0];
     if (victim){
       scene.remove(victim.group);
+      scene.remove(victim.shadow);
       stickers.splice(stickers.indexOf(victim), 1);
     }
   }
   const kindIdx = (Math.random()*STICKER_KINDS.length)|0;
   const tex = stickerTextures[kindIdx];
-  const size = 0.42 + Math.random()*0.22;
+  const size = 0.38 + Math.random()*0.2;
   const geo = createPaperGeo(size, size * (0.95 + Math.random()*0.15), 10, 12);
   const frontMat = new THREE.MeshStandardMaterial({
     map: tex, roughness: 0.72, metalness: 0.0,
@@ -498,12 +808,10 @@ function spawnSticker(forceLanded=false){
   });
   const front = new THREE.Mesh(geo, frontMat);
   const back = new THREE.Mesh(geo.clone(), backMat);
-  // slight thickness offset
   back.position.z = -0.012;
   front.castShadow = true;
   back.castShadow = true;
 
-  // edge ribbon for thickness feel
   const edgeGeo = new THREE.PlaneGeometry(size, 0.014, 1, 1);
   const edgeMat = new THREE.MeshStandardMaterial({ color: 0xE8D9C8, roughness: 0.8, side: THREE.DoubleSide });
   const edgeTop = new THREE.Mesh(edgeGeo, edgeMat);
@@ -513,10 +821,7 @@ function spawnSticker(forceLanded=false){
   edgeBot.position.y = -size*0.48;
 
   const group = new THREE.Group();
-  group.add(front);
-  group.add(back);
-  group.add(edgeTop);
-  group.add(edgeBot);
+  group.add(front, back, edgeTop, edgeBot);
 
   const slot = getSlotWorld();
   group.position.copy(slot);
@@ -528,29 +833,25 @@ function spawnSticker(forceLanded=false){
     (Math.random()-0.5)*0.5
   );
 
-  // contact shadow disc
   const sh = new THREE.Mesh(
     new THREE.CircleGeometry(size*0.45, 20),
     new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0, depthWrite: false })
   );
   sh.rotation.x = -Math.PI/2;
-  sh.position.y = 0.015;
+  sh.position.y = topY + 0.014;
   scene.add(sh);
-
   scene.add(group);
 
-  const willLand = forceLanded || Math.random() < 0.38;
+  const willLand = forceLanded || Math.random() < 0.42;
   const floatDur = 2.8 + Math.random()*2.4;
-  const driftX = 1.2 + Math.random()*3.8;
-  const driftZ = (Math.random()-0.5)*1.6;
-  const peakY = 1.9 + Math.random()*2.4;
+  const driftX = 0.6 + Math.random()*2.8;
+  const driftZ = (Math.random()-0.5)*1.4;
+  const peakY = 1.6 + Math.random()*2.0;
 
   const s = {
     group, front, back, geo, edgeTop, edgeBot, shadow: sh,
     state: forceLanded ? 'landed' : 'eject',
-    age: 0,
-    t: 0,
-    size,
+    age: 0, t: 0, size,
     curl: 0.07 + Math.random()*0.10,
     roll: 0.035 + Math.random()*0.06,
     twist: (Math.random()-0.5)*0.8,
@@ -559,60 +860,61 @@ function spawnSticker(forceLanded=false){
       (Math.random()-0.5)*1.2,
       (Math.random()-0.5)*0.8
     ),
-    willLand,
-    floatDur,
+    willLand, floatDur,
     origin: group.position.clone(),
-    home: null, // float home path sample
-    vel: new THREE.Vector3(0.8 + Math.random()*0.6, 0.9 + Math.random()*0.5, (Math.random()-0.5)*0.3),
+    home: null,
+    vel: new THREE.Vector3(0.7 + Math.random()*0.55, 0.85 + Math.random()*0.45, (Math.random()-0.5)*0.28),
     landPos: new THREE.Vector3(
-      slot.x + driftX * (0.55 + Math.random()*0.55),
-      0.02 + Math.random()*0.01,
-      slot.z + driftZ + 0.4 + Math.random()*1.2
+      slot.x + driftX * (0.4 + Math.random()*0.5),
+      topY + 0.02,
+      slot.z + driftZ + 0.5 + Math.random()*0.9
     ),
-    peakY,
-    driftX, driftZ,
-    bounce: 0,
-    ejectT: 0,
-    pathT: 0,
+    peakY, driftX, driftZ,
+    bounce: 0, ejectT: 0, pathT: 0,
     push: new THREE.Vector3(),
     pushVel: new THREE.Vector3(),
     breathe: Math.random()*Math.PI*2,
   };
-  // pre-place some landed ones for narrative
+  // clamp land onto desk roughly
+  s.landPos.x = THREE.MathUtils.clamp(s.landPos.x, -2.0, 2.0);
+  s.landPos.z = THREE.MathUtils.clamp(s.landPos.z, -0.9, 1.05);
+
   if (forceLanded){
     group.position.copy(s.landPos);
-    group.position.x += (Math.random()-0.5)*1.5;
-    group.position.z += (Math.random()-0.5)*1.2;
-    group.rotation.set(-Math.PI/2 + (Math.random()-0.5)*0.25, Math.random()*Math.PI, (Math.random()-0.5)*0.2);
+    group.position.x += (Math.random()-0.5)*0.8;
+    group.position.z += (Math.random()-0.5)*0.5;
+    group.position.x = THREE.MathUtils.clamp(group.position.x, -2.0, 1.9);
+    group.position.z = THREE.MathUtils.clamp(group.position.z, -0.85, 1.0);
+    group.rotation.set(-Math.PI/2 + (Math.random()-0.5)*0.2, Math.random()*Math.PI, (Math.random()-0.5)*0.15);
     bendPaper(geo, s.curl*0.4, s.roll*0.5, s.twist*0.3, Math.random()*10);
     if (back.geometry !== geo) bendPaper(back.geometry, s.curl*0.4, s.roll*0.5, s.twist*0.3, Math.random()*10);
-    sh.position.set(group.position.x, 0.015, group.position.z);
+    sh.position.set(group.position.x, topY + 0.014, group.position.z);
     sh.material.opacity = 0.12;
     s.home = group.position.clone();
+    s.landPos.copy(group.position);
   }
   stickers.push(s);
   return s;
 }
 
-// seed a few already floating / landed
-for (let i=0;i<7;i++) spawnSticker(true);
+for (let i=0;i<6;i++) spawnSticker(true);
 for (let i=0;i<5;i++){
   const s = spawnSticker(false);
   s.state = 'float';
-  s.pathT = 0.25 + Math.random()*0.5;
+  s.pathT = 0.2 + Math.random()*0.55;
   s.age = s.pathT * s.floatDur;
   const u = s.pathT;
   const slot = getSlotWorld();
   s.group.position.set(
     slot.x + s.driftX * u,
     slot.y + Math.sin(u*Math.PI) * s.peakY * 0.85 + u*0.2,
-    slot.z + s.driftZ * u + u*0.5
+    slot.z + s.driftZ * u + u*0.45
   );
   s.home = s.group.position.clone();
 }
 
 let spawnAcc = 0;
-const SPAWN_EVERY = reduceMotion ? 1.1 : 0.42;
+const SPAWN_EVERY = reduceMotion ? 1.15 : 0.45;
 
 /* ========== pointer / repulsion ========== */
 function onPointer(e){
@@ -621,17 +923,13 @@ function onPointer(e){
   const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   pointer.set(x, y);
   pointerActive = true;
-  // unproject onto y≈1.2 plane
   const ray = new THREE.Raycaster();
   ray.setFromCamera(pointer, camera);
-  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // rough
-  // better: intersect y=1.0 horizontal plane for float height
-  const hPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.2);
+  const hPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(topY + 0.9));
   const hit = new THREE.Vector3();
   if (ray.ray.intersectPlane(hPlane, hit)){
     pointerWorld.copy(hit);
   } else {
-    // fallback far
     pointerWorld.set(9999,9999,9999);
   }
 }
@@ -639,6 +937,26 @@ canvas.addEventListener('pointermove', onPointer);
 canvas.addEventListener('pointerleave', () => { pointerActive = false; });
 canvas.addEventListener('touchmove', (e) => {
   if (e.touches[0]) onPointer(e.touches[0]);
+}, { passive: true });
+
+/* ========== scroll → workbench ========== */
+function onWheel(e){
+  e.preventDefault();
+  const delta = e.deltaY;
+  scrollTarget = THREE.MathUtils.clamp(scrollTarget + delta * 0.00115, 0, 1);
+}
+canvas.addEventListener('wheel', onWheel, { passive: false });
+
+let touchY0 = null;
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches[0]) touchY0 = e.touches[0].clientY;
+}, { passive: true });
+canvas.addEventListener('touchend', () => { touchY0 = null; }, { passive: true });
+canvas.addEventListener('touchmove', (e) => {
+  if (!e.touches[0] || touchY0 == null) return;
+  const dy = touchY0 - e.touches[0].clientY;
+  scrollTarget = THREE.MathUtils.clamp(scrollTarget + dy * 0.0025, 0, 1);
+  touchY0 = e.touches[0].clientY;
 }, { passive: true });
 
 /* ========== animate ========== */
@@ -660,8 +978,8 @@ function updateSticker(s, dt){
   if (s.state === 'eject'){
     s.ejectT += dt;
     s.group.position.addScaledVector(s.vel, dt);
-    s.vel.y += dt * 0.8;
-    s.vel.x += dt * 0.4;
+    s.vel.y += dt * 0.75;
+    s.vel.x += dt * 0.35;
     s.group.rotation.x += s.spin.x * dt;
     s.group.rotation.y += s.spin.y * dt;
     s.group.rotation.z += s.spin.z * dt;
@@ -674,21 +992,17 @@ function updateSticker(s, dt){
   } else if (s.state === 'float'){
     s.pathT += dt / s.floatDur;
     const u = Math.min(1, s.pathT);
-    // ease out cubic for loft
     const ease = 1 - Math.pow(1-u, 2.2);
     const slotish = s.origin;
     const target = _tmp.set(
       slotish.x + s.driftX * ease,
       slotish.y + Math.sin(ease * Math.PI) * s.peakY * 0.9 + ease * 0.15,
-      slotish.z + s.driftZ * ease + ease * 0.6
+      slotish.z + s.driftZ * ease + ease * 0.55
     );
-    // breathe float
     target.y += Math.sin(s.breathe) * 0.06;
     target.x += Math.sin(s.breathe * 0.7) * 0.04;
-
     s.home.copy(target);
 
-    // mouse repulsion (Tòpas)
     s.pushVel.multiplyScalar(0.88);
     if (pointerActive && !reduceMotion){
       _push.copy(s.group.position).sub(pointerWorld);
@@ -702,25 +1016,19 @@ function updateSticker(s, dt){
         s.pushVel.addScaledVector(_push, dt * 18);
       }
     }
-    // spring back toward home
     _push.copy(s.home).sub(s.group.position).sub(s.push);
     s.pushVel.addScaledVector(_push, dt * 3.2);
     s.push.addScaledVector(s.pushVel, dt);
-    // damp push magnitude
     s.push.multiplyScalar(0.96);
-
     s.group.position.copy(s.home).add(s.push);
 
     s.group.rotation.x += s.spin.x * dt * 0.45;
     s.group.rotation.y += s.spin.y * dt * 0.55;
     s.group.rotation.z += s.spin.z * dt * 0.4;
-    // gentle face camera-ish tilt
     s.group.rotation.x += Math.sin(s.breathe*0.5)*0.002;
 
-    // shadow while floating (faint)
-    s.shadow.position.set(s.group.position.x, 0.015, s.group.position.z);
-    s.shadow.material.opacity = THREE.MathUtils.clamp(0.04 + (2.5 - s.group.position.y)*0.02, 0.02, 0.08);
-    s.shadow.scale.setScalar(1.1);
+    s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
+    s.shadow.material.opacity = THREE.MathUtils.clamp(0.04 + (2.2 - (s.group.position.y-topY))*0.02, 0.02, 0.08);
 
     if (u >= 1){
       if (s.willLand){
@@ -728,7 +1036,6 @@ function updateSticker(s, dt){
         s.fallT = 0;
         s.fallFrom = s.group.position.clone();
       } else {
-        // drift away and recycle
         s.state = 'fade';
         s.fadeT = 0;
       }
@@ -739,12 +1046,9 @@ function updateSticker(s, dt){
     const u = Math.min(1, s.fallT / dur);
     const ease = u*u*(3-2*u);
     s.group.position.lerpVectors(s.fallFrom, s.landPos, ease);
-    // rotate toward flat on ground
-    s.group.rotation.x = THREE.MathUtils.lerp(s.group.rotation.x, -Math.PI/2 + (Math.random()*0-0), ease*0.15);
-    // better: slerp toward flat
     const flatX = -Math.PI/2 + Math.sin(s.breathe)*0.05;
     s.group.rotation.x += (flatX - s.group.rotation.x) * ease * 0.2;
-    s.shadow.position.set(s.group.position.x, 0.015, s.group.position.z);
+    s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
     s.shadow.material.opacity = 0.04 + ease * 0.1;
     if (u >= 1){
       s.state = 'landed';
@@ -761,10 +1065,8 @@ function updateSticker(s, dt){
       s.shadow.scale.setScalar(1 + (1-b)*0.15);
     } else {
       s.group.position.y = s.landPos.y;
-      // tiny settle curl only
       s.shadow.material.opacity = 0.12;
     }
-    // weak repulsion even on ground
     if (pointerActive && !reduceMotion){
       _push.copy(s.group.position).sub(pointerWorld);
       _push.y = 0;
@@ -773,7 +1075,7 @@ function updateSticker(s, dt){
         _push.normalize().multiplyScalar((1-dist/0.9)*0.015);
         s.group.position.add(_push);
         s.group.position.y = s.landPos.y;
-        s.shadow.position.set(s.group.position.x, 0.015, s.group.position.z);
+        s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
       }
     }
   } else if (s.state === 'fade'){
@@ -796,14 +1098,33 @@ function tick(){
   requestAnimationFrame(tick);
   const dt = Math.min(0.033, clock.getDelta());
 
+  // smooth scroll camera
+  scrollProg += (scrollTarget - scrollProg) * (reduceMotion ? 1 : 0.08);
+  applyCamera();
+  const cueOp = 1 - Math.min(1, scrollProg * 2.2);
+  scrollCueEl.style.opacity = String(cueOp);
+  if (scrollProg > 0.55){
+    hintEl.innerHTML = '工作台 · 切割机 / 打印机 / 贴纸本 / 台灯 · <em>滚轮</em>可回到首屏';
+  } else {
+    hintEl.innerHTML = '打印机持续吐贴纸 · <em>鼠标靠近</em>贴纸会躲开';
+  }
+
   spawnAcc += dt;
   if (spawnAcc >= SPAWN_EVERY){
     spawnAcc = 0;
     spawnSticker(false);
   }
 
-  // subtle printer idle
-  printerGroup.position.y = Math.sin(clock.elapsedTime * 1.2) * 0.008;
+  // subtle idle
+  printerGroup.position.y = topY + Math.sin(clock.elapsedTime * 1.2) * 0.006;
+  // lamp pulse
+  if (lamp.userData.light){
+    const pulse = 2.2 + Math.sin(clock.elapsedTime * 1.5) * 0.25;
+    lamp.userData.light.intensity = pulse;
+    if (lamp.userData.fill) lamp.userData.fill.intensity = 0.45 + Math.sin(clock.elapsedTime * 1.5) * 0.08;
+  }
+  // plant gentle sway
+  plant.rotation.z = Math.sin(clock.elapsedTime * 0.8) * 0.02;
 
   for (let i=stickers.length-1;i>=0;i--){
     updateSticker(stickers[i], dt);
