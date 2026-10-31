@@ -70,7 +70,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
@@ -93,12 +92,13 @@ const MAT = {
 
 const ASSET = './studio/webgl-assets';
 const GLB = {
-  desk: `${ASSET}/glb/desk.glb`,
-  laptop: `${ASSET}/glb/laptop.glb`,
-  printer: `${ASSET}/glb/printer.glb`,
-  book: `${ASSET}/glb/book.glb`,
-  lamp: `${ASSET}/glb/lamp.glb`,
-  plant: `${ASSET}/glb/plant.glb`,
+  // Visual-director forced mapping (no primitives)
+  desk: `${ASSET}/glb/desk/SM_DiningTable.gltf`,
+  laptop: `${ASSET}/glb/laptop/scene.gltf`,          // 电脑本
+  book: `${ASSET}/glb/steno/steno-book.glb`,         // 速写本 Steno（原 laptop.glb）
+  printer: `${ASSET}/glb/printer/printer.glb`,
+  lamp: `${ASSET}/glb/desk-lamp/scene.gltf`,
+  plant: `${ASSET}/glb/plant/desk-plant.glb`,
 };
 const HDRI_URL = `${ASSET}/hdri/studio-09-4000k-1k.hdr`;
 const STICKER_MANIFEST = `${ASSET}/stickers/manifest.json`;
@@ -108,6 +108,8 @@ const DESK_SCALE = 0.82; // LAYOUT-CAMERA-SPEC: long edge ~2.2, height ~0.66
 const qaLight = new URLSearchParams(location.search).has('qa')
   || new URLSearchParams(location.search).get('light') === '1';
 const viewMode = new URLSearchParams(location.search).get('view') || '';
+const noFloats = new URLSearchParams(location.search).has('nofloats')
+  || new URLSearchParams(location.search).get('floats') === '0';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const errEl = document.getElementById('err');
@@ -141,7 +143,7 @@ const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true, // forced on mobile too
-  alpha: false,
+  alpha: true, // CSS --cream #F7F3EC shows through (ACES would grey a Color bg)
   powerPreference: 'high-performance',
   stencil: false,
 });
@@ -149,7 +151,7 @@ if (!renderer.getContext()) throw new Error('WebGL 不可用');
 const maxPR = 2;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, maxPR));
 renderer.setSize(innerWidth, innerHeight, false);
-renderer.setClearColor(MAT.bg, 1);
+renderer.setClearColor(0x000000, 0); // transparent → body #F7F3EC
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -157,8 +159,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(MAT.bg);
-scene.fog = null; // LOCK infinite warm cream #F7F3EC — no gray horizon
+scene.background = null; // infinite warm cream via CSS #F7F3EC — not tone-mapped
+scene.fog = null;
 
 const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 40);
 
@@ -199,13 +201,13 @@ if (viewMode === 'desk' || viewMode === 'workbench') {
 }
 
 /* ========== lights (LIGHTING-SPEC) ========== */
-const amb = new THREE.AmbientLight(MAT.ambient, 0.78);
+const amb = new THREE.AmbientLight(0xFFF5EB, 0.55);
 scene.add(amb);
-const hemi = new THREE.HemisphereLight(0xFFF6EC, 0xEADCC8, 0.48);
+const hemi = new THREE.HemisphereLight(0xFFF6EC, 0xE8D5C0, 0.35);
 scene.add(hemi);
 
 /* Key: top-right, warm soft */
-const key = new THREE.DirectionalLight(0xFFDFC0, 0.48);
+const key = new THREE.DirectionalLight(0xFFE4C8, 1.45); // FINE-PASS: soft warm key 1.3–1.6
 key.position.set(2.4, 7.5, 1.8); // upper-right 4000K
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -290,7 +292,13 @@ function enableShadows(root){
       if (o.material){
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats){
-          if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+          if (m.map){
+            m.map.colorSpace = THREE.SRGBColorSpace;
+            m.map.anisotropy = Math.max(m.map.anisotropy || 0, 8);
+            m.map.needsUpdate = true;
+          }
+          if (m.normalMap){ m.normalMap.anisotropy = Math.max(m.normalMap.anisotropy || 0, 8); }
+          if (m.roughnessMap){ m.roughnessMap.anisotropy = Math.max(m.roughnessMap.anisotropy || 0, 4); }
           m.needsUpdate = true;
         }
       }
@@ -298,12 +306,16 @@ function enableShadows(root){
   });
 }
 
-function fitProp(root, targetSize, yAlign = 'bottom'){
+function fitProp(root, targetSize, yAlign = 'bottom', axis = 'max'){
   const box = new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z) || 1;
-  const s = targetSize / maxDim;
-  root.scale.setScalar(s);
+  let dim = Math.max(size.x, size.y, size.z) || 1;
+  if (axis === 'x') dim = size.x || 1;
+  else if (axis === 'y') dim = size.y || 1;
+  else if (axis === 'z') dim = size.z || 1;
+  else if (axis === 'xz') dim = Math.max(size.x, size.z) || 1;
+  const s = targetSize / dim;
+  root.scale.multiplyScalar(s);
   box.setFromObject(root);
   const c = box.getCenter(new THREE.Vector3());
   root.position.x -= c.x;
@@ -313,6 +325,23 @@ function fitProp(root, targetSize, yAlign = 'bottom'){
   } else {
     root.position.y -= c.y;
   }
+}
+
+/** Keep author PBR maps; only light matte/warm nudges. Never replace with flat Standard. */
+function keepAuthorPBR(root, { roughBoost = 0, colorMul = null, env = null } = {}){
+  root.traverse((o)=>{
+    if (!o.isMesh || !o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats){
+      if (!m) continue;
+      if (m.map){ m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; }
+      if (m.emissiveMap){ m.emissiveMap.colorSpace = THREE.SRGBColorSpace; }
+      if (roughBoost && m.roughness != null) m.roughness = Math.min(1, m.roughness + roughBoost);
+      if (colorMul && m.color) m.color.multiply(colorMul);
+      if (env != null) m.envMapIntensity = env;
+      m.needsUpdate = true;
+    }
+  });
 }
 
 async function tryLoadGLB(url){
@@ -334,13 +363,18 @@ async function loadStudioHDRI(){
     const envMap = pmrem.fromEquirectangular(tex).texture;
     scene.environment = envMap;
     if ('environmentIntensity' in scene) scene.environmentIntensity = 1.0; // IBL 0.9–1.1
-    scene.background = new THREE.Color(0xF7F3EC); // infinite warm cream
+    scene.background = null; // keep CSS #F7F3EC (ACES-safe)
     // three@0.160: no environmentRotation — key/fill place main bright upper-right (~4000K amber)
     tex.dispose(); pmrem.dispose();
-    amb.intensity = 0.32;
-    amb.color.setHex(0xFFF2E4);
-    hemi.intensity = 0.28;
+    amb.intensity = 0.28;
+    amb.color.setHex(0xFFF5EB);
+    hemi.intensity = 0.22;
     hemi.color.setHex(0xFFE8D0);
+    hemi.groundColor.setHex(0xE8D5C0);
+    key.intensity = 1.45;
+    key.color.setHex(0xFFE4C8);
+    fill.intensity = 0.42;
+    fill.color.setHex(0xFFF8F0);
     hemi.groundColor.setHex(0xE8D5C0);
     key.color.setHex(0xFFDFC0); // ~4000K micro-amber
     key.intensity = 0.55;
@@ -369,40 +403,10 @@ async function loadStudioHDRI(){
 
 /* —— temp oak desk ONLY for lighting QA (not a delivery prop set) —— */
 async function buildTempLightDesk(){
-  let albedo, normal, rough;
-  try {
-    albedo = await loadTex(`${ASSET}/materials/wood-oak/web/albedo.jpg`);
-    normal = await loadTex(`${ASSET}/materials/wood-oak/web/normal.jpg`, { colorSpace: THREE.LinearSRGBColorSpace });
-    rough = await loadTex(`${ASSET}/materials/wood-oak/web/roughness.jpg`, { colorSpace: THREE.NoColorSpace });
-    albedo.repeat.set(1.6, 0.85);
-    normal.repeat.copy(albedo.repeat);
-    rough.repeat.copy(albedo.repeat);
-  } catch (e) {
-    console.warn('oak maps missing', e);
-  }
-  const mat = new THREE.MeshStandardMaterial({
-    color: albedo ? 0xffffff : MAT.oak,
-    map: albedo || null,
-    normalMap: normal || null,
-    roughnessMap: rough || null,
-    roughness: 0.55,
-    metalness: 0.0,
-  });
-  // single slab — lighting probe only; no machines
-  const desk = new THREE.Mesh(new RoundedBoxGeometry(4.6, 0.18, 2.2, 8, 0.08), mat);
-  desk.position.set(0, DESK_Y, 0);
-  desk.castShadow = true;
-  desk.receiveShadow = true;
-  desk.name = 'temp-light-desk';
-  const shadow = new THREE.Mesh(
-    new THREE.PlaneGeometry(5.6, 3.1),
-    new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.13, depthWrite: false })
-  );
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.set(0.12, 0.02, 0.18);
+  // TEMP_DESK_DISABLED — director ban on Box/Capsule placeholders; real SM_DiningTable only
   const g = new THREE.Group();
-  g.add(desk, shadow);
-  g.visible = false; // shown only for qa / until real desk.glb
+  g.visible = false;
+  g.userData.lightingProbe = true;
   return g;
 }
 
@@ -415,12 +419,12 @@ async function mountProps(){
   const deskTop = new THREE.Group();
   deskTop.name = 'deskTop';
   const localPlace = {
-    // LAYOUT-CAMERA-SPEC §3 — accept mesh limits, tune for readability
-    laptop: { pos: [-0.55, 0, 0.10], size: 0.32, rotY: 0.18 },
-    printer: { pos: [-0.22, 0, 0.08], size: 0.15, rotY: 0 }, // LOCK small thermal
-    book: { pos: [0.30, 0, 0.0], size: 0.50, rotY: -0.12 },
-    plant: { pos: [0.68, 0, -0.12], size: 0.26 },
-    lamp: { pos: [0.88, 0, 0.10], size: 0.40, rotY: -1.15 }, // shorter; shade → book
+    // Relative to desk long edge ≈2.2: laptop 35–45% wide, printer ~half laptop, book 25–35%
+    laptop: { pos: [-0.48, 0, 0.08], size: 0.85, axis: 'xz', rotY: 0.15 }, // footprint ~39% of desk, fully in frame
+    printer: { pos: [-0.14, 0, 0.06], size: 0.38, axis: 'xz', rotY: 0 },
+    book: { pos: [0.05, 0, 0.04], size: 0.82, axis: 'xz', rotY: -0.12 }, // OPEN Steno mid-desk readable
+    plant: { pos: [0.72, 0, -0.10], size: 0.22, axis: 'y', rotY: 0.2 },   // ~½ book height
+    lamp: { pos: [0.92, 0, 0.08], size: 0.55, axis: 'y', rotY: -1.15 },   // taller than book
   };
 
   const results = {};
@@ -429,30 +433,36 @@ async function mountProps(){
   }));
 
   let any = false;
-  // Desk first: full mesh WITH legs, uniform scale 0.82
+  // Desk first: SM_DiningTable with author PBR + legs
   if (results.desk){
     any = true;
     const root = results.desk;
     const wrap = new THREE.Group();
     wrap.add(root);
-    root.rotation.y = Math.PI / 2; // long oval along +X (LAYOUT)
-    root.scale.setScalar(DESK_SCALE);
+    // Orient long edge along +X then fit long edge ≈2.2
+    root.rotation.y = Math.PI / 2;
+    {
+      const box0 = new THREE.Box3().setFromObject(root);
+      const sz0 = box0.getSize(new THREE.Vector3());
+      const long0 = Math.max(sz0.x, sz0.z) || 1;
+      root.scale.setScalar(2.2 / long0);
+    }
+    // Keep 4K BC/N/ORM — satin oak, not piano, not chalk-matte wipe
     root.traverse((o)=>{
-      if(!o.isMesh||!o.material) return;
-      const mats=Array.isArray(o.material)?o.material:[o.material];
-      const rebuilt=[];
-      for(const m of mats){
-        const map = m.map || null;
-        if (map){ map.colorSpace = THREE.SRGBColorSpace; map.needsUpdate = true; }
-        const nm = new THREE.MeshStandardMaterial({
-          map, color: 0xE8D2B0, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.0,
-        });
-        if (m.normalMap){ nm.normalMap = m.normalMap; nm.normalScale = new THREE.Vector2(0.1, 0.1); }
-        if (m.aoMap){ nm.aoMap = m.aoMap; nm.aoMapIntensity = 0.15; }
-        nm.needsUpdate = true;
-        rebuilt.push(nm);
+      if (!o.isMesh || !o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats){
+        if (m.map){ m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 8; m.map.needsUpdate = true; }
+        if (m.normalMap){ m.normalMap.anisotropy = 8; m.normalScale = new THREE.Vector2(0.85, 0.85); }
+        if (m.roughnessMap){ m.roughnessMap.anisotropy = 4; }
+        // Prefer map-driven roughness; bias into 0.55–0.70 satin
+        if (m.roughnessMap) m.roughness = 0.62;
+        else m.roughness = 0.62;
+        m.metalness = 0;
+        m.envMapIntensity = 0.35; // soft warm IBL highlight, not mirror
+        if (m.color) m.color.multiply(new THREE.Color(1.03, 0.99, 0.94));
+        m.needsUpdate = true;
       }
-      o.material = rebuilt.length===1 ? rebuilt[0] : rebuilt;
     });
     const box = new THREE.Box3().setFromObject(root);
     const c = box.getCenter(new THREE.Vector3());
@@ -465,7 +475,6 @@ async function mountProps(){
     DESK_Y = tableTopY;
     deskTop.position.set(0, tableTopY, 0);
     wrap.add(deskTop);
-    // soft ground contact under table
     const foot = new THREE.Mesh(
       new THREE.PlaneGeometry((box2.max.x-box2.min.x)+0.25, (box2.max.z-box2.min.z)+0.2),
       new THREE.MeshBasicMaterial({ color: 0x3A2A1C, transparent: true, opacity: 0.10, depthWrite: false })
@@ -473,18 +482,10 @@ async function mountProps(){
     foot.rotation.x = -Math.PI/2;
     foot.position.set(0.02, 0.005, 0.03);
     wrap.add(foot);
-    // Warm oak multiply + legs cast soft floor contact (not suspended)
     wrap.traverse((o)=>{
-      if (!o.isMesh || !o.material) return;
-      o.castShadow = false; // foot blob = leg contact; avoid floor/horizon split
+      if (!o.isMesh) return;
+      o.castShadow = false;
       o.receiveShadow = true;
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      for (const m of mats){
-        if (!m || !m.color) continue;
-        m.color.lerp(new THREE.Color(0xE8C9A0), 0.2);
-        m.roughness = 1.0; m.metalness = 0; m.envMapIntensity = 0;
-        m.needsUpdate = true;
-      }
     });
     bench.add(wrap);
     loadedProps.desk = wrap;
@@ -499,62 +500,51 @@ async function mountProps(){
     const cfg = localPlace[id];
     const wrap = new THREE.Group();
     wrap.add(root);
-    fitProp(root, cfg.size, 'bottom');
+    fitProp(root, cfg.size, 'bottom', cfg.axis || 'max');
     wrap.position.set(cfg.pos[0], 0, cfg.pos[2]);
     if (cfg.rotY) wrap.rotation.y = cfg.rotY;
     enableShadows(wrap);
     deskTop.add(wrap);
     loadedProps[id] = wrap;
     if (id === 'laptop'){
-      // Single lid mesh: Box with per-face materials (screen on +Z only). Avoid DoubleSide plane ghosts.
-      const screenTex = (()=>{
-        const c=document.createElement('canvas'); c.width=768; c.height=480;
-        const g=c.getContext('2d');
-        g.fillStyle='#2B2D31'; g.fillRect(0,0,768,480);
-        const pad=40;
-        const grd=g.createLinearGradient(0,pad,0,480-pad);
-        grd.addColorStop(0,'#F7D7A4'); grd.addColorStop(0.4,'#E07A5F');
-        grd.addColorStop(0.72,'#6A4E7A'); grd.addColorStop(1,'#1C1830');
-        g.fillStyle=grd; g.fillRect(pad,pad,768-pad*2,480-pad*2);
-        const sun=g.createRadialGradient(520,150,8,520,150,110);
-        sun.addColorStop(0,'rgba(255,250,220,1)'); sun.addColorStop(1,'rgba(255,190,120,0)');
-        g.fillStyle=sun; g.beginPath(); g.arc(520,150,110,0,Math.PI*2); g.fill();
-        g.fillStyle='rgba(35,55,95,0.4)'; g.fillRect(pad,340,768-pad*2,480-pad-340);
-        const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; return tex;
-      })();
-      while (wrap.children.length) wrap.remove(wrap.children[0]);
-      wrap.scale.set(1,1,1);
-      const silver = new THREE.MeshStandardMaterial({ color: 0xC9CDD2, metalness: 0.7, roughness: 0.36 });
-      const dark = new THREE.MeshStandardMaterial({ color: 0x3A3C42, metalness: 0.35, roughness: 0.55 });
-      const screenMat = new THREE.MeshStandardMaterial({
-        map: screenTex, emissiveMap: screenTex,
-        color: 0xffffff, emissive: new THREE.Color(0xffffff),
-        emissiveIntensity: 0.85, roughness: 0.5, metalness: 0,
+      // Real laptop/scene.gltf — keep palette PBR; no procedural shell
+      keepAuthorPBR(root, { roughBoost: 0.0, env: 0.45 });
+      root.traverse((o)=>{
+        if (!o.isMesh || !o.material) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats){
+          if (m.roughness != null) m.roughness = THREE.MathUtils.clamp(m.roughness, 0.35, 0.70);
+          // keep author metalness (silver chassis) — do not force plastic
+          m.envMapIntensity = Math.max(0.5, m.envMapIntensity || 0.5);
+          m.needsUpdate = true;
+        }
       });
-      const clean = new THREE.Group(); clean.name='laptopClean';
-      const baseW=0.28, baseD=0.19, baseH=0.015;
-      const base = new THREE.Mesh(new THREE.BoxGeometry(baseW, baseH, baseD), silver);
-      base.name='laptopBase';
-      base.position.set(0, baseH*0.5, 0);
-      base.castShadow=true; base.receiveShadow=true;
-      // keyboard as color on base top — shallow inset, same material family
-      const keys = new THREE.Mesh(new THREE.BoxGeometry(baseW*0.86, 0.0012, baseD*0.5), dark);
-      keys.position.set(0, baseH+0.0006, baseD*0.04);
-      // Lid: one box, materials [+x,-x,+y,-y,+z,-z]
-      const lidW=baseW*0.96, lidH=0.18, lidT=0.007;
-      const lidMats = [silver, silver, silver, silver, screenMat, dark];
-      const lid = new THREE.Mesh(new THREE.BoxGeometry(lidW, lidH, lidT), lidMats);
-      lid.name='laptopLid';
-      lid.castShadow=true;
-      const pivot = new THREE.Group();
-      pivot.position.set(0, baseH, -baseD*0.48);
-      lid.position.set(0, lidH*0.5, lidT*0.5);
-      pivot.rotation.x = -Math.PI * 0.52;
-      pivot.add(lid);
-      clean.add(base, keys, pivot);
-      wrap.add(clean);
-      // Seat flush on deskTop in LOCAL space (base bottom already at y=0).
-      // Pull inward if local footprint overhangs desk rim.
+      root.traverse((o)=>{
+        if (!o.isMesh || !o.material) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats){
+          // Sketchfab palette often ships emissiveIntensity >> 1 — clamp
+          if (m.emissiveIntensity != null && m.emissiveIntensity > 1.2){
+            m.emissiveIntensity = 0.55;
+          }
+          const n = ((o.name||'')+' '+(m.name||'')).toLowerCase();
+          if (/screen|display|lcd|panel|palette\.001/.test(n)){
+            if (!m.emissive) m.emissive = new THREE.Color(0xFFE8D0);
+            else m.emissive.lerp(new THREE.Color(0xFFE8D0), 0.45);
+            m.emissiveIntensity = Math.min(1.05, Math.max(0.55, m.emissiveIntensity || 0.7));
+          }
+          m.needsUpdate = true;
+        }
+      });
+      // Safety: if still taller than ~0.45, reshrink by height
+      {
+        const bbH = new THREE.Box3().setFromObject(root);
+        const h = bbH.max.y - bbH.min.y;
+        if (h > 0.48){
+          root.scale.multiplyScalar(0.48 / h);
+          fitProp(root, 0.90, 'bottom', 'xz');
+        }
+      }
       {
         wrap.position.y = 0;
         wrap.updateMatrixWorld(true);
@@ -562,9 +552,8 @@ async function mountProps(){
         const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
         const minL = bb.min.clone().applyMatrix4(inv);
         const maxL = bb.max.clone().applyMatrix4(inv);
-        // Seat on wood then micro-lift so chassis doesn't sink; short contact blob
         wrap.position.y -= minL.y;
-        wrap.position.y += 0.006;
+        wrap.position.y += 0.004;
         const deskHalfX = 1.05, deskHalfZ = 0.55;
         if (minL.x < -deskHalfX) wrap.position.x += (-deskHalfX - minL.x) + 0.02;
         if (maxL.x > deskHalfX) wrap.position.x -= (maxL.x - deskHalfX) + 0.02;
@@ -578,29 +567,23 @@ async function mountProps(){
     }
     if (id === 'printer'){
       printerGroup = wrap;
-      // LOCK white thermal: dark baked albedo → near-white plastic; keep emissive LEDs
+      // Keep author grey plastic — 勿改漆
       wrap.traverse((o)=>{
         if(!o.isMesh||!o.material) return;
         const mats=Array.isArray(o.material)?o.material:[o.material];
         for(const m of mats){
-          const led = m.emissiveMap;
-          m.map = null; m.normalMap = null; m.roughnessMap = null;
-          m.metalnessMap = null; m.aoMap = null;
-          m.color.setHex(0xFAF8F4); // matte thermal paper white
-          m.roughness = 0.82; m.metalness = 0.0;
-          m.envMapIntensity = 0.18; // avoid dirty specular
-          if (led){
-            m.emissiveMap = led;
+          if (m.map){ m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 8; m.map.needsUpdate = true; }
+          if (m.roughness != null) m.roughness = THREE.MathUtils.clamp(m.roughness, 0.55, 0.80);
+          if (m.metalness != null) m.metalness = Math.min(0.08, m.metalness);
+          m.envMapIntensity = 0.28;
+          if (m.emissiveMap){
             m.emissive = new THREE.Color(0xffffff);
-            m.emissiveIntensity = 0.9;
-          } else if (m.emissive){
-            m.emissive.setHex(0x000000); m.emissiveIntensity = 0;
+            m.emissiveIntensity = Math.max(0.6, m.emissiveIntensity || 0.6);
           }
           m.needsUpdate = true;
         }
       });
       const box = new THREE.Box3().setFromObject(root);
-      // Mouth toward +Z (desk front / camera)
       printerSlotLocal = new THREE.Vector3(
         0,
         Math.max(0.035, (box.max.y - box.min.y) * 0.28),
@@ -615,38 +598,54 @@ async function mountProps(){
     }
     if (id === 'book'){
       bookGroup = wrap;
+      // OPEN Steno = user-picks/laptop/laptop.glb
+      // HIDE Steno Book_0 (red closed cover = 红合本替身)
+      // SHOW Steno Book.001 (lined pages) + spirals = 摊开可读
       wrap.traverse((o)=>{
         if(!o.isMesh) return;
-        const n=((o.name||'')+' '+(o.parent?.name||'')).toLowerCase();
-        // Steno_Book001 is oversized dark card — hide; keep Book_0 + spirals
-        if (n.includes('book001') || n.includes('book.001')){ o.visible=false; return; }
+        const parentKey = (o.parent?.name || '').replace(/[.\s]/g, '_').toLowerCase();
+        const isClosedCover = parentKey === 'steno_book_0' || parentKey === 'stenobook_0'
+          || parentKey.startsWith('steno_book_0');
+        if (isClosedCover){ o.visible = false; return; }
+        o.visible = true;
         const mats=Array.isArray(o.material)?o.material:[o.material];
         for(const m of mats){
           if(!m) continue;
-          const mn=(m.name||'').toLowerCase();
-          // Cream notebook — drop baked black cover maps (cause black card frame)
-          if (mn.includes('steno')){
-            m.map = null; m.normalMap = null; m.aoMap = null;
-            m.color.setHex(0xEDE6DA);
-            m.roughness=0.84; m.metalness=0.02;
-          } else if (mn.includes('material')){
-            if (m.map) m.color.lerp(new THREE.Color(0xF7F2E8), 0.65);
-            else m.color.setHex(0xF7F2E8);
-            m.roughness=0.9; m.metalness=0;
-          }
-          m.needsUpdate=true;
+          if (m.map){ m.map.colorSpace = THREE.SRGBColorSpace; m.map.anisotropy = 8; m.map.needsUpdate = true; }
+          if (m.roughness != null) m.roughness = THREE.MathUtils.clamp(m.roughness, 0.68, 0.82);
+          if (m.metalness != null) m.metalness = Math.min(0.04, m.metalness);
+          m.envMapIntensity = 0.28;
+          m.needsUpdate = true;
         }
-        o.visible=true;
       });
+      wrap.rotation.x = -0.08;
       {
-        const bb = makeBlobShadow(0.32);
-        bb.position.set(0.008, 0.001, 0.006);
-        bb.material.opacity = 0.24;
-        wrap.add(bb);
+        // Re-fit footprint on VISIBLE meshes so open pages fill target size
+        const visBox = new THREE.Box3();
+        wrap.traverse((o)=>{ if (o.isMesh && o.visible) visBox.expandByObject(o); });
+        if (!visBox.isEmpty()){
+          const size = visBox.getSize(new THREE.Vector3());
+          const dim = Math.max(size.x, size.z) || 1;
+          wrap.scale.multiplyScalar(0.82 / dim);
+        }
+        wrap.updateMatrixWorld(true);
+        const bb2 = new THREE.Box3();
+        wrap.traverse((o)=>{ if (o.isMesh && o.visible) bb2.expandByObject(o); });
+        const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
+        if (!bb2.isEmpty()){
+          const minL = bb2.min.clone().applyMatrix4(inv);
+          wrap.position.y -= minL.y;
+          wrap.position.y += 0.004;
+        }
+        const foot = makeBlobShadow(0.50);
+        foot.position.set(0.01, 0.001, 0.008);
+        foot.material.opacity = 0.26;
+        wrap.add(foot);
       }
     }
     if (id === 'lamp'){
       lampGroup = wrap;
+      // desk-lamp/scene.gltf author metals — only warm the bulb emissive
       wrap.traverse((o)=>{
         if(!o.isMesh||!o.material) return;
         const mats=Array.isArray(o.material)?o.material:[o.material];
@@ -654,44 +653,29 @@ async function mountProps(){
           const n=(m.name||o.name||'').toLowerCase();
           if(n.includes('bulb')){
             m.emissive = new THREE.Color(0xFFD2A6);
-            m.emissiveIntensity = 1.05; // soft bulb glow only
+            m.emissiveIntensity = 1.25;
             m.color.setHex(0xFFE8C8);
-          } else if(n.includes('chrome') || n.includes('steel')){
-            // brushed brass shade / stem
-            m.color.setHex(0xC4A06A);
-            m.metalness = 0.88;
-            m.roughness = 0.32;
-            m.envMapIntensity = 1.1;
-          } else if(n.includes('blackmetal') || n.includes('black')){
-            // warm dark brass base
-            m.color.setHex(0x8A6A3E);
-            m.metalness = 0.75;
-            m.roughness = 0.4;
           } else {
-            if(m.metalness!=null && m.metalness>0.4){
-              m.color.setHex(0xC4A06A);
-              m.metalness = 0.85;
-              m.roughness = 0.35;
-            }
+            // Keep author black/steel — do NOT paint brass over black metal
+            if (m.metalness != null) m.metalness = THREE.MathUtils.clamp(m.metalness, 0.7, 0.95);
+            if (m.roughness != null) m.roughness = THREE.MathUtils.clamp(m.roughness, 0.28, 0.45);
+            m.envMapIntensity = Math.max(0.9, m.envMapIntensity || 0.9);
           }
           m.needsUpdate = true;
         }
       });
-      // Shade tips toward sketchbook (local −X/−Z)
-      // squash height then re-seat on desk (avoid floating feet)
-      wrap.scale.y *= 0.82;
+      // Re-seat feet after fit
       {
         const bb=new THREE.Box3().setFromObject(wrap);
         wrap.position.y -= bb.min.y;
       }
-      // Soft 4000K cone from shade → book/plant (mid-right)
-      // Soft warm pool — low intensity Point only (no Spot burn hole)
-      const lampLight = new THREE.PointLight(0xFFD2A6, 0.20, 2.0, 2.4);
-      lampLight.position.set(-0.10, 0.34, -0.06);
+      // Soft 4000K pool toward book — no hard Spot disk
+      const lampLight = new THREE.PointLight(0xFFD2A6, 0.32, 2.2, 2.2);
+      lampLight.position.set(-0.12, 0.36, -0.05);
       wrap.add(lampLight);
       lampLight.castShadow = false;
-      const fillL = new THREE.PointLight(0xFFD2A6, 0.08, 1.4, 2.4);
-      fillL.position.set(0.0, 0.26, 0.0);
+      const fillL = new THREE.PointLight(0xFFD2A6, 0.12, 1.5, 2.2);
+      fillL.position.set(0.0, 0.28, 0.0);
       wrap.add(fillL);
       wrap.userData.light = lampLight;
       wrap.userData.fill = fillL;
@@ -703,6 +687,16 @@ async function mountProps(){
       }
     }
     if (id === 'plant'){
+      keepAuthorPBR(root, { roughBoost: 0.0, env: 0.35 });
+      root.traverse((o)=>{
+        if (!o.isMesh || !o.material) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats){
+          if (m.roughness != null) m.roughness = THREE.MathUtils.clamp(m.roughness, 0.65, 0.80);
+          m.metalness = 0;
+          m.needsUpdate = true;
+        }
+      });
       const pb = makeBlobShadow(0.14);
       pb.position.set(0.005, 0.001, 0.005);
       pb.material.opacity = 0.24;
@@ -733,7 +727,7 @@ async function mountProps(){
 
 
 
-/** Open Steno: cream pages/cover edges, dark spine only — no black card frame. */
+/** Scatter a few die-cuts on real Steno mesh — no procedural cover cubes. */
 function decorateSketchbookPages(){
   if (!bookGroup) return;
   const pool = (lockScatterTexList.length ? lockScatterTexList : stickerTexList);
@@ -745,75 +739,29 @@ function decorateSketchbookPages(){
   const loc = bb.clone().applyMatrix4(inv);
   const midX = (loc.min.x + loc.max.x) * 0.5;
   const midZ = (loc.min.z + loc.max.z) * 0.5;
-  const pageW = Math.max(0.09, (loc.max.x - loc.min.x) * 0.46);
-  const pageD = Math.max(0.12, (loc.max.z - loc.min.z) * 0.80);
-  const baseY = loc.max.y + 0.001;
+  const pageW = Math.max(0.08, (loc.max.x - loc.min.x) * 0.42);
+  const pageD = Math.max(0.10, (loc.max.z - loc.min.z) * 0.70);
+  const baseY = loc.max.y + 0.002;
 
   const spread = new THREE.Group();
-  spread.name = 'bookOpenSpread';
-
-  const cream = new THREE.MeshStandardMaterial({
-    color: 0xF7F2E8, roughness: 0.9, metalness: 0.0,
-  });
-  const spineMat = new THREE.MeshStandardMaterial({
-    color: 0x5A4E42, roughness: 0.78, metalness: 0.04,
-  });
-
-  // Cream cover bed (NOT black card) under pages
-  const cover = new THREE.Mesh(
-    new THREE.BoxGeometry(pageW * 2.12, 0.010, pageD * 1.05),
-    cream
-  );
-  cover.position.set(midX, baseY + 0.005, midZ);
-  cover.castShadow = true; cover.receiveShadow = true;
-
-  // Dark spine only
-  const spine = new THREE.Mesh(
-    new THREE.BoxGeometry(Math.max(0.018, pageW * 0.12), 0.022, pageD * 0.94),
-    spineMat
-  );
-  spine.position.set(midX, baseY + 0.014, midZ);
-  spine.castShadow = true;
-
-  const pageT = 0.0038;
-  const leftPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), cream.clone());
-  const rightPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), cream.clone());
-  leftPage.position.set(midX - pageW * 0.54, baseY + 0.016, midZ);
-  rightPage.position.set(midX + pageW * 0.54, baseY + 0.016, midZ);
-  leftPage.rotation.z = 0.05;
-  rightPage.rotation.z = -0.05;
-  leftPage.castShadow = true; rightPage.castShadow = true;
-  leftPage.receiveShadow = true; rightPage.receiveShadow = true;
-
-  const pageBlobL = makeBlobShadow(pageW * 0.95);
-  pageBlobL.position.set(midX - pageW * 0.5, baseY + 0.011, midZ + 0.006);
-  pageBlobL.material.opacity = 0.16;
-  const pageBlobR = makeBlobShadow(pageW * 0.95);
-  pageBlobR.position.set(midX + pageW * 0.5, baseY + 0.011, midZ + 0.006);
-  pageBlobR.material.opacity = 0.16;
-
-  spread.add(cover, spine, leftPage, rightPage, pageBlobL, pageBlobR);
-
-  const stickY = baseY + 0.022;
+  spread.name = 'bookPageStickers';
   const slots = [
-    [midX - pageW * 0.70, stickY, midZ - pageD * 0.20],
-    [midX - pageW * 0.50, stickY, midZ + pageD * 0.08],
-    [midX - pageW * 0.66, stickY, midZ + pageD * 0.28],
-    [midX + pageW * 0.46, stickY, midZ - pageD * 0.16],
-    [midX + pageW * 0.66, stickY, midZ + pageD * 0.02],
-    [midX + pageW * 0.50, stickY, midZ + pageD * 0.26],
+    [midX - pageW * 0.55, baseY, midZ - pageD * 0.18],
+    [midX - pageW * 0.35, baseY, midZ + pageD * 0.12],
+    [midX + pageW * 0.40, baseY, midZ - pageD * 0.10],
+    [midX + pageW * 0.55, baseY, midZ + pageD * 0.16],
   ];
   for (let i = 0; i < slots.length; i++){
     const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = Math.min(pageD, pageW) * 0.26;
+    const h = Math.min(pageD, pageW) * 0.22;
     const w = h * Math.min(1.15, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
-    slab.rotation.set(-Math.PI / 2, (i % 2 ? 0.06 : -0.05), 0);
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.0035);
+    slab.rotation.set(-Math.PI / 2, (i % 2 ? 0.05 : -0.04), 0);
     slab.position.set(slots[i][0], slots[i][1], slots[i][2]);
-    const blob = makeBlobShadow(Math.max(w,h) * 0.85);
-    blob.position.set(slots[i][0] + 0.004, baseY + 0.013, slots[i][2] + 0.003);
-    blob.material.opacity = 0.14;
+    const blob = makeBlobShadow(Math.max(w,h) * 0.8);
+    blob.position.set(slots[i][0] + 0.003, baseY - 0.001, slots[i][2] + 0.002);
+    blob.material.opacity = 0.12;
     spread.add(slab, blob);
   }
   bookGroup.add(spread);
@@ -1044,7 +992,7 @@ function createFlatThickSticker(w, h, tex, thickness = 0.004){
     const mat = new THREE.MeshStandardMaterial({
       map: isFront ? tex : edgeTex,
       color: 0xffffff,
-      roughness: isFront ? 0.58 : 0.86,
+      roughness: isFront ? 0.74 : 0.80,
       metalness: 0.0,
       transparent: true,
       alphaTest: 0.42,
@@ -1436,9 +1384,8 @@ function tick(){
   }
 
   spawnAcc += dt;
-  // Cake-stand / Tòpas: keep float pool topped up even in desk/clean review
   const floatCount = stickers.filter(s => s.state === 'float').length;
-  if (floatCount < FLOAT_CAP && spawnAcc >= SPAWN_EVERY){
+  if (!noFloats && floatCount < FLOAT_CAP && spawnAcc >= SPAWN_EVERY){
     spawnAcc = 0;
     const farN = stickers.filter(s => s.state === 'float' && s.layer === 0).length;
     const midN = stickers.filter(s => s.state === 'float' && s.layer === 1).length;
@@ -1454,9 +1401,9 @@ function tick(){
   }
   if (lampGroup && lampGroup.userData.light){
     // Soft breathe around whisper baseline (no hard burn)
-    const pulse = 0.20 + Math.sin(clock.elapsedTime * 1.2) * 0.03;
+    const pulse = 0.32 + Math.sin(clock.elapsedTime * 1.2) * 0.04;
     lampGroup.userData.light.intensity = pulse;
-    if (lampGroup.userData.fill) lampGroup.userData.fill.intensity = 0.08 + Math.sin(clock.elapsedTime * 1.2) * 0.015;
+    if (lampGroup.userData.fill) lampGroup.userData.fill.intensity = 0.12 + Math.sin(clock.elapsedTime * 1.2) * 0.02;
   }
   if (loadedProps.plant){
     loadedProps.plant.rotation.z = Math.sin(clock.elapsedTime * 0.8) * 0.02;
@@ -1619,20 +1566,57 @@ window.__studioDump = () => {
 };
 
 
-// Tòpas float pool: seed far/mid/near immediately (desk/clean included)
-{
+// Tòpas float pool (skip when ?floats=0 for still-life prop QA)
+if (!noFloats){
   const plan = [0,0,0,0,0,0,0,0, 1,1,1,1,1,1]; // 8 far + 6 mid
   for (const layer of plan){
     if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) break;
     spawnFloatSticker(layer);
   }
-  // Force 2 near (non-text) after mid/far filled
   for (let n = 0; n < 2; n++){
     if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) break;
     spawnFloatSticker(2);
   }
 }
 SPAWN_EVERY = reduceMotion ? 1.6 : 0.85;
+
+window.__liveBookDump = function(){
+  if (!bookGroup) return {err:'no bookGroup'};
+  const meshes=[];
+  bookGroup.traverse(o=>{
+    if(!o.isMesh) return;
+    const bb=new THREE.Box3().setFromObject(o);
+    const s=bb.getSize(new THREE.Vector3());
+    const c=bb.getCenter(new THREE.Vector3());
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    meshes.push({
+      name:o.name, parent:o.parent?.name, vis:o.visible,
+      size:[+s.x.toFixed(3),+s.y.toFixed(3),+s.z.toFixed(3)],
+      center:[+c.x.toFixed(3),+c.y.toFixed(3),+c.z.toFixed(3)],
+      mat:mats.map(m=>m&&{name:m.name, map:!!m.map, color:m.color&&'#'+m.color.getHexString()})
+    });
+  });
+  const wbb=new THREE.Box3().setFromObject(bookGroup);
+  const ws=wbb.getSize(new THREE.Vector3());
+  const wc=wbb.getCenter(new THREE.Vector3());
+  return {
+    wrapPos:bookGroup.position.toArray().map(n=>+n.toFixed(3)),
+    wrapRot:['x','y','z'].map(k=>+bookGroup.rotation[k].toFixed(3)),
+    worldSize:[+ws.x.toFixed(3),+ws.y.toFixed(3),+ws.z.toFixed(3)],
+    worldCenter:[+wc.x.toFixed(3),+wc.y.toFixed(3),+wc.z.toFixed(3)],
+    meshes
+  };
+};
+
+window.__propLoadPaths = {
+  desk: '/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/desk/extracted/SM_DiningTable.gltf',
+  laptop: '/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/laptop/extracted/scene.gltf',
+  book: '/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/laptop/laptop.glb',
+  printer: '/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/thermal-printer/printer.glb',
+  lamp: '/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/desk-lamp/extracted/scene.gltf',
+  plant: '/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/desk-plant/desk-plant.glb',
+};
+console.info('[studio] PROP_LOAD_PATHS', window.__propLoadPaths);
 console.info('[studio] Tòpas-float + desk props pr=', renderer.getPixelRatio(), 'floats=', stickers.filter(s=>s.state==='float').length, 'missing=', mount.missing, 'topY', tableTopY);
 tick();
 
