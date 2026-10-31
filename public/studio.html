@@ -760,29 +760,57 @@ async function mountProps(){
       }
       if (wrap.userData._needKeys && wrap.userData._keyTex && !wrap.userData._keyPlane){
         wrap.updateMatrixWorld(true);
-        const bb = new THREE.Box3().setFromObject(wrap);
         const kt = wrap.userData._keyTex;
         kt.wrapS = kt.wrapT = THREE.ClampToEdgeWrapping;
         kt.repeat.set(1,1); kt.offset.set(0,0); kt.needsUpdate = true;
-        const keyMat = new THREE.MeshBasicMaterial({
-          name: 'keycaps', map: kt, side: THREE.DoubleSide, toneMapped: false,
-        });
-        const kp = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.18), keyMat);
-        kp.name = 'keyPlane';
-        scene.add(kp);
-        // Flat on desk top of laptop base, tip toward +Z cam
         const o4 = wrap.getObjectByName('Object_4');
         const b4 = o4 ? new THREE.Box3().setFromObject(o4) : new THREE.Box3().setFromObject(wrap);
         const deskWY = deskTop.getWorldPosition(new THREE.Vector3()).y;
-        // Sit ABOVE silver Object_4 deck (was buried → grey slab over keys)
-        kp.position.set(
-          (b4.min.x + b4.max.x) * 0.5,
-          deskWY + 0.032,
-          b4.min.z * 0.15 + b4.max.z * 0.85
-        );
-        kp.rotation.set(-Math.PI / 2 + 0.48, 0, 0);
+        const cx = (b4.min.x + b4.max.x) * 0.5;
+        const cz = (b4.min.z + b4.max.z) * 0.55;
+        // Hide Object_4 entirely — author silver deck was the Caps/Shift grey triangle
+        if (o4) o4.visible = false;
+
+        // Silver ONLY as upright behind screen (never under/beside keycaps)
+        const chassisMat = new THREE.MeshStandardMaterial({
+          color: 0xC5C9CE, roughness: 0.45, metalness: 0.35, envMapIntensity: 0.85,
+        });
+        const upright = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.28, 0.022), chassisMat);
+        upright.name = 'chassisUpright';
+        scene.add(upright);
+        upright.position.set(cx, deskWY + 0.22, cz - 0.08);
+        upright.lookAt(camera.position);
+        const un = new THREE.Vector3(); upright.getWorldDirection(un);
+        upright.position.addScaledVector(un, -0.05);
+        wrap.attach(upright);
+
+        // Oversized dark underlay + keyPlane; transparent pass paints after all opaque silver
+        const tip = 0.40;
+        const underMat = new THREE.MeshBasicMaterial({
+          color: 0x12161C, toneMapped: false, side: THREE.DoubleSide,
+          transparent: true, opacity: 1, depthTest: false, depthWrite: false,
+        });
+        const keyMat = new THREE.MeshBasicMaterial({
+          name: 'keycaps', map: kt, side: THREE.DoubleSide, toneMapped: false,
+          transparent: true, opacity: 1, depthTest: false, depthWrite: false,
+        });
+        const under = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.34), underMat);
+        under.name = 'keyDeckMask';
+        const kp = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.26), keyMat);
+        kp.name = 'keyPlane';
+        scene.add(under); scene.add(kp);
+        under.position.set(cx, deskWY + 0.022, cz + 0.06);
+        kp.position.set(cx, deskWY + 0.026, cz + 0.06);
+        under.rotation.x = -Math.PI / 2 + tip;
+        kp.rotation.x = -Math.PI / 2 + tip;
+        under.renderOrder = 25;
+        kp.renderOrder = 26;
+        wrap.attach(under);
         wrap.attach(kp);
+
         wrap.userData._keyPlane = kp;
+        wrap.userData._keyDeckMask = under;
+        wrap.userData._chassisUpright = upright;
       }
 
     }
