@@ -248,8 +248,15 @@ ground.castShadow = false;
 ground.visible = false; // pure cream void — no wall/floor split
 scene.add(ground);
 
-/* ========== post: SMAA ========== */
-const composer = new EffectComposer(renderer);
+/* ========== post: MSAA RT + SMAA (LAYOUT §3 sticker edges) ========== */
+const _drawSize = new THREE.Vector2();
+renderer.getDrawingBufferSize(_drawSize);
+const composerRT = new THREE.WebGLRenderTarget(_drawSize.x, _drawSize.y, {
+  samples: Math.min(4, renderer.capabilities.maxSamples || 4),
+  type: THREE.HalfFloatType,
+  depthBuffer: true,
+});
+const composer = new EffectComposer(renderer, composerRT);
 composer.addPass(new RenderPass(scene, camera));
 const smaaPass = new SMAAPass(
   Math.floor(innerWidth * renderer.getPixelRatio()),
@@ -527,42 +534,90 @@ async function mountProps(){
           if (mats.some(m=>m && /palette\.001/i.test(m.name||''))) lidNode = o.parent || o;
         });
       }
-      root.traverse((o)=>{
-        if (!o.isMesh || !o.material) return;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats){
-          if (!m) continue;
-          const map = m.map;
-          if (map){
-            map.colorSpace = THREE.SRGBColorSpace;
-            map.generateMipmaps = false;
-            map.minFilter = THREE.NearestFilter;
-            map.magFilter = THREE.NearestFilter;
-            map.wrapS = THREE.ClampToEdgeWrapping;
-            map.wrapT = THREE.ClampToEdgeWrapping;
-            map.anisotropy = 1;
-            map.needsUpdate = true;
-          }
-          if (m.emissiveIntensity != null && m.emissiveIntensity > 4){
-            m.emissiveIntensity = Math.min(m.emissiveIntensity, 1.2);
-          }
-          // Screen micro-glow (palette.001)
-          const mn=(m.name||o.name||'').toLowerCase();
-          if (/palette\.001|screen|display|lcd/.test(mn)){
-            if (!m.emissive) m.emissive = new THREE.Color(0xFFE8D0);
-            else m.emissive.lerp(new THREE.Color(0xFFE8D0), 0.4);
-            m.emissiveIntensity = Math.min(0.95, Math.max(0.45, m.emissiveIntensity || 0.6));
-            m.envMapIntensity = Math.max(0.8, m.envMapIntensity || 0.8);
-            // Kill ghost "floating window" from Sketchfab transmission glass
-            if (m.transmission != null) m.transmission = 0;
-            if (m.transparent) { m.opacity = Math.max(m.opacity ?? 1, 0.92); }
-            m.depthWrite = true;
-          } else {
-            m.envMapIntensity = Math.max(0.55, m.envMapIntensity || 0.55);
-          }
-          m.needsUpdate = true;
+      // Remap planar UVs from local bbox → readable 2D albedo (palette 256×1 cannot show keycaps)
+      const remapUV = (mesh, forceAxes) => {
+        const geo = mesh.geometry;
+        if (!geo || !geo.attributes.position) return;
+        if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+        geo.computeBoundingBox();
+        const bb = geo.boundingBox;
+        const size = new THREE.Vector3(); bb.getSize(size);
+        let uAx, vAx;
+        if (forceAxes){ uAx = forceAxes[0]; vAx = forceAxes[1]; }
+        else {
+          const axes = [['x', size.x], ['y', size.y], ['z', size.z]].sort((a,b)=>b[1]-a[1]);
+          uAx = axes[0][0]; vAx = axes[1][0];
         }
+        const pos = geo.attributes.position;
+        const uv = geo.attributes.uv;
+        const minU = bb.min[uAx], spanU = (bb.max[uAx]-bb.min[uAx]) || 1;
+        const minV = bb.min[vAx], spanV = (bb.max[vAx]-bb.min[vAx]) || 1;
+        for (let i = 0; i < pos.count; i++){
+          const p = { x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) };
+          uv.setXY(i, (p[uAx]-minU)/spanU, 1 - (p[vAx]-minV)/spanV);
+        }
+        uv.needsUpdate = true;
+      };
+      const loadLaptopTex = (url) => new Promise((resolve) => {
+        texLoader.load(url, (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.generateMipmaps = true;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+          tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+          tex.needsUpdate = true;
+          resolve(tex);
+        }, undefined, () => resolve(null));
       });
+      // Sync load via already-cached loader path — use TextureLoader sync pattern with await outside
+      // Materials applied after textures resolve below
+      const keyTexP = loadLaptopTex(`${ASSET}/glb/laptop/textures/keycaps_baseColor.png`);
+      const scrTexP = loadLaptopTex(`${ASSET}/glb/laptop/textures/screen_desktop.png`);
+      // stash promises on wrap; await before continue is hard inside sync loop — use then
+      await Promise.all([keyTexP, scrTexP]).then(([keyTex, scrTex]) => {
+        root.traverse((o)=>{
+          if (!o.isMesh || !o.material) return;
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          for (let mi = 0; mi < mats.length; mi++){
+            let m = mats[mi];
+            if (!m) continue;
+            const mn=((m.name||'')+' '+(o.name||'')+' '+(o.parent?.name||'')).toLowerCase();
+            if (/palette\.001|screen|display|lcd|laptop\.001|laptop001/.test(mn)){
+              // REMOVE transmission glass entirely (was floating IDE pane even when visible=false in some paths)
+              if (m.transmission != null) m.transmission = 0;
+              m.transparent = false; m.opacity = 1;
+              o.visible = false;
+              o.parent?.remove(o);
+              // Thin screen plane added once after traverse (see below)
+              wrap.userData._needScreen = true;
+              wrap.userData._scrTex = scrTex;
+              continue;
+            }
+            if (/palette\.002|laptop\.002|laptop002/.test(mn)){
+              o.visible = false; // author key UVs = smear; replace with deck plane
+              wrap.userData._needKeys = true;
+              wrap.userData._keyTex = keyTex;
+              continue;
+            }
+            // Chassis palette → solid silver (256×1 strip = wavy smear on deck)
+            if (/(^|\s)palette(\s|$)/.test(mn) && !/palette\.00/.test(mn)){
+              m.map = null;
+              m.color = new THREE.Color(0xC5C9CE);
+              m.roughness = 0.45;
+              m.metalness = 0.35;
+              m.emissive = new THREE.Color(0x000000);
+              m.emissiveIntensity = 0;
+              m.transparent = false;
+              m.opacity = 1;
+              if (m.transmission != null) m.transmission = 0;
+              m.envMapIntensity = 0.85;
+              m.needsUpdate = true;
+            }
+          }
+        });
+      });
+
       // Hinge 105° + face camera + seat (LAYOUT-STICKER-LOCK / v2 front)
       {
         // Tip lid PAST upright toward open 105° (author ≈90°; +15° opens further)
@@ -615,6 +670,35 @@ async function mountProps(){
           wrap.userData.screenFacing = bestScore;
           wrap.updateMatrixWorld(true);
         }
+        // Build readable screen as thin plane on wrap (after yaw), facing camera
+        if (wrap.userData._needScreen && wrap.userData._scrTex && !wrap.userData._screenPlane){
+          const scrTex = wrap.userData._scrTex;
+          const mat = new THREE.MeshStandardMaterial({
+            name: 'screen_desktop',
+            map: scrTex,
+            emissive: new THREE.Color(0xffffff),
+            emissiveMap: scrTex,
+            emissiveIntensity: 0.7,
+            roughness: 0.4,
+            metalness: 0,
+            side: THREE.FrontSide,
+            transparent: false,
+            depthWrite: true,
+          });
+          const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.26), mat);
+          plane.name = 'screenPlane';
+          // place above keyboard toward open lid
+          plane.position.set(0, 0.22, -0.02);
+          wrap.add(plane);
+          plane.lookAt(plane.worldToLocal(camera.position.clone()));
+          // better: face +Z of wrap which faces cam after yaw
+          plane.rotation.set(0, 0, 0);
+          plane.position.set(0.02, 0.20, 0.12);
+          // orient plane normal toward camera
+          const toCam = camera.position.clone().sub(plane.getWorldPosition(new THREE.Vector3())).normalize();
+          plane.lookAt(plane.localToWorld(new THREE.Vector3(0,0,0)).add(toCam));
+          wrap.userData._screenPlane = plane;
+        }
       }
       {
         const bbH = new THREE.Box3().setFromObject(root);
@@ -624,6 +708,23 @@ async function mountProps(){
           fitProp(root, 0.82, 'bottom', 'xz');
         }
       }
+
+        if (wrap.userData._needKeys && wrap.userData._keyTex && !wrap.userData._keyPlane){
+          // Tip toward camera (~28°) so elev-5° front view can read glyphs (flat deck foreshortens to smear-grey)
+          const keyMat = new THREE.MeshBasicMaterial({
+            name: 'keycaps',
+            map: wrap.userData._keyTex,
+            side: THREE.DoubleSide,
+            toneMapped: false,
+          });
+          const kp = new THREE.Mesh(new THREE.PlaneGeometry(0.40, 0.26), keyMat);
+          kp.name = 'keyPlane';
+          kp.rotation.x = -Math.PI / 2 + 0.48;
+          kp.position.set(0.0, 0.028, 0.10);
+          wrap.add(kp);
+          wrap.userData._keyPlane = kp;
+        }
+
       // Force seat on deskTop local Y=0 (never float)
       {
         wrap.position.x = cfg.pos[0];
@@ -645,10 +746,13 @@ async function mountProps(){
         if (max2.x > deskHalfX) wrap.position.x -= (max2.x - deskHalfX) + 0.02;
         if (min2.z < -deskHalfZ) wrap.position.z += (-deskHalfZ - min2.z) + 0.02;
         if (max2.z > deskHalfZ) wrap.position.z -= (max2.z - deskHalfZ) + 0.02;
-        const foot = makeBlobShadow(0.30);
-        foot.position.set(0.012, 0.001, 0.012);
-        foot.material.opacity = 0.22;
-        wrap.add(foot);
+        // Contact blob on deskTop (NOT wrap) — parenting to wrap made it a vertical "IDE window"
+        const foot = makeBlobShadow(0.32);
+        foot.rotation.x = -Math.PI / 2;
+        const fp = new THREE.Vector3(cfg.pos[0], 0.002, cfg.pos[2]);
+        foot.position.copy(fp);
+        foot.material.opacity = 0.20;
+        deskTop.add(foot);
       }
     }
 
@@ -1102,7 +1206,8 @@ function createFlatThickSticker(w, h, tex, thickness = 0.004){
       roughness: isFront ? 0.74 : 0.80,
       metalness: 0.0,
       transparent: true,
-      alphaTest: 0.22, // softer edge w/ SMAA (was 0.42 jagged)
+      alphaTest: 0.35,
+      alphaToCoverage: true, // needs MSAA RT — smooth die-cut edge
       depthWrite: isFront,
       depthTest: true,
       polygonOffset: true,
@@ -1124,8 +1229,9 @@ function createFlatThickSticker(w, h, tex, thickness = 0.004){
     map: edgeTex,
     color: 0x1a1008,
     transparent: true,
-    opacity: 0.48,
-    alphaTest: 0.22,
+    opacity: 0.40,
+    alphaTest: 0.35,
+    alphaToCoverage: true,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -1197,11 +1303,15 @@ function laptopKeepoutCenter(){
   return _propBox.getCenter(new THREE.Vector3());
 }
 function hitsLaptopKeepout(x, y, z, extra=0){
-  const c = laptopKeepoutCenter();
-  if (!c) return false;
-  const r = 0.26 + extra; // v2: slightly larger than LOCK 0.22 to clear screen face
-  const dx=x-c.x, dy=y-c.y, dz=z-c.z;
-  return (dx*dx+dy*dy+dz*dz) < r*r;
+  // LAYOUT: XZ clearance to laptop footprint ≥ 0.22m (+extra). Y ignored so high C-far floats still purge.
+  if (!loadedProps.laptop) return false;
+  _propBox.setFromObject(loadedProps.laptop);
+  const minX=_propBox.min.x, maxX=_propBox.max.x, minZ=_propBox.min.z, maxZ=_propBox.max.z;
+  const cx=Math.max(minX, Math.min(x, maxX));
+  const cz=Math.max(minZ, Math.min(z, maxZ));
+  const dx=x-cx, dz=z-cz;
+  const need = 0.22 + extra;
+  return (dx*dx + dz*dz) < need*need;
 }
 function minGapToProps(pos, skipLampBoost=false){
   let minGap = 1e9;
@@ -1349,7 +1459,8 @@ function spawnFloatSticker(layer){
       hz = -0.35 + Math.random()*0.40;
       hy = topY + 0.42 + Math.random()*0.30;
     }
-    if (hitsLaptopKeepout(hx, hy, hz, 0.02)) continue;
+    if (hitsLaptopKeepout(hx, hy, hz, 0.04)) continue;
+    if (/shiba|dalmatian|corgi|fox|panda|dog|rabbit/i.test(pick.file||'') && hitsLaptopKeepout(hx, hy, hz, 0.0)) continue;
     if (minGapToProps(new THREE.Vector3(hx,hy,hz)) < 0) continue;
     _tmp.set(hx, hy, hz).project(camera);
     const sx = _tmp.x*0.5+0.5, sy = -_tmp.y*0.5+0.5;
@@ -1683,6 +1794,8 @@ addEventListener('resize', () => {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, maxPR));
   renderer.setSize(innerWidth, innerHeight, false);
   composer.setSize(innerWidth, innerHeight);
+  renderer.getDrawingBufferSize(_drawSize);
+  composerRT.setSize(_drawSize.x, _drawSize.y);
   smaaPass.setSize(
     Math.floor(innerWidth * renderer.getPixelRatio()),
     Math.floor(innerHeight * renderer.getPixelRatio())
@@ -1740,6 +1853,7 @@ placeLockRow();
 placeLidPins();
 window.__stickers = stickers;
 window.__cam = camera;
+window.__scene = scene;
 window.THREE = THREE;
 window.__floatQA = () => {
   const floats = stickers.filter(s=>s.state==='float');
@@ -1840,6 +1954,17 @@ if (!noFloats){
   for (const layer of plan){
     if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) break;
     spawnFloatSticker(layer);
+  }
+  // Purge floats inside laptop XZ keepout; animals get full 0.22m (no extra shrink)
+  for (let i = stickers.length - 1; i >= 0; i--){
+    const s = stickers[i];
+    if (s.state !== 'float' || s.layerKind === 'A') continue;
+    const p = s.group.position;
+    const animal = /shiba|dalmatian|corgi|dog|panda|fox|rabbit/i.test(s.file||'');
+    if (hitsLaptopKeepout(p.x, p.y, p.z, animal ? 0.0 : -0.06)){
+      scene.remove(s.group); if (s.shadow) scene.remove(s.shadow); if (s.shadowSoft) scene.remove(s.shadowSoft);
+      stickers.splice(i, 1);
+    }
   }
 }
 SPAWN_EVERY = reduceMotion ? 1.6 : 0.85;
