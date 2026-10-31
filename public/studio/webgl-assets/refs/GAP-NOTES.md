@@ -1,16 +1,15 @@
-# GAP notes — analyst pass v28 (2026-10-31 Asia/Shanghai)
+# GAP notes — analyst pass v30 (2026-10-31 Asia/Shanghai)
 
-## Scope (only 4 items)
-1. **Camera → LOCK** — Desk orbit: fov35, elev **20°** (was ~28–30° top-down), azim **−40°**, dist **~2.05** (pushed in). Look slightly forward of desk center. Less isometric game feel; desk fills more of frame.
-2. **Laptop sit** — Micro-lift **+0.006** after seat + short contact blob under chassis (no sink into wood).
-3. **Steno no black card frame** — Dropped baked Steno cover maps; cream body `0xEDE6DA`; spread uses cream cover/pages + warm-brown spine only (not black card rim).
-4. **Spit chain readable** — 5 die-cut stickers ~0.058 tall, continuous steps from mouth lip; no white bar.
+## Scope (only 2 items)
+1. **Camera intimacy** — Desk orbit elev **~13°** (was ~20°), dist **~1.72**, azim **−40°**. Reads as across-the-desk three-quarter, not shelf top-down.
+2. **Composition split LOCK** — Spit = **3 small** die-cuts from `stickers-flat-thick` nest at mouth (not hero four). Foreground = strawberry/cat/lemon/VIBE **large** thick row on desk (scattered zs/yaws + rear blobs), separate from spit.
+
+## Accepted this round
+Steno / laptop / printer white / thin slabs / rounded desk.
 
 ## Still soft vs LOCK
-- Camera is lower but still a product-shelf three-quarter; LOCK hero may want even more “across the desk” intimacy.
-- Spit mouth flush can still show a tiny gap at some angles.
-- Thin dark Steno edge may remain from spiral mesh / page silhouette.
-- Overall “game UI” feel may need lighting/material polish beyond this 4-item scope.
+- Spit mouth flush can still be a hair short at some angles.
+- Floor soft pools remain (out of this 2-item scope).
 
 ## Verdict
 Ready for **another analyst feel-pass**. **Not** for end user.

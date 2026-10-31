@@ -176,14 +176,14 @@ function orbitCam(look, dist, elevDeg, azimDeg){
 // LAYOUT-CAMERA-SPEC defaults (refined after desk mounts)
 let tableTopY = 0.66;
 let camLook = new THREE.Vector3(0, tableTopY, -0.05);
-let camDesk = orbitCam(camLook, 2.3, 22, -40);
+let camDesk = orbitCam(camLook, 1.9, 14, -40);
 // Hero: same orbit, slightly farther / higher for floating stickers over desk
 let camHero = orbitCam(new THREE.Vector3(0, tableTopY + 0.35, 0.15), 4.2, 22, -38);
 function refreshCameras(){
-  // LOCK hero still: lower elev (~22°), push in — avoid isometric top-down
-  camLook.set(0.04, tableTopY + 0.01, 0.16);
-  camDesk = orbitCam(camLook, 2.05, 20, -40);
-  camHero = orbitCam(new THREE.Vector3(0.04, tableTopY + 0.36, 0.16), 2.95, 18, -40);
+  // LOCK: across-the-desk intimacy — elev 12–15°, push in (not shelf top-down)
+  camLook.set(0.08, tableTopY + 0.05, 0.06);
+  camDesk = orbitCam(camLook, 1.72, 13, -40);
+  camHero = orbitCam(new THREE.Vector3(0.08, tableTopY + 0.30, 0.08), 2.65, 13, -40);
 }
 const _camPos = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
@@ -689,17 +689,16 @@ async function mountProps(){
 /** Spit a rigid thick-slab strip from printer mouth toward camera (LOCK). */
 function buildPrinterSpitStrip(){
   if (!printerGroup) return;
-  const pool = lockScatterTexList.length ? lockScatterTexList : stickerTexList;
+  // Short mouth chain only — use flat-thick pool, NEVER hero LOCK four
+  const pool = stickerTexList.length ? stickerTexList : lockScatterTexList;
   if (!pool.length) return;
 
   printerGroup.updateWorldMatrix(true, true);
-  // Local extents of printer mesh
   const bb = new THREE.Box3().setFromObject(printerGroup);
   const inv = new THREE.Matrix4().copy(printerGroup.matrixWorld).invert();
   const minL = bb.min.clone().applyMatrix4(inv);
   const maxL = bb.max.clone().applyMatrix4(inv);
   const midX = (minL.x + maxL.x) * 0.5;
-  // Prefer +Z local as mouth (desk front after layout); fall back if camera prefers -Z
   const mouthA = new THREE.Vector3(midX, 0.003, maxL.z);
   const mouthB = new THREE.Vector3(midX, 0.003, minL.z);
   const mouthWA = mouthA.clone(); printerGroup.localToWorld(mouthWA);
@@ -710,23 +709,22 @@ function buildPrinterSpitStrip(){
 
   const strip = new THREE.Group();
   strip.name = 'printerSpitStrip';
-  const n = 5;
+  const n = 3; // short chain 2–4
   for (let i = 0; i < n; i++){
     const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = 0.058;
+    const h = 0.030; // small mouth stickers
     const w = h * Math.min(1.2, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.0045);
-    slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.015, 0);
-    // Continuous from lip: first under mouth, step ~half sticker so no gap
-    const zOff = toward * (-0.008 + i * 0.040);
-    slab.position.set((i - (n-1)/2) * 0.0008, 0.0032, zOff);
-    const blob = makeBlobShadow(Math.max(w, h) * 0.72);
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
+    slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.04, 0);
+    const zOff = toward * (-0.010 + i * 0.026);
+    slab.position.set((i - (n-1)/2) * 0.002, 0.003, zOff);
+    const blob = makeBlobShadow(Math.max(w, h) * 0.75);
     blob.position.set(slab.position.x + 0.002, 0.0008, slab.position.z + toward * 0.002);
-    blob.material.opacity = 0.16;
+    blob.material.opacity = 0.18;
     strip.add(slab, blob);
   }
-  strip.position.set(midX, 0.0028, mouthZ - toward * 0.004);
+  strip.position.set(midX, 0.0025, mouthZ - toward * 0.002);
   printerGroup.add(strip);
   printerGroup.userData.spitStrip = strip;
 }
@@ -1439,23 +1437,25 @@ refreshCameras(); applyCamera();
 
 // LOCK foreground row: 草莓/猫/柠檬/VIBE — flat on desk + clear rear shadow
 function placeLockRow(){
-  const xs = [-0.15, 0.02, 0.18, 0.34];
+  // LOCK hero foreground ONLY — strawberry/cat/lemon/VIBE large thick; NOT spit chain
+  const xs = [-0.22, -0.02, 0.18, 0.36];
+  const zs = [0.28, 0.34, 0.30, 0.26]; // on desk top (desk z≲0.55)
+  const yaws = [-0.12, 0.08, -0.06, 0.10];
   const picks = lockScatterTexList.length >= 4
     ? lockScatterTexList
     : stickerTexList;
   for (let i = 0; i < 4; i++){
     const pick = picks[i % picks.length];
-    // temporarily bias spawn pool by pushing pick to front of stickerTexList usage
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const size = 0.18;
+    const size = 0.22; // large hero thick stickers
     const w = size * Math.min(1.25, Math.max(0.75, aspect));
     const h = size;
-    const thickness = 0.004;
+    const thickness = 0.005;
     const group = createFlatThickSticker(w, h, pick.tex, thickness);
-    const sh = makeBlobShadow(size * 1.35);
-    const shSoft = makeBlobShadow(size * 1.7);
-    group.position.set(xs[i], topY + thickness * 0.5 + 0.005, 0.36);
-    group.rotation.set(-Math.PI / 2, (i - 1.5) * 0.08, 0);
+    const sh = makeBlobShadow(size * 1.25);
+    const shSoft = makeBlobShadow(size * 1.55);
+    group.position.set(xs[i], topY + thickness * 0.5 + 0.006, zs[i]);
+    group.rotation.set(-Math.PI / 2, yaws[i], 0);
     scene.add(group); scene.add(sh); scene.add(shSoft);
     const s = {
       group, front: group.userData.front, shadow: sh, shadowSoft: shSoft,
