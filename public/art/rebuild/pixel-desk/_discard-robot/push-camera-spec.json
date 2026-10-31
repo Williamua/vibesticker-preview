@@ -1,0 +1,51 @@
+{
+  "hard_anchor": "/workspace/vibesticker/refs/teardown/hamza-target-look.png",
+  "tokens": {
+    "warm_black": "#141210",
+    "pink": "#FF9EBB",
+    "amber": "#E8A04A",
+    "ink": "#F5EDE4"
+  },
+  "progress": {
+    "0.0": {
+      "label": "far_room",
+      "hero": "hero-wide-2560.jpg",
+      "mobile": "hero-wide-1080m.jpg",
+      "scale": 1.0,
+      "focus": "robot_full_body_desk_room"
+    },
+    "0.45": {
+      "label": "approach",
+      "blend": ["hero-wide-2560.jpg", "hero-near-2560.jpg"],
+      "scale": 1.35,
+      "focus": "robot_torso_monitor"
+    },
+    "0.75": {
+      "label": "near_monitor",
+      "hero": "hero-near-2560.jpg",
+      "scale": 1.7,
+      "focus": "monitor_screen"
+    },
+    "1.0": {
+      "label": "panel_dock",
+      "layers": ["layer-monitor.png", "layer-screen-ui.png", "layer-glow.png"],
+      "boot_sequence": ["boot-screen-off.png", "boot-bios.png", "boot-logo.png"],
+      "panel_stack": ["panel-L0-overview.png", "panel-L1-upload.png", "panel-L2-styles.png", "panel-L3-result.png", "panel-L4-pricing.png", "panel-L5-help.png"]
+    }
+  },
+  "parallax_layers": [
+    {"id": "room", "file": "layer-room.png", "depth": 0.15},
+    {"id": "desk", "file": "layer-desk.png", "depth": 0.35},
+    {"id": "character", "file": "layer-character.png", "depth": 0.55},
+    {"id": "monitor", "file": "layer-monitor.png", "depth": 0.7},
+    {"id": "screen_ui", "file": "layer-screen-ui.png", "depth": 0.85},
+    {"id": "glow", "file": "layer-glow.png", "depth": 0.95, "blend": "screen"}
+  ],
+  "nav_character": {
+    "idle": "char-idle.png",
+    "sit": "char-sit.png",
+    "walk": ["char-walk-01.png", "char-walk-02.png"],
+    "wave": "char-wave.png",
+    "power": "char-power.png"
+  }
+}

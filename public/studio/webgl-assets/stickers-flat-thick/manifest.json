@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "style": "flat-thick",
+  "note": "Primary hot-plug pool. Drop sticker-*.png here. Legacy webgl-assets/stickers/ is fallback.",
+  "include": [
+    "sticker-avocado.png",
+    "sticker-blueberry.png",
+    "sticker-cherry.png",
+    "sticker-corgi.png",
+    "sticker-cozy.png",
+    "sticker-daisy.png",
+    "sticker-dalmatian.png",
+    "sticker-fox.png",
+    "sticker-grape.png",
+    "sticker-kiwi.png",
+    "sticker-leaf.png",
+    "sticker-orange.png",
+    "sticker-panda.png",
+    "sticker-rabbit.png",
+    "sticker-shiba.png",
+    "sticker-watermelon.png",
+    "sticker-yay.png"
+  ],
+  "exclude": [
+    "README.md",
+    "sheet-preview.jpg",
+    "manifest.json"
+  ],
+  "pattern": "^sticker-.*\\.png$"
+}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VibeSticker · Hamza 单屏</title>
+<meta name="description" content="单屏点拖贴纸工房">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/hamza.css">
+</head>
+<body class="skin-hamza">
+<a class="skip" href="#island">跳到控件</a>
+<div id="demo-banner" class="demo-banner" hidden role="status">演示模式 · 未配置 Gemini 密钥</div>
+
+<div class="field" aria-hidden="true">
+  <picture>
+    <source media="(max-width:720px)" srcset="/art/rebuild/hamza/hero-field-1080m.jpg">
+    <img src="/art/rebuild/hamza/hero-field-2560.jpg" alt="" width="2560" height="1440">
+  </picture>
+</div>
+
+<div class="screen">
+  <header class="hz-bar">
+    <a class="logo" href="/">VibeSticker</a>
+    <a class="to-roof" href="/">Roof 预览</a>
+  </header>
+
+  <h1 class="hz-title">照片<br>变贴纸</h1>
+  <p class="hz-lede">同屏点开 · 拖一拖 · 不靠长页滚动</p>
+
+  <!-- Control island -->
+  <div id="island" class="island">
+    <!-- Project cards: click to expand in place -->
+    <div class="projects" id="projects" role="list">
+      <button type="button" class="project" data-project="1" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-01.png" alt="作品 1" width="960" height="640">
+      </button>
+      <button type="button" class="project" data-project="2" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-02.png" alt="作品 2" width="960" height="640">
+      </button>
+      <button type="button" class="project" data-project="3" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-03.png" alt="作品 3" width="960" height="640">
+      </button>
+      <button type="button" class="project" data-project="4" aria-expanded="false">
+        <img src="/art/rebuild/hamza/project-04.png" alt="作品 4" width="960" height="640">
+      </button>
+    </div>
+
+    <!-- Style slider: track + knob -->
+    <div class="slider-wrap" id="style-slider" aria-label="拖动切换风格">
+      <img class="slider-track" src="/art/rebuild/hamza/ui-slider-track.png" alt="" width="640" height="48" draggable="false">
+      <div class="slider-fill" id="slider-fill"></div>
+      <button type="button" class="slider-knob" id="slider-knob" aria-valuemin="0" aria-valuemax="4" aria-valuenow="4" aria-label="风格滑块">
+        <img src="/art/rebuild/hamza/ui-slider-knob.png" alt="" width="96" height="96" draggable="false">
+      </button>
+      <p class="slider-label" id="style-label">水彩</p>
+    </div>
+
+    <!-- Drag upload zone -->
+    <div class="drag-zone" id="upload-zone" tabindex="0" role="button" aria-label="拖拽或点击上传照片">
+      <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
+      <img class="drag-plate" src="/art/rebuild/hamza/ui-drag-zone.png" alt="" draggable="false">
+      <span class="drag-hint" id="upload-hint">把照片拖到这里</span>
+      <img id="upload-thumb" alt="" hidden>
+    </div>
+
+    <div class="island-actions">
+      <button type="button" class="btn btn-primary" id="gen-btn" disabled>生成贴纸</button>
+      <button type="button" class="btn btn-ghost" id="open-pricing">价格</button>
+    </div>
+    <p class="hint" id="quota"></p>
+  </div>
+
+  <!-- Accents -->
+  <div id="squirrel" class="hz-squirrel" title="点我">
+    <img src="/art/rebuild/hamza/layer-squirrel.png" alt="" draggable="false">
+  </div>
+  <img class="hz-leaf" data-surface="leaf" src="/art/rebuild/hamza/layer-leaves-01.png" alt="" aria-hidden="true">
+  <img class="hz-leaf hz-leaf-b" data-surface="leaf" src="/art/rebuild/hamza/layer-leaves-02.png" alt="" aria-hidden="true">
+</div>
+
+<!-- Expand overlay for projects / result / pricing -->
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <button type="button" class="sheet-close" id="sheet-close" aria-label="关闭">×</button>
+    <div id="sheet-body"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/scene-config.js"></script>
+<script src="/hamza.js"></script>
+</body>
+</html>

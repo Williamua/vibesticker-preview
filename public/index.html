@@ -1,162 +1,170 @@
-<!doctype html>
-<html lang="zh-CN" class="no-js">
+<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>VibeSticker · 把一张照片种成一枚贴纸</title>
-<meta name="description" content="走进森林，上传一张照片，让光把它长成一枚贴纸。">
-<meta name="theme-color" content="#0d120d">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&display=swap">
-
+<title>VibeSticker · Roof 预览</title>
+<meta name="description" content="手工动画工作室气质的贴纸工房">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css">
-<script>document.documentElement.classList.replace('no-js','js')</script>
 </head>
-<body>
+<body class="skin-roof">
+<div id="cursor" class="cursor" aria-hidden="true"><span class="cursor-dot"></span><span class="cursor-label">查看</span></div>
+<a class="skip" href="#main">跳到内容</a>
+<div id="demo-banner" class="demo-banner" hidden role="status">演示模式 · 未配置 Gemini 密钥，生成为本地滤镜预览</div>
 
-<!-- ===== fixed background stage (far → near). Parallax image layers are injected by app.js (WebP first, PNG fallback; desktop -2560, mobile -1080m) ===== -->
-<div id="stage" aria-hidden="true">
-  <div class="layer l-video">
-    <picture><source media="(max-width: 768px)" srcset="/media/rainforest-loop-mobile-720-poster.jpg"><img class="poster" src="/media/rainforest-loop-1080-poster.jpg" alt=""></picture>
-    <video id="bgv" muted playsinline loop preload="none" disablepictureinpicture></video>
+<div class="atmos" aria-hidden="true">
+  <div class="atmos-fog"><img src="/art/rebuild/roof/layer-fog.png" alt=""></div>
+  <img class="accent-leaf leaf-a" data-surface="leaf" src="/art/rebuild/roof/layer-leaves-01.png" alt="">
+  <img class="accent-leaf leaf-b" data-surface="leaf" src="/art/rebuild/roof/layer-leaves-02.png" alt="">
+  <img class="accent-leaf leaf-c" data-surface="leaf" src="/art/rebuild/roof/layer-leaves-03.png" alt="">
+  <div id="squirrel" class="squirrel squirrel-corner" title="点我">
+    <img src="/art/rebuild/roof/layer-squirrel.png" alt="" draggable="false">
   </div>
-  <div id="pxLayers"></div>
-  <div class="layer l-warm"></div>
-  <div class="layer l-shade"></div>
-  <div class="layer l-black"></div>
+  <div class="atmos-flies"><img src="/art/rebuild/roof/layer-fireflies.png" alt=""></div>
+  <canvas id="dust" class="dust"></canvas>
+  <div id="grade" class="grade"></div>
 </div>
-<div id="leafDefs" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden"></div>
 
-<a class="brand" href="#s0" aria-label="VibeSticker 回到顶部">VibeSticker</a>
+<header class="top">
+  <div class="shell top-inner">
+    <a class="logo" href="#hero">VibeSticker</a>
+    <nav class="nav">
+      <a href="#work">作品</a>
+      <a href="#make">制作</a>
+      <a href="#pricing">价格</a>
+      <a href="/hamza.html">Hamza 预览</a>
+    </nav>
+    <a class="btn btn-primary" href="#make">开始</a>
+  </div>
+</header>
 
-<main id="roll">
-  <!-- 0 · 首屏 -->
-  <section id="s0" class="sec hero" data-fab="">
-    <div class="hero-copy">
-      <p class="eyebrow rv">VIBESTICKER</p>
-      <h1 class="rv">把一张照片，<br>种成一枚贴纸</h1>
+<main id="main">
+  <section id="hero" class="hero">
+    <div class="hero-bg">
+      <picture>
+        <source media="(max-width:720px)" srcset="/art/rebuild/roof/hero-still-1080m.jpg">
+        <img src="/art/rebuild/roof/hero-still-2560.jpg" alt="水彩贴纸成片静帧" width="2560" height="1440">
+      </picture>
     </div>
-    <div class="hint"><span class="hint-line"></span><span class="hint-t">向下滑动，走进森林</span></div>
+    <div class="shell hero-copy">
+      <h1>把照片做成<br>有手工感的贴纸</h1>
+      <p class="lede">上传照片，点作品区选风格，开始制作。</p>
+      <a class="btn btn-primary" href="#make">免费做一张</a>
+    </div>
   </section>
 
-  <!-- 1 · 上传（树干） -->
-  <section id="s1" class="sec" data-fab="放入照片">
-    <div class="out"><div class="in">
-      <p class="logo rv">VibeSticker</p>
-      <p class="sub rv">树干上有一块磨砂玻璃，把照片放进去</p>
-      <div class="drop rv" id="drop" role="button" tabindex="0" aria-label="放入一张照片：点击选择、拖拽，或拍照" aria-describedby="dropHelp">
-        <div class="drop-empty">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg>
-          <p class="drop-t">放入一张照片</p>
-          <p class="drop-s" id="dropHelp">点击选择 · 拖拽到这里 · JPG / PNG / HEIC</p>
+    <section id="work" class="work">
+    <div class="work-pin" id="work-pin">
+      <div class="work-stage shell">
+        <p class="work-kicker">作品</p>
+        <div class="work-slides" id="work-slides">
+          <article class="work-slide is-active" data-style="anime" data-i="0">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-anime.png" alt="日漫"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>日漫</h3><p>赛璐璐线与亮色块。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="0">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="chibi" data-i="1">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-chibi.png" alt="Q版"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>Q 版</h3><p>大头短身，软软的。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="1">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="toy3d" data-i="2">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-toy3d.png" alt="潮玩"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>3D 潮玩</h3><p>乙烯基玩具质感。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="2">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="pixel" data-i="3">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-pixel.png" alt="像素"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>像素</h3><p>16-bit 精灵感。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="3">偷看一眼</button></div>
+          </article>
+          <article class="work-slide" data-style="watercolor" data-i="4">
+            <div class="slide-media diecut"><img src="/art/rebuild/roof/style-watercolor.png" alt="水彩"></div>
+            <div class="slide-copy"><p class="slide-kicker">FEATURED</p><h3>水彩</h3><p>湿画法晕染，纸纹还在。</p>
+              <button type="button" class="btn btn-ghost sneak-btn" data-sneak="4">偷看一眼</button></div>
+          </article>
         </div>
-        <img id="preview" alt="已选择的照片预览" hidden>
-        <div class="drop-busy" hidden><span class="spin"></span><span id="busyT">正在整理照片…</span></div>
+        <div class="work-ticks" id="work-ticks" aria-hidden="true"></div>
       </div>
-      <div class="drop-actions rv">
-        <button class="link" id="pick" type="button">选择照片</button>
-        <button class="link" id="camBtn" type="button">拍照</button>
-        <button class="link" id="repick" type="button" hidden>重新选择</button>
-      </div>
-      <p class="err" id="upErr" role="alert" hidden></p>
-      <input type="file" id="file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
-      <input type="file" id="cam" accept="image/*" capture="environment" hidden>
-    </div></div>
+    </div>
   </section>
 
-  <!-- 2 · 风格 -->
-  <section id="s2" class="sec" data-fab="生成">
-    <div class="out"><div class="in">
-      <h2 class="rv">选一种风格</h2>
-      <p class="sub rv">沿着光柱，一种光一种样子</p>
-      <div class="styles" id="styles" role="radiogroup" aria-label="贴纸风格"></div>
-    </div></div>
-  </section>
-
-  <!-- 3 · 生成结果 -->
-  <section id="s3" class="sec" data-fab="">
-    <div class="out"><div class="in">
-      <h2 class="rv">让光把它长出来</h2>
-      <p class="sub rv" id="genSub">照片会先变成一片发光的叶子，挂上树枝</p>
-      <div class="gen rv" id="gen">
-        <svg class="branch" viewBox="0 0 300 120" aria-hidden="true"><path d="M300 18 C230 24 190 40 150 62 C120 78 96 84 60 86" /><path d="M210 30 C214 18 224 10 238 6"/><path d="M160 58 C150 46 150 34 156 22"/></svg>
-        <div class="frame glass" id="frame" aria-live="polite">
-          <div class="f-empty" id="fEmpty"><span class="dot-glow"></span><p>贴纸会在这里展开</p></div>
-          <figure class="sticker" id="sticker" hidden><img id="stickerImg" alt="生成的贴纸"></figure>
-          <div class="failcard" id="failCard" hidden><svg viewBox="0 0 200 300" aria-hidden="true"><rect width="200" height="300" fill="#c9a24a" mask="url(#vs-leaf-mask)"/><use href="#vs-leaf-outline"/><use href="#vs-leaf-veins" style="stroke:#7a5a1c"/></svg><p>这次没长好，<br>免费再来一次</p><small id="failWhy"></small></div>
+  <section id="make" class="make shell">
+    <h2>制作</h2>
+    <p class="section-lede">选照片，确认风格，生成。</p>
+    <div class="make-grid">
+      <div class="panel" id="upload-zone" tabindex="0" role="button" aria-label="上传照片">
+        <input type="file" id="photo" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" hidden>
+        <div class="upload-plate diecut" id="upload-preview">
+          <img class="plate-bg" src="/art/rebuild/roof/ui-upload-plate.png" alt="">
+          <span class="upload-hint">拖入照片或点击</span>
         </div>
-        <div class="leafwrap" id="leafWrap" hidden aria-hidden="true">
-          <div class="leafsway">
-            <svg class="ring" viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="56"/><circle class="ring-fg" id="ringFg" cx="60" cy="60" r="56" pathLength="100"/></svg>
-            <div class="leaf" id="leaf">
-              <svg class="leafsvg" viewBox="0 0 200 300" preserveAspectRatio="xMidYMid meet">
-                <g mask="url(#vs-leaf-mask)">
-                  <image id="leafImg" x="0" y="0" width="200" height="300" preserveAspectRatio="xMidYMid slice"/>
-                  <rect class="sun" width="200" height="300"/>
-                </g>
-                <use href="#vs-leaf-outline"/><use href="#vs-leaf-veins" class="veins"/>
-              </svg>
-              <img id="leafPhoto" class="leafphoto" alt="">
-            </div>
-            <span class="halo"></span>
-          </div>
+        <p class="hint" id="upload-meta">JPG / PNG / HEIC</p>
+      </div>
+      <div class="panel">
+        <div class="result-stage diecut" id="result-frame">
+          <img class="frame-bg" src="/art/rebuild/roof/result-frame.png" alt="">
+          <img id="result-img" alt="生成结果" hidden>
+          <div id="result-empty" class="result-empty">贴纸会出现在这里</div>
+          <div id="gen-loader" class="gen-loader" hidden><span class="acorn"></span>绘制中…</div>
         </div>
-      </div>
-      <p class="caption" id="caption" aria-live="polite"></p>
-      <div class="gen-actions rv">
-        <button class="btn primary breathe" id="genBtn" type="button" disabled>生成贴纸</button>
-        <div class="dl" id="dl" hidden>
-          <a class="btn" id="dlPng" download>下载 PNG</a>
-          <!-- GIF download hidden in preview: server makeGif() currently outputs a single-frame 512×12288 strip (sharp 0.33 raw input has no pageHeight) -->
-          <a class="btn ghost" id="dlGif" download hidden>下载动图 GIF</a>
-          <button class="link" id="again" type="button">换一张照片</button>
+        <div class="result-actions" id="result-actions" hidden>
+          <a class="btn btn-primary" id="dl-png" download>下载 PNG</a>
+          <a class="btn btn-ghost" id="dl-gif" download>下载 GIF</a>
         </div>
+        <p class="hint" id="style-label">当前风格：水彩</p>
+        <button type="button" class="btn btn-primary gen-btn" id="gen-btn" disabled>生成贴纸</button>
+        <p class="hint" id="quota"></p>
       </div>
-      <p class="meta rv" id="quota"></p>
-    </div></div>
+    </div>
   </section>
 
-  <!-- 4 · 付费（占位） -->
-  <section id="s4" class="sec" data-fab="支付 $4.99">
-    <div class="out"><div class="in">
-      <h2 class="rv">带走更多贴纸</h2>
-      <p class="sub rv">预览版：支付暂未开放，以下为版式占位</p>
-      <div class="tiers rv">
-        <div class="tier"><p class="price">$1</p><div class="mid"><p class="tn">单张</p><p class="td">1 枚高清贴纸</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
-        <div class="tier rec"><span class="tag">推荐</span><p class="price">$4.99</p><div class="mid"><p class="tn">一小包</p><p class="td">8 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
-        <div class="tier"><p class="price">$8.99</p><div class="mid"><p class="tn">一整片林子</p><p class="td">20 枚贴纸，任选风格</p></div><button class="btn ghost" type="button" disabled>即将开放</button></div>
-      </div>
-    </div></div>
+  <section id="pricing" class="pricing shell">
+    <h2>价格</h2>
+    <p class="section-lede">每台设备有免费次数。</p>
+    <div class="price-row">
+      <article class="price-card">
+        <img class="diecut" src="/art/rebuild/roof/tier-single.png" alt="" loading="lazy">
+        <h3>单张 · $1</h3>
+        <p>试一款风格，1 次生成。</p>
+        <button type="button" class="btn btn-ghost buy" data-tier="single">购买单张</button>
+      </article>
+      <article class="price-card featured">
+        <img class="diecut" src="/art/rebuild/roof/tier-pack.png" alt="" loading="lazy">
+        <h3>小包 · $4.99</h3>
+        <p>八张贴纸，够一组表情。</p>
+        <button type="button" class="btn btn-primary buy" data-tier="pack">购买小包</button>
+      </article>
+      <article class="price-card">
+        <img class="diecut" src="/art/rebuild/roof/tier-pro.png" alt="" loading="lazy">
+        <h3>大包 · $8.99</h3>
+        <p>二十张，多风格一起玩。</p>
+        <button type="button" class="btn btn-ghost buy" data-tier="pro">购买大包</button>
+      </article>
+    </div>
   </section>
 
-  <!-- 5 · 展示墙（占位） -->
-  <section id="s5" class="sec" data-fab="生成我的贴纸">
-    <div class="out"><div class="in">
-      <h2 class="rv">林间展示墙</h2>
-      <p class="sub rv">第一张贴纸会长在这里</p>
-      <div class="wall rv" id="wall"></div>
-    </div></div>
-  </section>
-
-  <!-- 6 · 点赞榜（占位） -->
-  <section id="s6" class="sec" data-fab="生成我的贴纸">
-    <div class="out"><div class="in">
-      <h2 class="rv">点赞榜</h2>
-      <p class="sub rv">树枝上还空着，等你来占位</p>
-      <ol class="rank rv" id="rank"></ol>
-      <p class="foot">© VibeSticker · 预览版 · Powered by AI</p>
-      <p class="credit">Video: <a href="https://www.pexels.com/video/sunlight-streaming-through-forest-canopy-37218116/" target="_blank" rel="noopener">Saulo Nulo / Pexels</a></p>
-    </div></div>
+  <section id="cta" class="cta shell">
+    <p class="cta-line">准备好了？ <a class="btn btn-primary" href="#make">去做一张</a></p>
   </section>
 </main>
 
-<button class="fab btn primary" id="fab" type="button" hidden></button>
-<div id="cursor" aria-hidden="true"></div>
-<div id="toast" role="status" aria-live="polite"></div>
+<div id="sneak" class="sneak" hidden>
+  <button type="button" class="sneak-close btn btn-primary" id="sneak-close">关闭</button>
+  <div class="sneak-grid" id="sneak-grid"></div>
+</div>
 
+<footer class="foot"><div class="shell"><p>VibeSticker · Roof 预览</p><p class="hint"><a href="/hamza.html">切换到 Hamza 单屏预览</a></p></div></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.18/dist/lenis.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/scene-config.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

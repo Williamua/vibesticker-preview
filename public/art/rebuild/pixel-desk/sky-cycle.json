@@ -1,0 +1,20 @@
+{
+  "periodSec": 30,
+  "mode": "crossfade_loop",
+  "stages": [
+    "dawn",
+    "morning",
+    "afternoon",
+    "evening",
+    "night"
+  ],
+  "files": {
+    "dawn": "sky-dawn.jpg",
+    "morning": "sky-morning.jpg",
+    "afternoon": "sky-afternoon.jpg",
+    "evening": "sky-evening.jpg",
+    "night": "sky-night.jpg"
+  },
+  "perStageSec": 6,
+  "note": "Loop dawn→night→dawn over ~30s; crossfade between full-scene lighting variants based on hero-wide-r5 composition."
+}
