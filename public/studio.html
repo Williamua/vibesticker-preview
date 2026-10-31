@@ -414,32 +414,9 @@ async function mountProps(){
       if(!o.isMesh||!o.material) return;
       const mats=Array.isArray(o.material)?o.material:[o.material];
       for(const m of mats){
-        // Brighten embedded wood map toward LOCK pale oak (keep grain)
-        if(m.map && m.map.image){
-          try{
-            const img=m.map.image;
-            const c=document.createElement('canvas');
-            c.width=img.width; c.height=img.height;
-            const ctx=c.getContext('2d');
-            ctx.drawImage(img,0,0);
-            const id=ctx.getImageData(0,0,c.width,c.height);
-            const d=id.data;
-            for(let i=0;i<d.length;i+=4){
-              // lift midtones + warm
-              d[i]  =Math.min(255, d[i]*1.45 + 48);
-              d[i+1]=Math.min(255, d[i+1]*1.38 + 40);
-              d[i+2]=Math.min(255, d[i+2]*1.18 + 28);
-            }
-            ctx.putImageData(id,0,0);
-            const nt=new THREE.CanvasTexture(c);
-            nt.colorSpace=THREE.SRGBColorSpace;
-            nt.wrapS=nt.wrapT=m.map.wrapS;
-            nt.anisotropy=m.map.anisotropy||4;
-            nt.needsUpdate=true;
-            m.map=nt;
-          }catch(e){ console.warn('desk map lift fail', e); }
-        }
-        if(m.color) m.color.setHex(0xFFF6E8);
+        // Albedo pre-lifted in desk.glb; keep warm multiply
+        if(m.map){ m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; }
+        if(m.color) m.color.setHex(0xFFF8EE);
         if(m.roughness!=null) m.roughness = 0.62;
         if(m.metalness!=null) m.metalness = 0;
         if(m.aoMapIntensity!=null) m.aoMapIntensity = 0.35;
@@ -865,10 +842,11 @@ function spawnSticker(forceLanded = false){
   group.position.x += (Math.random() - 0.5) * 0.06;
   group.position.y += (Math.random() - 0.5) * 0.03;
   // slight tilt only — no curl
+  // slight tilt only (flat-thick; not card-upright)
   group.rotation.set(
-    (Math.random() - 0.5) * 0.25,
-    (Math.random() - 0.5) * 0.35,
-    (Math.random() - 0.5) * 0.35
+    -0.35 + (Math.random() - 0.5) * 0.25,
+    (Math.random() - 0.5) * 0.5,
+    (Math.random() - 0.5) * 0.2
   );
 
   const sh = makeBlobShadow(size * 1.2);
