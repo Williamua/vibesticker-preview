@@ -251,12 +251,22 @@ scene.add(ground);
 /* ========== post: MSAA RT + SMAA (LAYOUT §3 sticker edges) ========== */
 const _drawSize = new THREE.Vector2();
 renderer.getDrawingBufferSize(_drawSize);
+// HalfFloat + MSAA silently drops samples on many GL stacks → jagged desk/sticker edges.
+// UnsignedByte keeps real MSAA; SMAA cleans remaining. pixelRatio already ≤2.
+const _msaa = Math.max(4, Math.min(8, renderer.capabilities.maxSamples || 4));
 const composerRT = new THREE.WebGLRenderTarget(_drawSize.x, _drawSize.y, {
-  samples: Math.min(4, renderer.capabilities.maxSamples || 4),
-  type: THREE.HalfFloatType,
+  samples: _msaa,
+  type: THREE.UnsignedByteType,
   depthBuffer: true,
+  stencilBuffer: false,
 });
+composerRT.texture.colorSpace = THREE.SRGBColorSpace;
+composerRT.texture.generateMipmaps = false;
+composerRT.texture.minFilter = THREE.LinearFilter;
+composerRT.texture.magFilter = THREE.LinearFilter;
 const composer = new EffectComposer(renderer, composerRT);
+window.__composerRT = composerRT;
+window.__msaaSamples = _msaa;
 composer.addPass(new RenderPass(scene, camera));
 const smaaPass = new SMAAPass(
   Math.floor(innerWidth * renderer.getPixelRatio()),
@@ -558,13 +568,14 @@ async function mountProps(){
         }
         uv.needsUpdate = true;
       };
-      const loadLaptopTex = (url) => new Promise((resolve) => {
+      const loadLaptopTex = (url, crisp=false) => new Promise((resolve) => {
         texLoader.load(url, (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
-          tex.generateMipmaps = true;
-          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          // crisp=true (keycaps): no mips — grazing elev-5° + mips = smear mush
+          tex.generateMipmaps = !crisp;
+          tex.minFilter = crisp ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter;
           tex.magFilter = THREE.LinearFilter;
-          tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+          tex.anisotropy = Math.min(crisp ? 16 : 8, renderer.capabilities.getMaxAnisotropy());
           tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
           tex.needsUpdate = true;
           resolve(tex);
@@ -572,9 +583,10 @@ async function mountProps(){
       });
       // Sync load via already-cached loader path — use TextureLoader sync pattern with await outside
       // Materials applied after textures resolve below
-      const keyTexP = loadLaptopTex(`${ASSET}/glb/laptop/textures/keycaps_baseColor.png`);
-      const scrTexP = loadLaptopTex(`${ASSET}/glb/laptop/textures/screen_desktop.png`);
-      // stash promises on wrap; await before continue is hard inside sync loop — use then
+      const keyTexP = loadLaptopTex(`${ASSET}/glb/laptop/textures/keycaps_baseColor.png`, true);
+      const scrTexP = loadLaptopTex(`${ASSET}/glb/laptop/textures/screen_desktop.png`, false);
+      // Hide author glass volume (Object_6) + side-facing key card (Object_8).
+      // Rebuild: thick screenBox on lid hinge + deck keyPlane (crisp, tipped).
       await Promise.all([keyTexP, scrTexP]).then(([keyTex, scrTex]) => {
         root.traverse((o)=>{
           if (!o.isMesh || !o.material) return;
@@ -584,23 +596,20 @@ async function mountProps(){
             if (!m) continue;
             const mn=((m.name||'')+' '+(o.name||'')+' '+(o.parent?.name||'')).toLowerCase();
             if (/palette\.001|screen|display|lcd|laptop\.001|laptop001/.test(mn)){
-              // REMOVE transmission glass entirely (was floating IDE pane even when visible=false in some paths)
               if (m.transmission != null) m.transmission = 0;
               m.transparent = false; m.opacity = 1;
-              o.visible = false;
-              o.parent?.remove(o);
-              // Thin screen plane added once after traverse (see below)
-              wrap.userData._needScreen = true;
+              o.visible = false; // keep in lid tree for yaw/bbox — do NOT remove
+              wrap.userData._screenMeshHidden = o;
               wrap.userData._scrTex = scrTex;
+              wrap.userData._needScreen = true;
               continue;
             }
             if (/palette\.002|laptop\.002|laptop002/.test(mn)){
-              o.visible = false; // author key UVs = smear; replace with deck plane
+              o.visible = false;
               wrap.userData._needKeys = true;
               wrap.userData._keyTex = keyTex;
               continue;
             }
-            // Chassis palette → solid silver (256×1 strip = wavy smear on deck)
             if (/(^|\s)palette(\s|$)/.test(mn) && !/palette\.00/.test(mn)){
               m.map = null;
               m.color = new THREE.Color(0xC5C9CE);
@@ -620,10 +629,8 @@ async function mountProps(){
 
       // Hinge 105° + face camera + seat (LAYOUT-STICKER-LOCK / v2 front)
       {
-        // Tip lid PAST upright toward open 105° (author ≈90°; +15° opens further)
         const OPEN_DELTA = THREE.MathUtils.degToRad(15);
         if (lidNode){
-          // Prefer euler on X; if matrix-only, force
           lidNode.rotation.x += OPEN_DELTA;
           wrap.userData.laptopHinge = lidNode;
           wrap.userData.lidBaseX = lidNode.rotation.x;
@@ -635,15 +642,17 @@ async function mountProps(){
         wrap.userData.lidOpenRad = THREE.MathUtils.degToRad(105);
         window.__laptopLid = wrap;
       }
-      // Face screen toward camera: try local ±Z/±Y normals, pick best yaw
+      // Yaw so hidden screen glass faces camera (axis search)
       {
         wrap.updateMatrixWorld(true);
-        let screenMesh = null;
-        wrap.traverse((o)=>{
-          if (!o.isMesh || screenMesh) return;
-          const mats=Array.isArray(o.material)?o.material:[o.material];
-          if (mats.some(m=>m && /palette\.001/i.test(m.name||''))) screenMesh = o;
-        });
+        let screenMesh = wrap.userData._screenMeshHidden || null;
+        if (!screenMesh){
+          wrap.traverse((o)=>{
+            if (!o.isMesh || screenMesh) return;
+            const mats=Array.isArray(o.material)?o.material:[o.material];
+            if (mats.some(m=>m && /palette\.001/i.test(m.name||''))) screenMesh = o;
+          });
+        }
         if (screenMesh){
           const cam = camera.position.clone();
           const candidates = [
@@ -670,35 +679,8 @@ async function mountProps(){
           wrap.userData.screenFacing = bestScore;
           wrap.updateMatrixWorld(true);
         }
-        // Build readable screen as thin plane on wrap (after yaw), facing camera
-        if (wrap.userData._needScreen && wrap.userData._scrTex && !wrap.userData._screenPlane){
-          const scrTex = wrap.userData._scrTex;
-          const mat = new THREE.MeshStandardMaterial({
-            name: 'screen_desktop',
-            map: scrTex,
-            emissive: new THREE.Color(0xffffff),
-            emissiveMap: scrTex,
-            emissiveIntensity: 0.7,
-            roughness: 0.4,
-            metalness: 0,
-            side: THREE.FrontSide,
-            transparent: false,
-            depthWrite: true,
-          });
-          const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.26), mat);
-          plane.name = 'screenPlane';
-          // place above keyboard toward open lid
-          plane.position.set(0, 0.22, -0.02);
-          wrap.add(plane);
-          plane.lookAt(plane.worldToLocal(camera.position.clone()));
-          // better: face +Z of wrap which faces cam after yaw
-          plane.rotation.set(0, 0, 0);
-          plane.position.set(0.02, 0.20, 0.12);
-          // orient plane normal toward camera
-          const toCam = camera.position.clone().sub(plane.getWorldPosition(new THREE.Vector3())).normalize();
-          plane.lookAt(plane.localToWorld(new THREE.Vector3(0,0,0)).add(toCam));
-          wrap.userData._screenPlane = plane;
-        }
+        // Glass stays hidden; screen/key meshes built after seat (need world bbox — wrap local axes tilt after yaw)
+        if (wrap.userData._screenMeshHidden) wrap.userData._screenMeshHidden.visible = false;
       }
       {
         const bbH = new THREE.Box3().setFromObject(root);
@@ -708,22 +690,6 @@ async function mountProps(){
           fitProp(root, 0.82, 'bottom', 'xz');
         }
       }
-
-        if (wrap.userData._needKeys && wrap.userData._keyTex && !wrap.userData._keyPlane){
-          // Tip toward camera (~28°) so elev-5° front view can read glyphs (flat deck foreshortens to smear-grey)
-          const keyMat = new THREE.MeshBasicMaterial({
-            name: 'keycaps',
-            map: wrap.userData._keyTex,
-            side: THREE.DoubleSide,
-            toneMapped: false,
-          });
-          const kp = new THREE.Mesh(new THREE.PlaneGeometry(0.40, 0.26), keyMat);
-          kp.name = 'keyPlane';
-          kp.rotation.x = -Math.PI / 2 + 0.48;
-          kp.position.set(0.0, 0.028, 0.10);
-          wrap.add(kp);
-          wrap.userData._keyPlane = kp;
-        }
 
       // Force seat on deskTop local Y=0 (never float)
       {
@@ -735,7 +701,7 @@ async function mountProps(){
         const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
         const minL = bb.min.clone().applyMatrix4(inv);
         wrap.position.y -= minL.y;
-        wrap.position.y += 0.003;
+        wrap.position.y += 0.0004; // hairline only — ban float gap
         // keep in desk bounds
         wrap.updateMatrixWorld(true);
         const bb2 = new THREE.Box3().setFromObject(wrap);
@@ -746,14 +712,79 @@ async function mountProps(){
         if (max2.x > deskHalfX) wrap.position.x -= (max2.x - deskHalfX) + 0.02;
         if (min2.z < -deskHalfZ) wrap.position.z += (-deskHalfZ - min2.z) + 0.02;
         if (max2.z > deskHalfZ) wrap.position.z -= (max2.z - deskHalfZ) + 0.02;
-        // Contact blob on deskTop (NOT wrap) — parenting to wrap made it a vertical "IDE window"
-        const foot = makeBlobShadow(0.32);
-        foot.rotation.x = -Math.PI / 2;
-        const fp = new THREE.Vector3(cfg.pos[0], 0.002, cfg.pos[2]);
-        foot.position.copy(fp);
-        foot.material.opacity = 0.20;
-        deskTop.add(foot);
+        // Contact AO biased toward +Z (cam) so elev-5° sees fringe under front lip
+        const fp = new THREE.Vector3(cfg.pos[0], 0.0030, cfg.pos[2] + 0.04);
+        const hard = makeHardContact(0.36, 0.24, 0.72);
+        hard.position.copy(fp);
+        deskTop.add(hard);
+        const hard2 = makeHardContact(0.26, 0.16, 0.50);
+        hard2.position.set(cfg.pos[0], 0.0026, cfg.pos[2] - 0.02);
+        deskTop.add(hard2);
+        const footSoft = makeBlobShadow(0.55);
+        footSoft.position.set(cfg.pos[0], 0.0022, cfg.pos[2] + 0.02);
+        footSoft.material.opacity = 0.65;
+        deskTop.add(footSoft);
       }
+
+      // WORLD-space screen + keys then wrap.attach — wrap local Y≠up after yaw
+      if (wrap.userData._needScreen && wrap.userData._scrTex && !wrap.userData._screenBox){
+        wrap.updateMatrixWorld(true);
+        const bb = new THREE.Box3().setFromObject(wrap);
+        const cx = (bb.min.x + bb.max.x) * 0.5;
+        const scrTex = wrap.userData._scrTex;
+        const mat = new THREE.MeshBasicMaterial({
+          name: 'screen_desktop', map: scrTex, toneMapped: false, side: THREE.FrontSide,
+        });
+        const bezelMat = new THREE.MeshStandardMaterial({
+          color: 0xB8BCC2, roughness: 0.42, metalness: 0.45, envMapIntensity: 0.85,
+        });
+        const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.014), bezelMat);
+        bezel.name = 'screenBezel';
+        scene.add(bezel);
+        bezel.position.set(cx, bb.min.y + 0.26, bb.min.z * 0.55 + bb.max.z * 0.45);
+        bezel.lookAt(camera.position);
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.20, 0.010), mat);
+        box.name = 'screenBox';
+        scene.add(box);
+        box.position.copy(bezel.position);
+        box.quaternion.copy(bezel.quaternion);
+        // pull screen slightly toward cam in front of bezel
+        const nd = new THREE.Vector3(); box.getWorldDirection(nd);
+        box.position.addScaledVector(nd, -0.012); // into lid
+        bezel.position.addScaledVector(nd, -0.020);
+        wrap.attach(bezel);
+        wrap.attach(box);
+        wrap.userData._screenBox = box;
+        wrap.userData._screenBezel = bezel;
+        wrap.userData._screenMesh = box;
+      }
+      if (wrap.userData._needKeys && wrap.userData._keyTex && !wrap.userData._keyPlane){
+        wrap.updateMatrixWorld(true);
+        const bb = new THREE.Box3().setFromObject(wrap);
+        const kt = wrap.userData._keyTex;
+        kt.wrapS = kt.wrapT = THREE.ClampToEdgeWrapping;
+        kt.repeat.set(1,1); kt.offset.set(0,0); kt.needsUpdate = true;
+        const keyMat = new THREE.MeshBasicMaterial({
+          name: 'keycaps', map: kt, side: THREE.DoubleSide, toneMapped: false,
+        });
+        const kp = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.18), keyMat);
+        kp.name = 'keyPlane';
+        scene.add(kp);
+        // Flat on desk top of laptop base, tip toward +Z cam
+        const o4 = wrap.getObjectByName('Object_4');
+        const b4 = o4 ? new THREE.Box3().setFromObject(o4) : new THREE.Box3().setFromObject(wrap);
+        const deskWY = deskTop.getWorldPosition(new THREE.Vector3()).y;
+        // Sit ABOVE silver Object_4 deck (was buried → grey slab over keys)
+        kp.position.set(
+          (b4.min.x + b4.max.x) * 0.5,
+          deskWY + 0.032,
+          b4.min.z * 0.15 + b4.max.z * 0.85
+        );
+        kp.rotation.set(-Math.PI / 2 + 0.48, 0, 0);
+        wrap.attach(kp);
+        wrap.userData._keyPlane = kp;
+      }
+
     }
 
     if (id === 'printer'){
@@ -783,8 +814,15 @@ async function mountProps(){
       {
         const pb = makeBlobShadow(0.14);
         pb.position.set(0.006, 0.001, 0.006);
-        pb.material.opacity = 0.26;
+        pb.material.opacity = 0.62;
         wrap.add(pb);
+        const pb2 = makeBlobShadow(0.22);
+        pb2.position.set(0.006, 0.0008, 0.006);
+        pb2.material.opacity = 0.30;
+        wrap.add(pb2);
+        const ph = makeHardContact(0.16, 0.12, 0.48);
+        ph.position.set(0.0, 0.0022, 0.0);
+        wrap.add(ph);
       }
     }
     if (id === 'book'){
@@ -830,8 +868,15 @@ async function mountProps(){
         }
         const foot = makeBlobShadow(0.50);
         foot.position.set(0.01, 0.001, 0.008);
-        foot.material.opacity = 0.26;
+        foot.material.opacity = 0.60;
         wrap.add(foot);
+        const foot2 = makeBlobShadow(0.70);
+        foot2.position.set(0.01, 0.0008, 0.008);
+        foot2.material.opacity = 0.26;
+        wrap.add(foot2);
+        const bh = makeHardContact(0.36, 0.28, 0.45);
+        bh.position.set(0.0, 0.0022, 0.0);
+        wrap.add(bh);
       }
     }
     if (id === 'lamp'){
@@ -873,8 +918,15 @@ async function mountProps(){
       {
         const lb = makeBlobShadow(0.16);
         lb.position.set(0.004, 0.001, 0.004);
-        lb.material.opacity = 0.26;
+        lb.material.opacity = 0.62;
         wrap.add(lb);
+        const lb2 = makeBlobShadow(0.26);
+        lb2.position.set(0.004, 0.0008, 0.004);
+        lb2.material.opacity = 0.28;
+        wrap.add(lb2);
+        const lh = makeHardContact(0.12, 0.12, 0.48);
+        lh.position.set(0.0, 0.0022, 0.0);
+        wrap.add(lh);
       }
     }
     if (id === 'plant'){
@@ -890,8 +942,15 @@ async function mountProps(){
       });
       const pb = makeBlobShadow(0.14);
       pb.position.set(0.005, 0.001, 0.005);
-      pb.material.opacity = 0.24;
+      pb.material.opacity = 0.46;
       wrap.add(pb);
+      const pb2 = makeBlobShadow(0.22);
+      pb2.position.set(0.005, 0.0008, 0.005);
+      pb2.material.opacity = 0.28;
+      wrap.add(pb2);
+      const plh = makeHardContact(0.11, 0.11, 0.48);
+      plh.position.set(0.0, 0.0022, 0.0);
+      wrap.add(plh);
     }
   }
 
@@ -1088,11 +1147,11 @@ function makeSoftBlobTex(){
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(S*0.5, S*0.48, S*0.04, S*0.5, S*0.5, S*0.42);
-  g.addColorStop(0, 'rgba(40,24,12,0.55)');
-  g.addColorStop(0.4, 'rgba(40,24,12,0.22)');
-  g.addColorStop(0.75, 'rgba(40,24,12,0.06)');
-  g.addColorStop(1, 'rgba(40,24,12,0)');
+  const g = ctx.createRadialGradient(S*0.5, S*0.5, S*0.015, S*0.5, S*0.5, S*0.48);
+  g.addColorStop(0, 'rgba(15,8,4,0.92)');
+  g.addColorStop(0.22, 'rgba(15,8,4,0.55)');
+  g.addColorStop(0.55, 'rgba(15,8,4,0.18)');
+  g.addColorStop(1, 'rgba(15,8,4,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0,0,S,S);
   const tex = new THREE.CanvasTexture(c);
@@ -1102,6 +1161,20 @@ function makeSoftBlobTex(){
 const softBlobTex = makeSoftBlobTex();
 const SHADOW_LIGHT_DIR = new THREE.Vector3(0.08, 0, 0.05); // very short contact
 
+function makeHardContact(sx, sz, opacity=0.50){
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(0.5, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0x0A0604, transparent: true, opacity,
+      depthWrite: false, toneMapped: false,
+      polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8,
+    })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.scale.set(sx, sz, 1);
+  mesh.renderOrder = 3;
+  return mesh;
+}
 function makeBlobShadow(size){
   const mat = new THREE.MeshBasicMaterial({
     map: softBlobTex,
@@ -1110,11 +1183,15 @@ function makeBlobShadow(size){
     opacity: 0.0,
     depthWrite: false,
     depthTest: true,
+    toneMapped: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnits: -6,
   });
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.scale.setScalar(size);
-  mesh.renderOrder = 1;
+  mesh.renderOrder = 2;
   return mesh;
 }
 
