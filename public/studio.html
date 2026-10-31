@@ -176,14 +176,14 @@ function orbitCam(look, dist, elevDeg, azimDeg){
 // LAYOUT-CAMERA-SPEC defaults (refined after desk mounts)
 let tableTopY = 0.66;
 let camLook = new THREE.Vector3(0, tableTopY, -0.05);
-let camDesk = orbitCam(camLook, 3.5, 30, -40);
+let camDesk = orbitCam(camLook, 2.3, 22, -40);
 // Hero: same orbit, slightly farther / higher for floating stickers over desk
 let camHero = orbitCam(new THREE.Vector3(0, tableTopY + 0.35, 0.15), 4.2, 22, -38);
 function refreshCameras(){
-  camLook.set(0.05, tableTopY + 0.02, 0.05);
-  // LAYOUT: fov35 already; elev~30, azim~-40; closer to match LOCK framing
-  camDesk = orbitCam(camLook, 2.85, 28, -36);
-  camHero = orbitCam(new THREE.Vector3(0.05, tableTopY + 0.45, 0.15), 3.35, 24, -36);
+  // LOCK hero still: lower elev (~22°), push in — avoid isometric top-down
+  camLook.set(0.04, tableTopY + 0.01, 0.16);
+  camDesk = orbitCam(camLook, 2.05, 20, -40);
+  camHero = orbitCam(new THREE.Vector3(0.04, tableTopY + 0.36, 0.16), 2.95, 18, -40);
 }
 const _camPos = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
@@ -541,13 +541,18 @@ async function mountProps(){
         const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
         const minL = bb.min.clone().applyMatrix4(inv);
         const maxL = bb.max.clone().applyMatrix4(inv);
-        // Ensure bottom sits on deskTop local y=0
+        // Seat on wood then micro-lift so chassis doesn't sink; short contact blob
         wrap.position.y -= minL.y;
+        wrap.position.y += 0.006;
         const deskHalfX = 1.05, deskHalfZ = 0.55;
         if (minL.x < -deskHalfX) wrap.position.x += (-deskHalfX - minL.x) + 0.02;
         if (maxL.x > deskHalfX) wrap.position.x -= (maxL.x - deskHalfX) + 0.02;
         if (minL.z < -deskHalfZ) wrap.position.z += (-deskHalfZ - minL.z) + 0.02;
         if (maxL.z > deskHalfZ) wrap.position.z -= (maxL.z - deskHalfZ) + 0.02;
+        const foot = makeBlobShadow(0.30);
+        foot.position.set(0.012, 0.001, 0.012);
+        foot.material.opacity = 0.28;
+        wrap.add(foot);
       }
     }
     if (id === 'printer'){
@@ -592,12 +597,14 @@ async function mountProps(){
         for(const m of mats){
           if(!m) continue;
           const mn=(m.name||'').toLowerCase();
+          // Cream notebook — drop baked black cover maps (cause black card frame)
           if (mn.includes('steno')){
-            m.color.setHex(0x2C2C30);
-            m.roughness=0.7; m.metalness=0.06;
+            m.map = null; m.normalMap = null; m.aoMap = null;
+            m.color.setHex(0xEDE6DA);
+            m.roughness=0.84; m.metalness=0.02;
           } else if (mn.includes('material')){
-            if (!m.map) m.color.setHex(0xF3EEE3);
-            else m.color.lerp(new THREE.Color(0xF7F2E8), 0.4);
+            if (m.map) m.color.lerp(new THREE.Color(0xF7F2E8), 0.65);
+            else m.color.setHex(0xF7F2E8);
             m.roughness=0.9; m.metalness=0;
           }
           m.needsUpdate=true;
@@ -707,25 +714,25 @@ function buildPrinterSpitStrip(){
   for (let i = 0; i < n; i++){
     const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = 0.038;
+    const h = 0.058;
     const w = h * Math.min(1.2, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
-    slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.02, 0);
-    // Nested under lip then walk out along toward (+/- local Z)
-    const zOff = toward * (-0.015 + i * 0.032);
-    slab.position.set((i - (n-1)/2) * 0.0015, 0.0028, zOff);
-    const blob = makeBlobShadow(Math.max(w, h) * 0.7);
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.0045);
+    slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.015, 0);
+    // Continuous from lip: first under mouth, step ~half sticker so no gap
+    const zOff = toward * (-0.008 + i * 0.040);
+    slab.position.set((i - (n-1)/2) * 0.0008, 0.0032, zOff);
+    const blob = makeBlobShadow(Math.max(w, h) * 0.72);
     blob.position.set(slab.position.x + 0.002, 0.0008, slab.position.z + toward * 0.002);
-    blob.material.opacity = 0.15;
+    blob.material.opacity = 0.16;
     strip.add(slab, blob);
   }
-  strip.position.set(midX, 0.0025, mouthZ);
+  strip.position.set(midX, 0.0028, mouthZ - toward * 0.004);
   printerGroup.add(strip);
   printerGroup.userData.spitStrip = strip;
 }
 
 
-/** Open Steno: thick spine + lifted L/R pages with micro contact shadows + die-cut page stickers. */
+/** Open Steno: cream pages/cover edges, dark spine only — no black card frame. */
 function decorateSketchbookPages(){
   if (!bookGroup) return;
   const pool = (lockScatterTexList.length ? lockScatterTexList : stickerTexList);
@@ -737,77 +744,75 @@ function decorateSketchbookPages(){
   const loc = bb.clone().applyMatrix4(inv);
   const midX = (loc.min.x + loc.max.x) * 0.5;
   const midZ = (loc.min.z + loc.max.z) * 0.5;
-  const pageW = Math.max(0.09, (loc.max.x - loc.min.x) * 0.44);
-  const pageD = Math.max(0.12, (loc.max.z - loc.min.z) * 0.78);
+  const pageW = Math.max(0.09, (loc.max.x - loc.min.x) * 0.46);
+  const pageD = Math.max(0.12, (loc.max.z - loc.min.z) * 0.80);
   const baseY = loc.max.y + 0.001;
 
   const spread = new THREE.Group();
   spread.name = 'bookOpenSpread';
 
-  const pageMat = new THREE.MeshStandardMaterial({
-    color: 0xF6F0E4, roughness: 0.9, metalness: 0.0,
+  const cream = new THREE.MeshStandardMaterial({
+    color: 0xF7F2E8, roughness: 0.9, metalness: 0.0,
   });
-  const coverMat = new THREE.MeshStandardMaterial({
-    color: 0x2A2A2E, roughness: 0.72, metalness: 0.06,
+  const spineMat = new THREE.MeshStandardMaterial({
+    color: 0x5A4E42, roughness: 0.78, metalness: 0.04,
   });
 
-  // Thick cover bed under pages
+  // Cream cover bed (NOT black card) under pages
   const cover = new THREE.Mesh(
-    new THREE.BoxGeometry(pageW * 2.15, 0.012, pageD * 1.08),
-    coverMat
+    new THREE.BoxGeometry(pageW * 2.12, 0.010, pageD * 1.05),
+    cream
   );
-  cover.position.set(midX, baseY + 0.006, midZ);
+  cover.position.set(midX, baseY + 0.005, midZ);
   cover.castShadow = true; cover.receiveShadow = true;
 
-  // Spine block — readable 3D thickness (LOCK open book)
+  // Dark spine only
   const spine = new THREE.Mesh(
-    new THREE.BoxGeometry(Math.max(0.024, pageW * 0.18), 0.028, pageD * 0.96),
-    coverMat.clone()
+    new THREE.BoxGeometry(Math.max(0.018, pageW * 0.12), 0.022, pageD * 0.94),
+    spineMat
   );
-  spine.position.set(midX, baseY + 0.018, midZ);
+  spine.position.set(midX, baseY + 0.014, midZ);
   spine.castShadow = true;
 
-  // Left / right pages — lift + valley toward spine
-  const pageT = 0.0045;
-  const leftPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), pageMat);
-  const rightPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), pageMat.clone());
-  leftPage.position.set(midX - pageW * 0.55, baseY + 0.020, midZ);
-  rightPage.position.set(midX + pageW * 0.55, baseY + 0.020, midZ);
-  leftPage.rotation.z = 0.07;
-  rightPage.rotation.z = -0.07;
+  const pageT = 0.0038;
+  const leftPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), cream.clone());
+  const rightPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), cream.clone());
+  leftPage.position.set(midX - pageW * 0.54, baseY + 0.016, midZ);
+  rightPage.position.set(midX + pageW * 0.54, baseY + 0.016, midZ);
+  leftPage.rotation.z = 0.05;
+  rightPage.rotation.z = -0.05;
   leftPage.castShadow = true; rightPage.castShadow = true;
   leftPage.receiveShadow = true; rightPage.receiveShadow = true;
 
-  // Micro contact shadows under each page
-  const pageBlobL = makeBlobShadow(pageW * 1.0);
-  pageBlobL.position.set(midX - pageW * 0.52, baseY + 0.013, midZ + 0.008);
-  pageBlobL.material.opacity = 0.20;
-  const pageBlobR = makeBlobShadow(pageW * 1.0);
-  pageBlobR.position.set(midX + pageW * 0.52, baseY + 0.013, midZ + 0.008);
-  pageBlobR.material.opacity = 0.20;
+  const pageBlobL = makeBlobShadow(pageW * 0.95);
+  pageBlobL.position.set(midX - pageW * 0.5, baseY + 0.011, midZ + 0.006);
+  pageBlobL.material.opacity = 0.16;
+  const pageBlobR = makeBlobShadow(pageW * 0.95);
+  pageBlobR.position.set(midX + pageW * 0.5, baseY + 0.011, midZ + 0.006);
+  pageBlobR.material.opacity = 0.16;
 
   spread.add(cover, spine, leftPage, rightPage, pageBlobL, pageBlobR);
 
-  const stickY = baseY + 0.026;
+  const stickY = baseY + 0.022;
   const slots = [
-    [midX - pageW * 0.72, stickY, midZ - pageD * 0.22],
-    [midX - pageW * 0.52, stickY, midZ + pageD * 0.10],
-    [midX - pageW * 0.68, stickY, midZ + pageD * 0.30],
-    [midX + pageW * 0.48, stickY, midZ - pageD * 0.18],
-    [midX + pageW * 0.68, stickY, midZ + pageD * 0.04],
-    [midX + pageW * 0.52, stickY, midZ + pageD * 0.28],
+    [midX - pageW * 0.70, stickY, midZ - pageD * 0.20],
+    [midX - pageW * 0.50, stickY, midZ + pageD * 0.08],
+    [midX - pageW * 0.66, stickY, midZ + pageD * 0.28],
+    [midX + pageW * 0.46, stickY, midZ - pageD * 0.16],
+    [midX + pageW * 0.66, stickY, midZ + pageD * 0.02],
+    [midX + pageW * 0.50, stickY, midZ + pageD * 0.26],
   ];
   for (let i = 0; i < slots.length; i++){
     const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
     const h = Math.min(pageD, pageW) * 0.26;
     const w = h * Math.min(1.15, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.0045);
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
     slab.rotation.set(-Math.PI / 2, (i % 2 ? 0.06 : -0.05), 0);
     slab.position.set(slots[i][0], slots[i][1], slots[i][2]);
-    const blob = makeBlobShadow(Math.max(w,h) * 0.9);
-    blob.position.set(slots[i][0] + 0.006, baseY + 0.012, slots[i][2] + 0.005);
-    blob.material.opacity = 0.24;
+    const blob = makeBlobShadow(Math.max(w,h) * 0.85);
+    blob.position.set(slots[i][0] + 0.004, baseY + 0.013, slots[i][2] + 0.003);
+    blob.material.opacity = 0.14;
     spread.add(slab, blob);
   }
   bookGroup.add(spread);

@@ -1,17 +1,16 @@
-# GAP notes — analyst pass v25 (2026-10-31 Asia/Shanghai)
+# GAP notes — analyst pass v28 (2026-10-31 Asia/Shanghai)
 
-## Done this pass
-1. **Laptop on desk** — Root cause: desk long axis was Z; rotated desk `+π/2` so long edge = X (LAYOUT). Laptop seated in local desk space at ≈(-0.55,0,0.10); world bbox fully inside desk top (Y≈0.66). No floor drop.
-2. **Spit chain** — 5 die-cut thick stickers parented to printer local mouth, first nested under lip, chain forward on desk.
-3. **Thinner slabs** — default ~0.004, lock row 0.004; still alpha die-cut + cream edge + back shade (no soft curl).
-4. **Printer** — dropped dark albedo maps → near-white plastic `0xF4F0E8`, keep emissive LEDs.
-5. **Floor leg shadows** — desk `castShadow=false`; key more overhead + tighter frustum; smaller soft foot blob. Lock row pulled onto desk front (z≈0.36).
+## Scope (only 4 items)
+1. **Camera → LOCK** — Desk orbit: fov35, elev **20°** (was ~28–30° top-down), azim **−40°**, dist **~2.05** (pushed in). Look slightly forward of desk center. Less isometric game feel; desk fills more of frame.
+2. **Laptop sit** — Micro-lift **+0.006** after seat + short contact blob under chassis (no sink into wood).
+3. **Steno no black card frame** — Dropped baked Steno cover maps; cream body `0xEDE6DA`; spread uses cream cover/pages + warm-brown spine only (not black card rim).
+4. **Spit chain readable** — 5 die-cut stickers ~0.058 tall, continuous steps from mouth lip; no white bar.
 
 ## Still soft vs LOCK
-- Spit chain can still read as 1–2 visible stickers depending on angle/occlusion in mouth.
-- Printer is light grey/cream, not pure LOCK white photo match.
-- Some floor soft pools remain from props/HDRI; sticker contact blobs are short.
-- Steno page curl deferred per brief.
+- Camera is lower but still a product-shelf three-quarter; LOCK hero may want even more “across the desk” intimacy.
+- Spit mouth flush can still show a tiny gap at some angles.
+- Thin dark Steno edge may remain from spiral mesh / page silhouette.
+- Overall “game UI” feel may need lighting/material polish beyond this 4-item scope.
 
 ## Verdict
 Ready for **another analyst feel-pass**. **Not** for end user.
