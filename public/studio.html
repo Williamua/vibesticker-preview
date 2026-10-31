@@ -507,32 +507,33 @@ async function mountProps(){
     deskTop.add(wrap);
     loadedProps[id] = wrap;
     if (id === 'laptop'){
-      // Real laptop/scene.gltf — keep palette PBR; no procedural shell
-      keepAuthorPBR(root, { roughBoost: 0.0, env: 0.45 });
+      // Real laptop/scene.gltf — palette_baseColor.png is a 256×1 atlas (NOT a broken file).
+      // Root cause of mosaic: LINEAR_MIPMAP_LINEAR + REPEAT on 1px-tall strip blends adjacent
+      // palette slots into black/white noise that also speckles the desk contact. Fix sampling only.
+      // Materials: palette (shell), palette.001 (screen glass), palette.002 (keys/ports) — keep author.
       root.traverse((o)=>{
         if (!o.isMesh || !o.material) return;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats){
-          if (m.roughness != null) m.roughness = THREE.MathUtils.clamp(m.roughness, 0.35, 0.70);
-          // keep author metalness (silver chassis) — do not force plastic
-          m.envMapIntensity = Math.max(0.5, m.envMapIntensity || 0.5);
-          m.needsUpdate = true;
-        }
-      });
-      root.traverse((o)=>{
-        if (!o.isMesh || !o.material) return;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats){
-          // Sketchfab palette often ships emissiveIntensity >> 1 — clamp
-          if (m.emissiveIntensity != null && m.emissiveIntensity > 1.2){
-            m.emissiveIntensity = 0.55;
+          if (!m) continue;
+          // Bind ONLY author baseColor map — never Steno image0/1, never ORM/normal as albedo
+          const map = m.map;
+          if (map){
+            map.colorSpace = THREE.SRGBColorSpace;
+            map.generateMipmaps = false;
+            map.minFilter = THREE.NearestFilter;
+            map.magFilter = THREE.NearestFilter;
+            map.wrapS = THREE.ClampToEdgeWrapping;
+            map.wrapT = THREE.ClampToEdgeWrapping;
+            map.anisotropy = 1;
+            map.needsUpdate = true;
           }
-          const n = ((o.name||'')+' '+(m.name||'')).toLowerCase();
-          if (/screen|display|lcd|panel|palette\.001/.test(n)){
-            if (!m.emissive) m.emissive = new THREE.Color(0xFFE8D0);
-            else m.emissive.lerp(new THREE.Color(0xFFE8D0), 0.45);
-            m.emissiveIntensity = Math.min(1.05, Math.max(0.55, m.emissiveIntensity || 0.7));
+          // Do not stretch / "enhance" palette colors; leave author roughness/metalness
+          // Soft clamp only extreme Sketchfab emissiveStrength blowouts (not screen polish)
+          if (m.emissiveIntensity != null && m.emissiveIntensity > 4){
+            m.emissiveIntensity = Math.min(m.emissiveIntensity, 1.2);
           }
+          m.envMapIntensity = (m.envMapIntensity == null) ? 0.55 : m.envMapIntensity;
           m.needsUpdate = true;
         }
       });
@@ -559,12 +560,14 @@ async function mountProps(){
         if (maxL.x > deskHalfX) wrap.position.x -= (maxL.x - deskHalfX) + 0.02;
         if (minL.z < -deskHalfZ) wrap.position.z += (-deskHalfZ - minL.z) + 0.02;
         if (maxL.z > deskHalfZ) wrap.position.z -= (maxL.z - deskHalfZ) + 0.02;
+        // Soft untextured contact blob — never a palette-mapped foot
         const foot = makeBlobShadow(0.30);
         foot.position.set(0.012, 0.001, 0.012);
-        foot.material.opacity = 0.28;
+        foot.material.opacity = 0.22;
         wrap.add(foot);
       }
     }
+
     if (id === 'printer'){
       printerGroup = wrap;
       // Keep author grey plastic — 勿改漆

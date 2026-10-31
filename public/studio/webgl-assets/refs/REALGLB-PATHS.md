@@ -1,10 +1,9 @@
 # qa-desk-realglb — 6 absolute load paths (user-picks)
 
 Captured: 2026-10-31 Asia/Shanghai · `qa-desk-realglb.png`
-Runtime URL: `http://127.0.0.1:3055/studio.html?view=desk&floats=0`
-Served copies under `public/studio/webgl-assets/glb/*` md5-match sources.
+Runtime: `http://127.0.0.1:3055/studio.html?view=desk&floats=0`
 
-## Absolute paths (report locked)
+## Absolute paths (unchanged)
 
 1. **desk** → `/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/desk/extracted/SM_DiningTable.gltf`
 2. **laptop** → `/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/laptop/extracted/scene.gltf`
@@ -13,16 +12,15 @@ Served copies under `public/studio/webgl-assets/glb/*` md5-match sources.
 5. **lamp** → `/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/desk-lamp/extracted/scene.gltf`
 6. **plant** → `/workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/desk-plant/desk-plant.glb`
 
-## Steno open fix
-- Source md5 `3e76e3498515890bde2748bbdc4c4f5d` == `glb/steno/steno-book.glb`
-- HIDE `Steno Book_0` (red closed cover = 红合本替身)
-- SHOW `Steno Book.001` lined pages + spirals → mid-desk `pos [0.05,0,0.04]` size 0.82 xz, tip −0.08 rad
-- No cream albedo wipe; author Steno_Book map kept
+## Laptop mosaic — root cause + fix
 
-## Paint locks
-- Printer: author grey (no white wipe)
-- Lamp: author black metal (no brass lerp); bulb warm emissive only
-- BG: CSS `#F7F3EC` via transparent canvas (ACES-safe)
+**Root cause:** `textures/palette_baseColor.png` is an intentional **256×1 palette atlas** (317B, 59 solid slots). UVs sample single texels at V=0.5. Author glTF sampler was `LINEAR` + `LINEAR_MIPMAP_LINEAR` + `REPEAT`. On a 1px-tall strip, mipmap/linear filtering blends adjacent palette slots → black/white mosaic that also speckled the desk contact. Not a missing/corrupt file; `extracted-images/image0|1` are Steno book textures and must not bind to the laptop.
 
-## Status line
+**Fix:**
+- Runtime: `generateMipmaps=false`, `min/mag=NearestFilter`, `wrap=ClampToEdge`, `colorSpace=SRGBColorSpace`; leave author albedo untouched (no stretch/enhance); no Steno/ORM remap
+- Asset: patch `scene.gltf` sampler to NEAREST + CLAMP_TO_EDGE (served + user-picks extracted)
+- Still true `scene.gltf` mesh (palette / palette.001 / palette.002); no procedural shell
+- Printer grey / lamp black / open Steno / `#F7F3EC` left alone; screen micro-bright + desk roughness deferred
+
+## Status
 `已载: desk, laptop, printer, book, plant, lamp · 缺: 无 · HDRI:09@4000K`
