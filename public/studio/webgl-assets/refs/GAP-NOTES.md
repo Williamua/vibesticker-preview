@@ -1,23 +1,26 @@
-# GAP notes — closing pass v31 (2026-10-31 Asia/Shanghai)
+# GAP notes — Tòpas float close (2026-10-31 Asia/Shanghai)
 
-## Scope this close
-No camera / composition / rounded-desk changes (v30 locked).
+## 定稿方向
+- **吐纸**：整段删除（打印机静物保留，槽口空）。
+- **英雄感**：空中平面厚贴持续慢漂 + 躲鼠标（对照 bar-topas.ch / LAYOUT §9）。
+- **桌面静物**：desk / laptop / printer / book / lamp / plant 保留；前景桌面贴减弱为 3 枚小锚点。
 
-### Lighting / materials (visual director + analyst close)
-1. **IBL** — `studio-09-4000k-1k.hdr`; envIntensity≈1.0; exposure≈1.05; key/fill/bounce ~4000K amber, main bright upper-right; fog removed → infinite warm cream `#F7F3EC`.
-2. **Lamp** — bulb emissive↑; Spot+Point 4000K soft cone toward Steno/plant (warm pool readable).
-3. **Printer** — matte paper white `#FAF8F4`, metalness 0, high roughness, low env; 3-die-cut spit nested deeper under mouth.
-4. **Contact** — blobs under laptop/printer/book/plant/lamp; desk legs cast again + soft foot plane; sticker desk contacts kept short/tight.
-5. **Thick stickers** — stronger alpha backShade; brighter clean PVC edge (less grey); oak warm lerp.
+## 已落地
+1. **漂浮池**：屏内约 16–18 张；远/中/近 3 层；周期 6–12s 错相；微 yaw/roll ±3–8°；持续漂、不落地、无弹跳。
+2. **躲鼠标**：屏空间半径约 80–140px（近层更大）；smoothstep 柔推；松手 0.6–1.2s 回漂；位移/速度硬顶，不炸屏。自测 mid push≈0.10 → return≈0.01。
+3. **影**：每张后柔影 + 接触 blob，近深远淡，衬白边。
+4. **光感**：暖米 `#F7F3EC` 无地平线；灯为低强度 Point（无 Spot 白洞）；桌面重建 matte Standard（roughness=1, env=0）。
+5. **池**：stickers-flat-thick 热插 + strawberry/cat/lemon/vibe 等；抽签避开连同款。
 
-### Composition (unchanged from v30)
-- Elev ~13° intimacy; spit short chain ≠ LOCK hero four; large strawberry/cat/lemon/VIBE row separate.
-- Steno remains open cream spread + page stickers (not closed).
+## QA 产物
+- `qa-desk-layout.png` / `qa-float-idle.png` / `qa-float-flee.png` / `qa-float-return.png`
+- `qa-float-motion.gif`
+- `COMPARE-lock-vs-qa.jpg`
+- 本地：`http://127.0.0.1:3055/studio.html?view=desk`
 
-## Residual vs LOCK (for adjudicator)
-- Hero still may still beat us on photo realism / lamp caustics.
-- Spit mouth flush is good enough for close, not pixel-perfect.
-- Floor soft pools softer than before but still present under legs.
+## 残余（非 blocker）
+- LOCK 参考仍偏静物排版；本交付以空中戏为主，机位/圆角桌未改。
+- 灯暖池可再微调，但已无硬黄圈晒白洞。
 
 ## Verdict
-**Ready for analyst adjudication.** Do **not** show end user yet.
+**可交分析人士过线。勿转终端用户。**

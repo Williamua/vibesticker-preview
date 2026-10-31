@@ -205,7 +205,7 @@ const hemi = new THREE.HemisphereLight(0xFFF6EC, 0xEADCC8, 0.48);
 scene.add(hemi);
 
 /* Key: top-right, warm soft */
-const key = new THREE.DirectionalLight(0xFFDFC0, 0.85);
+const key = new THREE.DirectionalLight(0xFFDFC0, 0.48);
 key.position.set(2.4, 7.5, 1.8); // upper-right 4000K
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
@@ -223,7 +223,7 @@ key.target.position.set(0, 0.6, 0.1);
 scene.add(key.target);
 
 /* Fill: front-left warm */
-const fill = new THREE.DirectionalLight(0xFFE8D2, 0.55);
+const fill = new THREE.DirectionalLight(0xFFE8D2, 0.42);
 fill.position.set(-3.2, 4.0, 4.5);
 scene.add(fill);
 
@@ -234,14 +234,14 @@ scene.add(bounce);
 
 /* ground */
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(50, 50),
-  new THREE.MeshStandardMaterial({
-    color: MAT.bg, roughness: 0.88, metalness: 0.0,
-  })
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshBasicMaterial({ color: 0xF7F3EC }) // seamless warm cream, no lit horizon split
 );
 ground.rotation.x = -Math.PI / 2;
-ground.position.y = 0;
-ground.receiveShadow = true;
+ground.position.y = -0.002;
+ground.receiveShadow = false;
+ground.castShadow = false;
+ground.visible = false; // pure cream void — no wall/floor split
 scene.add(ground);
 
 /* ========== post: SMAA ========== */
@@ -440,16 +440,19 @@ async function mountProps(){
     root.traverse((o)=>{
       if(!o.isMesh||!o.material) return;
       const mats=Array.isArray(o.material)?o.material:[o.material];
+      const rebuilt=[];
       for(const m of mats){
-        // Albedo pre-lifted in desk.glb; keep warm multiply
-        if(m.map){ m.map.colorSpace = THREE.SRGBColorSpace; m.map.needsUpdate = true; }
-        if(m.color) m.color.setHex(0xFFF8EE);
-        if(m.roughness!=null) m.roughness = 0.62;
-        if(m.metalness!=null) m.metalness = 0;
-        if(m.aoMapIntensity!=null) m.aoMapIntensity = 0.35;
-        m.envMapIntensity = 0.2;
-        m.needsUpdate = true;
+        const map = m.map || null;
+        if (map){ map.colorSpace = THREE.SRGBColorSpace; map.needsUpdate = true; }
+        const nm = new THREE.MeshStandardMaterial({
+          map, color: 0xE8D2B0, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.0,
+        });
+        if (m.normalMap){ nm.normalMap = m.normalMap; nm.normalScale = new THREE.Vector2(0.1, 0.1); }
+        if (m.aoMap){ nm.aoMap = m.aoMap; nm.aoMapIntensity = 0.15; }
+        nm.needsUpdate = true;
+        rebuilt.push(nm);
       }
+      o.material = rebuilt.length===1 ? rebuilt[0] : rebuilt;
     });
     const box = new THREE.Box3().setFromObject(root);
     const c = box.getCenter(new THREE.Vector3());
@@ -465,20 +468,21 @@ async function mountProps(){
     // soft ground contact under table
     const foot = new THREE.Mesh(
       new THREE.PlaneGeometry((box2.max.x-box2.min.x)+0.25, (box2.max.z-box2.min.z)+0.2),
-      new THREE.MeshBasicMaterial({ color: 0x3A2A1C, transparent: true, opacity: 0.14, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0x3A2A1C, transparent: true, opacity: 0.10, depthWrite: false })
     );
     foot.rotation.x = -Math.PI/2;
-    foot.position.set(0.02, 0.006, 0.03);
+    foot.position.set(0.02, 0.005, 0.03);
     wrap.add(foot);
     // Warm oak multiply + legs cast soft floor contact (not suspended)
     wrap.traverse((o)=>{
       if (!o.isMesh || !o.material) return;
-      o.castShadow = true;
+      o.castShadow = false; // foot blob = leg contact; avoid floor/horizon split
       o.receiveShadow = true;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats){
         if (!m || !m.color) continue;
-        m.color.lerp(new THREE.Color(0xE8C9A0), 0.18); // slight warm lift vs LOCK
+        m.color.lerp(new THREE.Color(0xE8C9A0), 0.2);
+        m.roughness = 1.0; m.metalness = 0; m.envMapIntensity = 0;
         m.needsUpdate = true;
       }
     });
@@ -650,7 +654,7 @@ async function mountProps(){
           const n=(m.name||o.name||'').toLowerCase();
           if(n.includes('bulb')){
             m.emissive = new THREE.Color(0xFFD2A6);
-            m.emissiveIntensity = 4.8; // visible bulb glow
+            m.emissiveIntensity = 1.05; // soft bulb glow only
             m.color.setHex(0xFFE8C8);
           } else if(n.includes('chrome') || n.includes('steel')){
             // brushed brass shade / stem
@@ -681,13 +685,13 @@ async function mountProps(){
         wrap.position.y -= bb.min.y;
       }
       // Soft 4000K cone from shade → book/plant (mid-right)
-      const lampLight = new THREE.SpotLight(0xFFD2A6, 3.4, 3.6, 0.85, 0.55, 1.0);
-      lampLight.position.set(0.0, 0.38, 0.02);
-      lampLight.target.position.set(-0.55, 0.02, -0.08); // toward Steno / plant
-      wrap.add(lampLight); wrap.add(lampLight.target);
+      // Soft warm pool — low intensity Point only (no Spot burn hole)
+      const lampLight = new THREE.PointLight(0xFFD2A6, 0.20, 2.0, 2.4);
+      lampLight.position.set(-0.10, 0.34, -0.06);
+      wrap.add(lampLight);
       lampLight.castShadow = false;
-      const fillL = new THREE.PointLight(0xFFD2A6, 1.35, 2.4);
-      fillL.position.set(0, 0.36, 0);
+      const fillL = new THREE.PointLight(0xFFD2A6, 0.08, 1.4, 2.4);
+      fillL.position.set(0.0, 0.26, 0.0);
       wrap.add(fillL);
       wrap.userData.light = lampLight;
       wrap.userData.fill = fillL;
@@ -727,49 +731,6 @@ async function mountProps(){
   return { any, missing };
 }
 
-
-/** Spit a rigid thick-slab strip from printer mouth toward camera (LOCK). */
-function buildPrinterSpitStrip(){
-  if (!printerGroup) return;
-  // Short mouth chain only — use flat-thick pool, NEVER hero LOCK four
-  const pool = stickerTexList.length ? stickerTexList : lockScatterTexList;
-  if (!pool.length) return;
-
-  printerGroup.updateWorldMatrix(true, true);
-  const bb = new THREE.Box3().setFromObject(printerGroup);
-  const inv = new THREE.Matrix4().copy(printerGroup.matrixWorld).invert();
-  const minL = bb.min.clone().applyMatrix4(inv);
-  const maxL = bb.max.clone().applyMatrix4(inv);
-  const midX = (minL.x + maxL.x) * 0.5;
-  const mouthA = new THREE.Vector3(midX, 0.003, maxL.z);
-  const mouthB = new THREE.Vector3(midX, 0.003, minL.z);
-  const mouthWA = mouthA.clone(); printerGroup.localToWorld(mouthWA);
-  const mouthWB = mouthB.clone(); printerGroup.localToWorld(mouthWB);
-  const useA = mouthWA.distanceToSquared(camera.position) <= mouthWB.distanceToSquared(camera.position);
-  const toward = useA ? 1 : -1;
-  const mouthZ = useA ? maxL.z : minL.z;
-
-  const strip = new THREE.Group();
-  strip.name = 'printerSpitStrip';
-  const n = 3; // short chain 2–4
-  for (let i = 0; i < n; i++){
-    const pick = pool[i % pool.length];
-    const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = 0.030; // small mouth stickers
-    const w = h * Math.min(1.2, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
-    slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.04, 0);
-    const zOff = toward * (-0.018 + i * 0.024);
-    slab.position.set((i - (n-1)/2) * 0.0015, 0.0028, zOff);
-    const blob = makeBlobShadow(Math.max(w, h) * 0.75);
-    blob.position.set(slab.position.x + 0.002, 0.0008, slab.position.z + toward * 0.002);
-    blob.material.opacity = 0.18;
-    strip.add(slab, blob);
-  }
-  strip.position.set(midX, 0.0022, mouthZ - toward * 0.006);
-  printerGroup.add(strip);
-  printerGroup.userData.spitStrip = strip;
-}
 
 
 /** Open Steno: cream pages/cover edges, dark spine only — no black card frame. */
@@ -957,6 +918,7 @@ const backTex = makeBackTex();
 
 const stickers = [];
 const MAX_STICKERS = isMobile ? 18 : 28;
+const FLOAT_CAP = isMobile ? 14 : 18;
 const pointer = new THREE.Vector2(9999, 9999);
 const pointerWorld = new THREE.Vector3(9999, 9999, 9999);
 let pointerActive = false;
@@ -1148,95 +1110,139 @@ function syncStickerShadow(s){
 }
 
 
-function spawnSticker(forceLanded = false){
-  if (stickers.length >= MAX_STICKERS){
-    let victim = stickers.find((s) => s.state === 'landed' && s.age > 4) || stickers[0];
-    if (victim){
-      scene.remove(victim.group);
-      if (victim.shadow) scene.remove(victim.shadow);
-      if (victim.shadowSoft) scene.remove(victim.shadowSoft);
-      stickers.splice(stickers.indexOf(victim), 1);
-    }
+let _lastPickFile = '';
+function pickFloatTex(){
+  const pool = [];
+  // flat-thick hotplug + LOCK hero set (strawberry/cat/lemon/vibe/…)
+  for (const g of stickerTexList) pool.push(g);
+  for (const g of lockScatterTexList) pool.push(g);
+  if (!pool.length) return null;
+  // avoid consecutive same file
+  let pick = null;
+  for (let tries = 0; tries < 8; tries++){
+    pick = pool[(Math.random() * pool.length) | 0];
+    if (pick.file !== _lastPickFile) break;
   }
-  const pick = stickerTexList[(Math.random() * stickerTexList.length) | 0];
+  _lastPickFile = pick.file || '';
+  return pick;
+}
+
+/** Tòpas-style continuous float layer: far=small/slow, near=large/faster. */
+function spawnFloatSticker(layer){
+  // layer: 0 far, 1 mid, 2 near
+  if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) return null;
+  const pick = pickFloatTex();
+  if (!pick) return null;
   const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-  const size = 0.22 + Math.random() * 0.14;
+  const sizeByLayer = [
+    0.11 + Math.random() * 0.06, // far small
+    0.18 + Math.random() * 0.08, // mid
+    0.28 + Math.random() * 0.10, // near large
+  ];
+  const size = sizeByLayer[layer] || sizeByLayer[1];
   const w = size * Math.min(1.35, Math.max(0.7, aspect));
   const h = size;
-  const thickness = 0.0045 + Math.random() * 0.002; // LOCK paper-card thick, still rigid
+  const thickness = 0.004 + (layer === 2 ? 0.002 : 0.001);
   const group = createFlatThickSticker(w, h, pick.tex, thickness);
   const front = group.userData.front;
 
-  const slot = getSlotWorld();
-  group.position.copy(slot);
-  group.position.x += (Math.random() - 0.5) * 0.06;
-  group.position.y += (Math.random() - 0.5) * 0.03;
-  // slight tilt only — no curl
-  // slight tilt only (flat-thick; not card-upright)
-  group.rotation.set(
-    -0.35 + (Math.random() - 0.5) * 0.25,
-    (Math.random() - 0.5) * 0.5,
-    (Math.random() - 0.5) * 0.2
-  );
+  // Home anchors: leave mid-right desk + foreground L/R gaps for props / LOCK row
+  // Avoid x≈0.35..0.95 & z≈-0.15..0.25 (lamp/plant/book) and desk apron corners
+  let hx, hy, hz;
+  for (let tries = 0; tries < 12; tries++){
+    hx = (Math.random() - 0.5) * 1.7;
+    hz = -0.05 + (Math.random() - 0.25) * 1.15; // bias toward camera, avoid deep back
+    hy = topY + (layer === 0 ? 0.55 + Math.random()*0.35
+      : layer === 1 ? 0.32 + Math.random()*0.28
+      : 0.18 + Math.random()*0.22);
+    const midRightDesk = (hx > 0.25 && hx < 1.05 && hz > -0.35 && hz < 0.35 && hy < topY + 0.55);
+    const fgLeft = (hx < -0.55 && hz > 0.35 && hy < topY + 0.45);
+    const fgRight = (hx > 0.45 && hz > 0.35 && hy < topY + 0.45);
+    if (!midRightDesk && !fgLeft && !fgRight) break;
+  }
 
-  const sh = makeBlobShadow(size * 1.2);
-  const shSoft = makeBlobShadow(size * 1.6);
-  scene.add(sh);
-  scene.add(shSoft);
-  scene.add(group);
+  group.position.set(hx, hy, hz);
+  // Face camera-ish with micro tilt (die-cut plane readable)
+  const basePitch = -0.25 + (Math.random() - 0.5) * 0.2;
+  const baseYaw = (Math.random() - 0.5) * 0.5;
+  const baseRoll = (Math.random() - 0.5) * 0.25;
+  group.rotation.set(basePitch, baseYaw, baseRoll);
 
-  const willLand = forceLanded || Math.random() < 0.48;
-  const floatDur = 2.6 + Math.random() * 2.2;
-  const driftX = 0.45 + Math.random() * 1.8;
-  const driftZ = (Math.random() - 0.5) * 1.0;
-  const peakY = 1.1 + Math.random() * 1.4;
+  const sh = makeBlobShadow(size * 1.15);
+  const shSoft = makeBlobShadow(size * 1.5);
+  // far softer / nearer stronger shadow
+  sh.material.opacity = layer === 0 ? 0.10 : layer === 1 ? 0.16 : 0.22;
+  shSoft.material.opacity = layer === 0 ? 0.06 : layer === 1 ? 0.10 : 0.14;
+  scene.add(sh); scene.add(shSoft); scene.add(group);
+
+  const period = 6 + Math.random() * 6; // 6–12s
+  const phase = Math.random() * Math.PI * 2;
+  const ampY = (layer === 0 ? 0.04 : layer === 1 ? 0.055 : 0.07) * (0.85 + Math.random()*0.3);
+  const ampX = (layer === 0 ? 0.03 : 0.045) * (0.8 + Math.random()*0.4);
+  const ampZ = 0.025 + Math.random() * 0.03;
+  // micro yaw/roll ±3–8° in radians
+  const yawAmp = (3 + Math.random() * 5) * Math.PI / 180;
+  const rollAmp = (3 + Math.random() * 5) * Math.PI / 180;
+  // flee radius px: far 80, mid 110, near 140
+  const fleePx = layer === 0 ? 80 + Math.random()*10 : layer === 1 ? 100 + Math.random()*20 : 120 + Math.random()*20;
+  const returnSec = 0.6 + Math.random() * 0.6; // 0.6–1.2s
 
   const s = {
     group, front, shadow: sh, shadowSoft: shSoft,
-    state: forceLanded ? 'landed' : 'eject',
-    age: 0, t: 0, size, thickness,
-    spin: new THREE.Vector3(
-      (Math.random() - 0.5) * 0.35,
-      (Math.random() - 0.5) * 0.7,
-      (Math.random() - 0.5) * 0.4
-    ),
-    willLand, floatDur,
+    state: 'float', age: 0, t: 0, size, thickness, layer,
+    spin: new THREE.Vector3(0,0,0),
+    willLand: false, floatDur: period,
     origin: group.position.clone(),
-    home: null,
-    vel: new THREE.Vector3(0.55 + Math.random() * 0.4, 0.7 + Math.random() * 0.35, -0.15 + (Math.random() - 0.5) * 0.2),
-    landPos: new THREE.Vector3(
-      (Math.random() - 0.35) * 0.9,
-      topY + thickness * 0.5 + 0.006,
-      0.55 + Math.random() * 0.55
-    ),
-    peakY, driftX, driftZ,
+    home: group.position.clone(),
+    homeBase: new THREE.Vector3(hx, hy, hz),
+    baseRot: new THREE.Vector3(basePitch, baseYaw, baseRoll),
+    vel: new THREE.Vector3(),
+    landPos: group.position.clone(),
+    peakY: ampY, driftX: ampX, driftZ: ampZ,
     bounce: 0, ejectT: 0, pathT: 0,
     push: new THREE.Vector3(),
     pushVel: new THREE.Vector3(),
-    breathe: Math.random() * Math.PI * 2,
+    breathe: phase,
+    period, phase, yawAmp, rollAmp, fleePx, returnSec,
+    file: pick.file || '',
   };
-  // LOCK: 3–5 thick slabs on front apron between printer & sketchbook
-  s.landPos.x = THREE.MathUtils.clamp(-0.15 + Math.random() * 0.55, -0.25, 0.55);
-  s.landPos.z = THREE.MathUtils.clamp(0.55 + Math.random() * 0.35, 0.45, 0.95);
-
-  if (forceLanded){
-    const i = stickers.filter((x)=>x.state==='landed').length;
-    group.position.set(
-      -0.12 + i * 0.2 + (Math.random()-0.5)*0.03,
-      topY + thickness * 0.5 + 0.012,
-      0.58 + (Math.random()-0.5)*0.06
-    );
-    // face-up on desk: local +Z -> world +Y
-    group.rotation.set(-Math.PI / 2, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.08);
-    s.home = group.position.clone();
-    s.landPos.copy(group.position);
-    s.spin.set(0,0,0);
-    syncStickerShadow(s);
-  } else {
-    syncStickerShadow(s);
-  }
   stickers.push(s);
+  syncStickerShadow(s);
   return s;
+}
+
+/** Legacy helper kept for rare landed seeds — prefers float path. */
+function spawnSticker(forceLanded = false){
+  if (forceLanded){
+    // weakened desk apron seed (not hero)
+    const pick = pickFloatTex();
+    if (!pick) return null;
+    const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+    const size = 0.14 + Math.random() * 0.06;
+    const w = size * Math.min(1.25, Math.max(0.75, aspect));
+    const h = size;
+    const thickness = 0.004;
+    const group = createFlatThickSticker(w, h, pick.tex, thickness);
+    const sh = makeBlobShadow(size * 1.2);
+    const shSoft = makeBlobShadow(size * 1.5);
+    const i = stickers.filter((x)=>x.state==='landed').length;
+    group.position.set(-0.08 + i * 0.14, topY + thickness * 0.5 + 0.008, 0.42 + (Math.random()-0.5)*0.04);
+    group.rotation.set(-Math.PI / 2, (Math.random() - 0.5) * 0.3, 0);
+    scene.add(group); scene.add(sh); scene.add(shSoft);
+    const s = {
+      group, front: group.userData.front, shadow: sh, shadowSoft: shSoft,
+      state: 'landed', age: 0, t: 0, size, thickness, layer: 2,
+      spin: new THREE.Vector3(), willLand: true, floatDur: 1,
+      origin: group.position.clone(), home: group.position.clone(), homeBase: group.position.clone(),
+      baseRot: new THREE.Vector3(-Math.PI/2, 0, 0),
+      vel: new THREE.Vector3(), landPos: group.position.clone(),
+      peakY: 0, driftX: 0, driftZ: 0, bounce: 0, ejectT: 0, pathT: 0,
+      push: new THREE.Vector3(), pushVel: new THREE.Vector3(), breathe: 0,
+      period: 8, phase: 0, yawAmp: 0, rollAmp: 0, fleePx: 90, returnSec: 0.8, file: pick.file||'',
+    };
+    stickers.push(s); syncStickerShadow(s); return s;
+  }
+  return spawnFloatSticker((Math.random() * 3) | 0);
 }
 
 /* ========== pointer / scroll ========== */
@@ -1281,119 +1287,90 @@ canvas.addEventListener('touchmove', (e) => {
 const clock = new THREE.Clock();
 const _tmp = new THREE.Vector3();
 const _push = new THREE.Vector3();
+const _ndc = new THREE.Vector3();
+const _camRight = new THREE.Vector3();
+const _camUp = new THREE.Vector3();
 let spawnAcc = 0;
-let SPAWN_EVERY = reduceMotion ? 1.15 : 0.45;
+let SPAWN_EVERY = 0.85;
 
 function updateSticker(s, dt){
   s.age += dt;
   s.t += dt;
-  s.breathe += dt * 1.4;
-  // flat-thick: no bend/curl — only rigid tilt from spin
+  s.breathe += dt * ((Math.PI * 2) / Math.max(4, s.period || 8));
 
-  if (s.state === 'eject'){
-    s.ejectT += dt;
-    s.group.position.addScaledVector(s.vel, dt);
-    s.vel.y += dt * 0.75;
-    s.vel.x += dt * 0.35;
-    s.group.rotation.x += s.spin.x * dt;
-    s.group.rotation.y += s.spin.y * dt;
-    s.group.rotation.z += s.spin.z * dt;
-    syncStickerShadow(s);
-    if (s.ejectT > 0.35){
-      s.state = 'float';
-      s.pathT = 0;
-      s.origin.copy(s.group.position);
-      s.home = s.group.position.clone();
-    }
-  } else if (s.state === 'float'){
-    s.pathT += dt / s.floatDur;
-    const u = Math.min(1, s.pathT);
-    const ease = 1 - Math.pow(1 - u, 2.2);
-    const slotish = s.origin;
+  if (s.state === 'float'){
+    // Continuous slow bob (water) — never lands
+    const ph = s.breathe + (s.phase || 0);
+    const base = s.homeBase || s.home;
     const target = _tmp.set(
-      slotish.x + s.driftX * ease,
-      slotish.y + Math.sin(ease * Math.PI) * s.peakY * 0.9 + ease * 0.15,
-      slotish.z + s.driftZ * ease + ease * 0.55
+      base.x + Math.sin(ph * 0.85) * (s.driftX || 0.04),
+      base.y + Math.sin(ph) * (s.peakY || 0.05),
+      base.z + Math.cos(ph * 0.7) * (s.driftZ || 0.025)
     );
-    target.y += Math.sin(s.breathe) * 0.06;
-    target.x += Math.sin(s.breathe * 0.7) * 0.04;
     s.home.copy(target);
 
-    s.pushVel.multiplyScalar(0.88);
+    // Micro yaw/roll ±3–8°
+    const br = s.baseRot || new THREE.Vector3(s.group.rotation.x, s.group.rotation.y, s.group.rotation.z);
+    s.group.rotation.x = br.x + Math.sin(ph * 0.6) * (s.yawAmp || 0.06) * 0.35;
+    s.group.rotation.y = br.y + Math.sin(ph * 0.9) * (s.yawAmp || 0.06);
+    s.group.rotation.z = br.z + Math.cos(ph * 0.75) * (s.rollAmp || 0.06);
+
+    // Tòpas flee: screen-space soft push, ease-out, slow return (watery, not explode)
+    const halfW = canvas.clientWidth * 0.5;
+    const halfH = canvas.clientHeight * 0.5;
+    s.pushVel.multiplyScalar(0.90);
     if (pointerActive && !reduceMotion){
-      _push.copy(s.group.position).sub(pointerWorld);
-      _push.y *= 0.35;
-      const dist = _push.length();
-      const radius = 1.35;
-      if (dist < radius && dist > 0.001){
-        const f = (1 - dist / radius);
-        _push.normalize().multiplyScalar(f * f * 5.5);
-        s.pushVel.addScaledVector(_push, dt * 18);
+      _ndc.copy(s.group.position).project(camera);
+      const dx = (_ndc.x - pointer.x) * halfW;
+      const dy = (_ndc.y - pointer.y) * halfH;
+      const distPx = Math.hypot(dx, dy);
+      const radius = s.fleePx || 110;
+      if (distPx < radius && distPx > 0.5){
+        const u = 1 - distPx / radius;
+        const ease = u * u * (3 - 2 * u); // smoothstep ease-out feel
+        // Push direction in world from camera plane
+        _push.set(dx, dy, 0).normalize();
+        // Convert screen push to world approx via camera right/up
+        const right = _camRight.set(1,0,0).applyQuaternion(camera.quaternion);
+        const up = _camUp.set(0,1,0).applyQuaternion(camera.quaternion);
+        const worldPush = right.multiplyScalar(_push.x).addScaledVector(up, _push.y);
+        worldPush.y *= 0.45;
+        worldPush.normalize().multiplyScalar(ease * ease * 0.85); // soft Tòpas push, capped
+        // return spring strength from returnSec
+        const k = 1 / Math.max(0.45, s.returnSec || 0.9);
+        s.pushVel.addScaledVector(worldPush, dt * (10 + k * 4));
+        // hard cap velocity so stickers never explode across screen
+        if (s.pushVel.length() > 1.35) s.pushVel.setLength(1.35);
       }
     }
+    // Spring back to home (water settle) — returnSec governs feel
+    const returnK = 2.2 / Math.max(0.5, s.returnSec || 0.9);
     _push.copy(s.home).sub(s.group.position).sub(s.push);
-    s.pushVel.addScaledVector(_push, dt * 3.2);
+    s.pushVel.addScaledVector(_push, dt * returnK);
     s.push.addScaledVector(s.pushVel, dt);
-    s.push.multiplyScalar(0.96);
+    s.push.multiplyScalar(0.94);
+    if (s.push.length() > 0.95) s.push.setLength(0.95); // soft clamp displacement
     s.group.position.copy(s.home).add(s.push);
 
-    s.group.rotation.x += s.spin.x * dt * 0.45;
-    s.group.rotation.y += s.spin.y * dt * 0.55;
-    s.group.rotation.z += s.spin.z * dt * 0.4;
-
     syncStickerShadow(s);
-
-    if (u >= 1){
-      if (s.willLand){
-        s.state = 'falling';
-        s.fallT = 0;
-        s.fallFrom = s.group.position.clone();
-      } else {
-        s.state = 'fade';
-        s.fadeT = 0;
-      }
-    }
-  } else if (s.state === 'falling'){
-    s.fallT = (s.fallT || 0) + dt;
-    const dur = 0.85;
-    const u = Math.min(1, s.fallT / dur);
-    const ease = u * u * (3 - 2 * u);
-    s.group.position.lerpVectors(s.fallFrom, s.landPos, ease);
-    const flatX = -Math.PI / 2;
-    s.group.rotation.x += (flatX - s.group.rotation.x) * Math.min(1, ease * 0.35);
-    s.group.rotation.z *= (1 - ease * 0.2);
-    syncStickerShadow(s);
-    if (u >= 1){
-      s.state = 'landed';
-      s.bounce = 1;
-      s.group.position.copy(s.landPos);
-      s.home = s.landPos.clone();
-    }
   } else if (s.state === 'landed'){
-    if (s.bounce > 0){
-      s.bounce -= dt * 2.2;
-      const b = Math.max(0, s.bounce);
-      s.group.position.y = s.landPos.y + Math.sin((1 - b) * Math.PI) * 0.08 * b;
-      syncStickerShadow(s);
-    } else {
-      s.group.position.y = s.landPos.y;
-      syncStickerShadow(s);
-    }
+    // Soft desk contact only — gentle nudge, no launch
     if (pointerActive && !reduceMotion){
       _push.copy(s.group.position).sub(pointerWorld);
       _push.y = 0;
       const dist = _push.length();
-      if (dist < 0.9 && dist > 0.001){
-        _push.normalize().multiplyScalar((1 - dist / 0.9) * 0.015);
+      if (dist < 0.55 && dist > 0.001){
+        _push.normalize().multiplyScalar((1 - dist / 0.55) * 0.01);
         s.group.position.add(_push);
         s.group.position.y = s.landPos.y;
         syncStickerShadow(s);
       }
+    } else {
+      syncStickerShadow(s);
     }
   } else if (s.state === 'fade'){
     s.fadeT = (s.fadeT || 0) + dt;
-    s.group.position.y += dt * 0.4;
-    s.group.position.x += dt * 0.5;
+    s.group.position.y += dt * 0.25;
     const op = 1 - s.fadeT / 0.8;
     s.front.material.opacity = Math.max(0, op);
     s.group.traverse((o)=>{ if(o.isMesh && o.material && o.material.transparent) o.material.opacity = Math.max(0, op); });
@@ -1424,15 +1401,17 @@ function tick(){
         ? '工作台 · 电脑本 / 打印机 / 速写本 / 台灯 · <em>滚轮</em>可回到首屏'
         : '工作台精模待接入 · <em>滚轮</em>可回到首屏';
     } else {
-      hintEl.innerHTML = '贴纸持续飘出 · <em>鼠标靠近</em>贴纸会躲开';
+      hintEl.innerHTML = '贴纸在空中慢漂 · <em>鼠标靠近</em>会柔和躲开';
     }
   }
 
   spawnAcc += dt;
-  const spawnPaused = viewMode === 'desk' || viewMode === 'workbench' || qaLight || new URLSearchParams(location.search).has('clean');
-  if (!spawnPaused && spawnAcc >= SPAWN_EVERY){
+  // Cake-stand / Tòpas: keep float pool topped up even in desk/clean review
+  const floatCount = stickers.filter(s => s.state === 'float').length;
+  if (floatCount < FLOAT_CAP && spawnAcc >= SPAWN_EVERY){
     spawnAcc = 0;
-    spawnSticker(false);
+    const layer = floatCount < 5 ? 0 : floatCount < 11 ? 1 : 2;
+    spawnFloatSticker(layer);
   }
 
   if (printerGroup && viewMode !== 'desk' && viewMode !== 'workbench' && !qaLight){
@@ -1441,9 +1420,10 @@ function tick(){
     printerGroup.position.y = 0;
   }
   if (lampGroup && lampGroup.userData.light){
-    const pulse = 1.15 + Math.sin(clock.elapsedTime * 1.5) * 0.2;
+    // Soft breathe around whisper baseline (no hard burn)
+    const pulse = 0.20 + Math.sin(clock.elapsedTime * 1.2) * 0.03;
     lampGroup.userData.light.intensity = pulse;
-    if (lampGroup.userData.fill) lampGroup.userData.fill.intensity = 0.45 + Math.sin(clock.elapsedTime * 1.5) * 0.08;
+    if (lampGroup.userData.fill) lampGroup.userData.fill.intensity = 0.08 + Math.sin(clock.elapsedTime * 1.2) * 0.015;
   }
   if (loadedProps.plant){
     loadedProps.plant.rotation.z = Math.sin(clock.elapsedTime * 0.8) * 0.02;
@@ -1473,48 +1453,70 @@ await loadStickerTextures();
 await loadLockScatterTextures();
 await loadStudioHDRI();
 const mount = await mountProps();
-buildPrinterSpitStrip();
 decorateSketchbookPages();
 refreshCameras(); applyCamera();
 
 // LOCK foreground row: 草莓/猫/柠檬/VIBE — flat on desk + clear rear shadow
 function placeLockRow(){
-  // LOCK hero foreground ONLY — strawberry/cat/lemon/VIBE large thick; NOT spit chain
-  const xs = [-0.22, -0.02, 0.18, 0.36];
-  const zs = [0.28, 0.34, 0.30, 0.26]; // on desk top (desk z≲0.55)
-  const yaws = [-0.12, 0.08, -0.06, 0.10];
-  const picks = lockScatterTexList.length >= 4
-    ? lockScatterTexList
-    : stickerTexList;
-  for (let i = 0; i < 4; i++){
+  // Soft desk anchors only — air float owns hero (Tòpas). Keep 3 small flat-thick.
+  const xs = [-0.18, 0.02, 0.22];
+  const zs = [0.30, 0.34, 0.28];
+  const yaws = [-0.10, 0.06, -0.05];
+  const picks = lockScatterTexList.length ? lockScatterTexList : stickerTexList;
+  for (let i = 0; i < 3; i++){
     const pick = picks[i % picks.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const size = 0.22; // large hero thick stickers
+    const size = 0.13; // weakened vs air float
     const w = size * Math.min(1.25, Math.max(0.75, aspect));
     const h = size;
-    const thickness = 0.005;
+    const thickness = 0.004;
     const group = createFlatThickSticker(w, h, pick.tex, thickness);
-    const sh = makeBlobShadow(size * 1.25);
-    const shSoft = makeBlobShadow(size * 1.55);
+    const sh = makeBlobShadow(size * 1.2);
+    const shSoft = makeBlobShadow(size * 1.45);
     group.position.set(xs[i], topY + thickness * 0.5 + 0.006, zs[i]);
     group.rotation.set(-Math.PI / 2, yaws[i], 0);
     scene.add(group); scene.add(sh); scene.add(shSoft);
     const s = {
       group, front: group.userData.front, shadow: sh, shadowSoft: shSoft,
-      state: 'landed', age: 0, t: 0, size, thickness,
+      state: 'landed', age: 0, t: 0, size, thickness, layer: 2,
       spin: new THREE.Vector3(), willLand: true, floatDur: 1,
-      origin: group.position.clone(), home: group.position.clone(),
+      origin: group.position.clone(), home: group.position.clone(), homeBase: group.position.clone(),
+      baseRot: new THREE.Vector3(-Math.PI/2, yaws[i], 0),
       vel: new THREE.Vector3(), landPos: group.position.clone(),
       peakY: 0, driftX: 0, driftZ: 0, bounce: 0, ejectT: 0, pathT: 0,
       push: new THREE.Vector3(), pushVel: new THREE.Vector3(), breathe: 0,
+      period: 8, phase: 0, yawAmp: 0, rollAmp: 0, fleePx: 90, returnSec: 0.8, file: pick.file||'',
     };
     stickers.push(s);
     syncStickerShadow(s);
   }
 }
 placeLockRow();
+window.__floatQA = () => {
+  const floats = stickers.filter(s=>s.state==='float');
+  let best=null, bestScore=1e9;
+  for (const s of floats){
+    const v=s.group.position.clone().project(camera);
+    const x=v.x*0.5+0.5, y=-v.y*0.5+0.5;
+    if (x<0.08||x>0.92||y<0.08||y>0.92) continue;
+    const score=Math.hypot(x-0.5,y-0.45)+(s.layer===2?0:0.12);
+    if (score<bestScore){ bestScore=score; best={x,y,layer:s.layer,file:s.file,push:+s.push.length().toFixed(3)}; }
+  }
+  return {
+    floatN: floats.length,
+    landedN: stickers.filter(s=>s.state==='landed').length,
+    layers: [0,1,2].map(L => floats.filter(s=>s.layer===L).length),
+    hasSpit: !!(printerGroup && printerGroup.userData && printerGroup.userData.spitStrip),
+    sample: floats.slice(0,6).map(s=>({
+      layer:s.layer, fleePx:+(s.fleePx||0).toFixed?.(1), period:+(s.period||0).toFixed?.(2),
+      y:+s.group.position.y.toFixed(3), file:s.file, push:+s.push.length().toFixed(3)
+    })),
+    nearScreen: best,
+    maxPush: floats.reduce((m,s)=>Math.max(m,s.push.length()),0),
+  };
+};
 window.__studioDump = () => {
-  const out={laptop:[],book:[],printer:[],spit:null,desk:null,lapWrap:null};
+  const out={laptop:[],book:[],printer:[],desk:null,lapWrap:null,floats:stickers.filter(s=>s.state==='float').length};
   if (loadedProps.desk){
     const bb=new THREE.Box3().setFromObject(loadedProps.desk);
     out.desk={min:bb.min.toArray().map(n=>+n.toFixed(3)),max:bb.max.toArray().map(n=>+n.toFixed(3))};
@@ -1542,38 +1544,20 @@ window.__studioDump = () => {
   dump(loadedProps.laptop,out.laptop);
   dump(loadedProps.book,out.book);
   dump(loadedProps.printer,out.printer);
-  if(printerGroup?.userData?.spitStrip){
-    const s=printerGroup.userData.spitStrip;
-    out.spit={wp:s.getWorldPosition(new THREE.Vector3()).toArray().map(n=>+n.toFixed(3)),
-      lp:s.position.toArray().map(n=>+n.toFixed(3)), children:s.children.length};
-  }
   return out;
 };
 
 
-// Desk/clean review: no floaters (read as upright cards against LOCK).
-if (!hideHud){
-  for (let i = 0; i < 2; i++){
-    const s = spawnSticker(false);
-    s.state = 'float';
-    s.pathT = 0.35 + i * 0.2;
-    s.peakY = 0.7 + i * 0.15;
-    s.driftX = 0.8 + i * 0.3;
-    const u = s.pathT;
-    const slot = getSlotWorld();
-    s.group.position.set(
-      slot.x + s.driftX * u,
-      topY + 0.55 + i * 0.25,
-      slot.z + 0.2
-    );
-    s.group.rotation.set(-0.4, 0.3 * i, 0.1);
-    s.home = s.group.position.clone();
-    syncStickerShadow(s);
+// Tòpas float pool: seed far/mid/near immediately (desk/clean included)
+{
+  const plan = [0,0,0,0, 1,1,1,1,1,1, 2,2,2,2,2,2]; // ~16 → within 12–20
+  for (const layer of plan){
+    if (stickers.filter(s => s.state === 'float').length >= FLOAT_CAP) break;
+    spawnFloatSticker(layer);
   }
 }
-// slower continuous spit so desk stays readable
-SPAWN_EVERY = reduceMotion ? 2.2 : 1.35;
-console.info('[studio] analyst-pass LOCK-row + readable props pr=', renderer.getPixelRatio(), 'missing=', mount.missing, 'topY', tableTopY);
+SPAWN_EVERY = reduceMotion ? 1.6 : 0.85;
+console.info('[studio] Tòpas-float + desk props pr=', renderer.getPixelRatio(), 'floats=', stickers.filter(s=>s.state==='float').length, 'missing=', mount.missing, 'topY', tableTopY);
 tick();
 
 } catch (e) {
