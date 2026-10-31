@@ -158,7 +158,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(MAT.bg);
-scene.fog = new THREE.Fog(MAT.bg, 18, 36);
+scene.fog = null; // LOCK infinite warm cream #F7F3EC — no gray horizon
 
 const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 40);
 
@@ -205,8 +205,8 @@ const hemi = new THREE.HemisphereLight(0xFFF6EC, 0xEADCC8, 0.48);
 scene.add(hemi);
 
 /* Key: top-right, warm soft */
-const key = new THREE.DirectionalLight(MAT.key, 0.75);
-key.position.set(0.6, 10.5, 0.4); // nearly overhead → minimal floor drag
+const key = new THREE.DirectionalLight(0xFFDFC0, 0.85);
+key.position.set(2.4, 7.5, 1.8); // upper-right 4000K
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 0.5;
@@ -333,22 +333,32 @@ async function loadStudioHDRI(){
     pmrem.compileEquirectangularShader();
     const envMap = pmrem.fromEquirectangular(tex).texture;
     scene.environment = envMap;
-    scene.background = new THREE.Color(MAT.bg);
-    // three@0.160: no environmentRotation — yaw via key/fill placement instead
+    if ('environmentIntensity' in scene) scene.environmentIntensity = 1.0; // IBL 0.9–1.1
+    scene.background = new THREE.Color(0xF7F3EC); // infinite warm cream
+    // three@0.160: no environmentRotation — key/fill place main bright upper-right (~4000K amber)
     tex.dispose(); pmrem.dispose();
-    amb.intensity = 0.18;
-    hemi.intensity = 0.12;
-    key.intensity = 0.42;
-    key.position.set(0.5, 10.0, 0.35);
+    amb.intensity = 0.32;
+    amb.color.setHex(0xFFF2E4);
+    hemi.intensity = 0.28;
+    hemi.color.setHex(0xFFE8D0);
+    hemi.groundColor.setHex(0xE8D5C0);
+    key.color.setHex(0xFFDFC0); // ~4000K micro-amber
+    key.intensity = 0.55;
+    key.position.set(2.4, 7.5, 1.8); // upper-right bright zone
+    key.target.position.set(0.15, tableTopY, 0.05);
     key.castShadow = true;
-    key.shadow.radius = 7.0;
-    key.shadow.camera.left = -3.2;
-    key.shadow.camera.right = 3.2;
-    key.shadow.camera.top = 3.2;
-    key.shadow.camera.bottom = -3.2;
-    fill.intensity = 0.16;
-    bounce.intensity = 0.05;
-    renderer.toneMappingExposure = 1.12;
+    key.shadow.radius = 5.5; // soft but readable desk contact
+    key.shadow.camera.left = -2.8;
+    key.shadow.camera.right = 2.8;
+    key.shadow.camera.top = 2.8;
+    key.shadow.camera.bottom = -2.8;
+    key.shadow.bias = -0.0001;
+    fill.color.setHex(0xFFE6CC);
+    fill.intensity = 0.28;
+    fill.position.set(-2.0, 4.5, 3.5);
+    bounce.color.setHex(0xFFD8B0);
+    bounce.intensity = 0.14;
+    renderer.toneMappingExposure = 1.05; // within 0.9–1.1
     envReady = true;
     return true;
   } catch (e) {
@@ -455,16 +465,23 @@ async function mountProps(){
     // soft ground contact under table
     const foot = new THREE.Mesh(
       new THREE.PlaneGeometry((box2.max.x-box2.min.x)+0.25, (box2.max.z-box2.min.z)+0.2),
-      new THREE.MeshBasicMaterial({ color: 0x3A2A1C, transparent: true, opacity: 0.08, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0x3A2A1C, transparent: true, opacity: 0.14, depthWrite: false })
     );
     foot.rotation.x = -Math.PI/2;
-    foot.position.set(0.02, 0.008, 0.03);
+    foot.position.set(0.02, 0.006, 0.03);
     wrap.add(foot);
-    // Desk receives light but does NOT cast long floor drag shadows (LOCK short contact)
+    // Warm oak multiply + legs cast soft floor contact (not suspended)
     wrap.traverse((o)=>{
-      if (o.isMesh){ o.castShadow = false; o.receiveShadow = true; }
+      if (!o.isMesh || !o.material) return;
+      o.castShadow = true;
+      o.receiveShadow = true;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats){
+        if (!m || !m.color) continue;
+        m.color.lerp(new THREE.Color(0xE8C9A0), 0.18); // slight warm lift vs LOCK
+        m.needsUpdate = true;
+      }
     });
-    foot.receiveShadow = false;
     bench.add(wrap);
     loadedProps.desk = wrap;
     refreshCameras();
@@ -565,15 +582,15 @@ async function mountProps(){
           const led = m.emissiveMap;
           m.map = null; m.normalMap = null; m.roughnessMap = null;
           m.metalnessMap = null; m.aoMap = null;
-          m.color.setHex(0xF4F0E8);
-          m.roughness = 0.58; m.metalness = 0.04;
-          m.envMapIntensity = 0.45;
+          m.color.setHex(0xFAF8F4); // matte thermal paper white
+          m.roughness = 0.82; m.metalness = 0.0;
+          m.envMapIntensity = 0.18; // avoid dirty specular
           if (led){
             m.emissiveMap = led;
             m.emissive = new THREE.Color(0xffffff);
-            m.emissiveIntensity = 1.1;
+            m.emissiveIntensity = 0.9;
           } else if (m.emissive){
-            m.emissive.setHex(0x111111); m.emissiveIntensity = 0.05;
+            m.emissive.setHex(0x000000); m.emissiveIntensity = 0;
           }
           m.needsUpdate = true;
         }
@@ -585,6 +602,12 @@ async function mountProps(){
         Math.max(0.035, (box.max.y - box.min.y) * 0.28),
         box.max.z * 0.92
       );
+      {
+        const pb = makeBlobShadow(0.14);
+        pb.position.set(0.006, 0.001, 0.006);
+        pb.material.opacity = 0.26;
+        wrap.add(pb);
+      }
     }
     if (id === 'book'){
       bookGroup = wrap;
@@ -611,6 +634,12 @@ async function mountProps(){
         }
         o.visible=true;
       });
+      {
+        const bb = makeBlobShadow(0.32);
+        bb.position.set(0.008, 0.001, 0.006);
+        bb.material.opacity = 0.24;
+        wrap.add(bb);
+      }
     }
     if (id === 'lamp'){
       lampGroup = wrap;
@@ -620,8 +649,8 @@ async function mountProps(){
         for(const m of mats){
           const n=(m.name||o.name||'').toLowerCase();
           if(n.includes('bulb')){
-            m.emissive = new THREE.Color(MAT.lampEmissive);
-            m.emissiveIntensity = 3.2;
+            m.emissive = new THREE.Color(0xFFD2A6);
+            m.emissiveIntensity = 4.8; // visible bulb glow
             m.color.setHex(0xFFE8C8);
           } else if(n.includes('chrome') || n.includes('steel')){
             // brushed brass shade / stem
@@ -651,16 +680,29 @@ async function mountProps(){
         const bb=new THREE.Box3().setFromObject(wrap);
         wrap.position.y -= bb.min.y;
       }
-      const lampLight = new THREE.SpotLight(MAT.lampEmissive, 2.2, 4.2, 0.75, 0.4, 1.0);
-      lampLight.position.set(0.02, 0.42, 0.0);
-      lampLight.target.position.set(-0.62, 0.0, -0.05);
+      // Soft 4000K cone from shade → book/plant (mid-right)
+      const lampLight = new THREE.SpotLight(0xFFD2A6, 3.4, 3.6, 0.85, 0.55, 1.0);
+      lampLight.position.set(0.0, 0.38, 0.02);
+      lampLight.target.position.set(-0.55, 0.02, -0.08); // toward Steno / plant
       wrap.add(lampLight); wrap.add(lampLight.target);
-      lampLight.castShadow = false; // avoid long hard secondary shadows; key+blob handle contact
-      const fillL = new THREE.PointLight(MAT.lampEmissive, 0.85, 2.8);
-      fillL.position.set(0, 0.48, 0);
+      lampLight.castShadow = false;
+      const fillL = new THREE.PointLight(0xFFD2A6, 1.35, 2.4);
+      fillL.position.set(0, 0.36, 0);
       wrap.add(fillL);
       wrap.userData.light = lampLight;
       wrap.userData.fill = fillL;
+      {
+        const lb = makeBlobShadow(0.16);
+        lb.position.set(0.004, 0.001, 0.004);
+        lb.material.opacity = 0.26;
+        wrap.add(lb);
+      }
+    }
+    if (id === 'plant'){
+      const pb = makeBlobShadow(0.14);
+      pb.position.set(0.005, 0.001, 0.005);
+      pb.material.opacity = 0.24;
+      wrap.add(pb);
     }
   }
 
@@ -717,14 +759,14 @@ function buildPrinterSpitStrip(){
     const w = h * Math.min(1.2, Math.max(0.75, aspect));
     const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
     slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.04, 0);
-    const zOff = toward * (-0.010 + i * 0.026);
-    slab.position.set((i - (n-1)/2) * 0.002, 0.003, zOff);
+    const zOff = toward * (-0.018 + i * 0.024);
+    slab.position.set((i - (n-1)/2) * 0.0015, 0.0028, zOff);
     const blob = makeBlobShadow(Math.max(w, h) * 0.75);
     blob.position.set(slab.position.x + 0.002, 0.0008, slab.position.z + toward * 0.002);
     blob.material.opacity = 0.18;
     strip.add(slab, blob);
   }
-  strip.position.set(midX, 0.0025, mouthZ - toward * 0.002);
+  strip.position.set(midX, 0.0022, mouthZ - toward * 0.006);
   printerGroup.add(strip);
   printerGroup.userData.spitStrip = strip;
 }
@@ -1020,7 +1062,7 @@ function pvcEdgeTexFrom(tex){
   const id = ctx.getImageData(0,0,w,h);
   const d = id.data;
   for (let i=0;i<d.length;i+=4){
-    if (d[i+3] > 40){ d[i]=247; d[i+1]=242; d[i+2]=234; }
+    if (d[i+3] > 40){ d[i]=252; d[i+1]=250; d[i+2]=246; } // clean bright white edge, not grey
   }
   ctx.putImageData(id,0,0);
   const out = new THREE.CanvasTexture(c);
@@ -1057,15 +1099,15 @@ function createFlatThickSticker(w, h, tex, thickness = 0.004){
   // Die-cut local drop shade (alpha-shaped)
   const backMat = new THREE.MeshBasicMaterial({
     map: edgeTex,
-    color: 0x2a1810,
+    color: 0x1a1008,
     transparent: true,
-    opacity: 0.34,
-    alphaTest: 0.25,
+    opacity: 0.48,
+    alphaTest: 0.22,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const backShade = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.06, h * 1.06), backMat);
-  backShade.position.set(0.01 * Math.max(w,h), -0.012 * Math.max(w,h), -(thickness * 0.5 + 0.003));
+  const backShade = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.08, h * 1.08), backMat);
+  backShade.position.set(0.014 * Math.max(w,h), -0.016 * Math.max(w,h), -(thickness * 0.5 + 0.0035));
   backShade.renderOrder = 0;
   group.add(backShade);
   group.userData.front = front;
@@ -1083,8 +1125,8 @@ function syncStickerShadow(s){
   const height = Math.max(0.004, gp.y - planeY);
   const foot = s.group.userData.footprint || s.size || 0.3;
   const prox = THREE.MathUtils.clamp(1 - height / 0.85, 0, 1);
-  const op = THREE.MathUtils.clamp(0.14 + prox * 0.28, 0.12, 0.40);
-  const sc = foot * (0.82 + height * 0.12);
+  const op = THREE.MathUtils.clamp(0.18 + prox * 0.32, 0.16, 0.46);
+  const sc = foot * (0.78 + height * 0.10);
   const ox = SHADOW_LIGHT_DIR.x * (0.01 + height * 0.03);
   const oz = SHADOW_LIGHT_DIR.z * (0.01 + height * 0.03);
   if (s.shadow){
@@ -1101,7 +1143,7 @@ function syncStickerShadow(s){
   }
   const bs = s.group.userData.backShade;
   if (bs && bs.material){
-    bs.material.opacity = 0.22 + (1 - prox) * 0.18;
+    bs.material.opacity = 0.36 + (1 - prox) * 0.22;
   }
 }
 
