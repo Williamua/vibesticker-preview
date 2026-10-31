@@ -576,8 +576,12 @@ async function mountProps(){
         }
       });
       // Shade tips toward sketchbook (local −X/−Z)
-      // squash vertical presence a bit (accept mesh, fix proportion)
+      // squash height then re-seat on desk (avoid floating feet)
       wrap.scale.y *= 0.82;
+      {
+        const bb=new THREE.Box3().setFromObject(wrap);
+        wrap.position.y -= bb.min.y;
+      }
       const lampLight = new THREE.SpotLight(MAT.lampEmissive, 2.2, 4.2, 0.75, 0.4, 1.0);
       lampLight.position.set(0.02, 0.42, 0.0);
       lampLight.target.position.set(-0.62, 0.0, -0.05);
