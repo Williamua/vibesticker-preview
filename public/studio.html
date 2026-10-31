@@ -199,35 +199,37 @@ if (viewMode === 'desk' || viewMode === 'workbench') {
 }
 
 /* ========== lights (LIGHTING-SPEC) ========== */
-const amb = new THREE.AmbientLight(MAT.ambient, 0.55);
+const amb = new THREE.AmbientLight(MAT.ambient, 0.68);
 scene.add(amb);
-const hemi = new THREE.HemisphereLight(0xFFF8F0, 0xE8D9C8, 0.35);
+const hemi = new THREE.HemisphereLight(0xFFF6EC, 0xEADCC8, 0.48);
 scene.add(hemi);
 
 /* Key: top-right, warm soft */
-const key = new THREE.DirectionalLight(MAT.key, 1.45);
-key.position.set(3.6, 8.2, 4.2);
+const key = new THREE.DirectionalLight(MAT.key, 0.95);
+key.position.set(1.2, 9.0, 1.0); // overhead-ish → short warm contact
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
-key.shadow.camera.near = 1;
-key.shadow.camera.far = 30;
-key.shadow.camera.left = -8;
-key.shadow.camera.right = 8;
-key.shadow.camera.top = 8;
-key.shadow.camera.bottom = -6;
-key.shadow.bias = -0.00028;
-key.shadow.normalBias = 0.02;
-key.shadow.radius = 2.8; // softer still readable contact
+key.shadow.camera.near = 0.5;
+key.shadow.camera.far = 18;
+key.shadow.camera.left = -3.5;
+key.shadow.camera.right = 3.5;
+key.shadow.camera.top = 3.5;
+key.shadow.camera.bottom = -3.5;
+key.shadow.bias = -0.00012;
+key.shadow.normalBias = 0.025;
+key.shadow.radius = 6.5; // soft warm contact
 scene.add(key);
+key.target.position.set(0, 0.6, 0.1);
+scene.add(key.target);
 
-/* Fill: front-left weak */
-const fill = new THREE.DirectionalLight(MAT.fill, 0.38);
-fill.position.set(-4.5, 3.5, 5.5);
+/* Fill: front-left warm */
+const fill = new THREE.DirectionalLight(0xFFE8D2, 0.55);
+fill.position.set(-3.2, 4.0, 4.5);
 scene.add(fill);
 
-/* rim / bounce from below-front to open dark faces */
-const bounce = new THREE.DirectionalLight(0xFFEBD8, 0.18);
-bounce.position.set(0.5, -1.5, 3);
+/* rim / bounce */
+const bounce = new THREE.DirectionalLight(0xFFE6CC, 0.22);
+bounce.position.set(0.2, -0.8, 2.5);
 scene.add(bounce);
 
 /* ground */
@@ -336,10 +338,14 @@ async function loadStudioHDRI(){
     tex.dispose(); pmrem.dispose();
     amb.intensity = 0.18;
     hemi.intensity = 0.12;
-    key.intensity = 0.85; // need readable cast shadows under thick slabs
-    key.position.set(2.6, 5.8, 2.4);
+    key.intensity = 0.52;
+    key.position.set(1.0, 8.5, 0.9);
     key.castShadow = true;
-    key.shadow.radius = 3.2;
+    key.shadow.radius = 7.0;
+    key.shadow.camera.left = -3.2;
+    key.shadow.camera.right = 3.2;
+    key.shadow.camera.top = 3.2;
+    key.shadow.camera.bottom = -3.2;
     fill.intensity = 0.16;
     bounce.intensity = 0.05;
     renderer.toneMappingExposure = 1.12;
@@ -400,8 +406,8 @@ async function mountProps(){
   deskTop.name = 'deskTop';
   const localPlace = {
     // LAYOUT-CAMERA-SPEC §3 — accept mesh limits, tune for readability
-    laptop: { pos: [-0.42, 0, 0.12], size: 0.40, rotY: 0.28 },
-    printer: { pos: [-0.26, 0, 0.06], size: 0.20, rotY: 0 }, // smaller white thermal
+    laptop: { pos: [-0.62, 0, 0.10], size: 0.38, rotY: 0.35 },
+    printer: { pos: [-0.18, 0, 0.10], size: 0.16, rotY: 0.08 }, // LOCK small thermal, clear of laptop
     book: { pos: [0.30, 0, 0.0], size: 0.50, rotY: -0.12 },
     plant: { pos: [0.68, 0, -0.12], size: 0.26 },
     lamp: { pos: [0.88, 0, 0.10], size: 0.40, rotY: -1.15 }, // shorter; shade → book
@@ -500,7 +506,7 @@ async function mountProps(){
         emissiveIntensity: 0.85, roughness: 0.5, metalness: 0,
       });
       const clean = new THREE.Group(); clean.name='laptopClean';
-      const baseW=0.34, baseD=0.22, baseH=0.014;
+      const baseW=0.34, baseD=0.23, baseH=0.018;
       const base = new THREE.Mesh(new THREE.BoxGeometry(baseW, baseH, baseD), silver);
       base.name='laptopBase';
       base.position.set(0, baseH*0.5, 0);
@@ -509,7 +515,7 @@ async function mountProps(){
       const keys = new THREE.Mesh(new THREE.BoxGeometry(baseW*0.86, 0.0012, baseD*0.5), dark);
       keys.position.set(0, baseH+0.0006, baseD*0.04);
       // Lid: one box, materials [+x,-x,+y,-y,+z,-z]
-      const lidW=baseW*0.96, lidH=0.20, lidT=0.005;
+      const lidW=baseW*0.96, lidH=0.205, lidT=0.008;
       const lidMats = [silver, silver, silver, silver, screenMat, dark];
       const lid = new THREE.Mesh(new THREE.BoxGeometry(lidW, lidH, lidT), lidMats);
       lid.name='laptopLid';
@@ -524,26 +530,23 @@ async function mountProps(){
     }
     if (id === 'printer'){
       printerGroup = wrap;
-      // Force matte white body (LOCK) — drop dark baked maps
+      // Keep real thermal-printer textures; only warm/lighten slightly
       wrap.traverse((o)=>{
         if(!o.isMesh||!o.material) return;
         const mats=Array.isArray(o.material)?o.material:[o.material];
         for(const m of mats){
-          m.map = null; m.normalMap = null; m.roughnessMap = null; m.metalnessMap = null;
-          m.aoMap = null; m.emissiveMap = null;
-          m.color.setHex(0xF5F2EC);
-          m.roughness = 0.68; m.metalness = 0.0;
-          if(m.emissive){ m.emissive.setHex(0x222222); m.emissiveIntensity = 0.08; }
-          m.envMapIntensity = 0.15;
+          if(m.color) m.color.lerp(new THREE.Color(0xFFF8F2), 0.12);
+          if(m.roughness!=null) m.roughness = Math.min(0.85, Math.max(0.4, m.roughness));
+          m.envMapIntensity = 0.35;
           m.needsUpdate = true;
         }
       });
       const box = new THREE.Box3().setFromObject(root);
-      const frontZ = box.min.z < 0 ? box.min.z : -Math.abs(box.max.z);
+      // Mouth toward +Z (desk front / camera)
       printerSlotLocal = new THREE.Vector3(
         0,
-        Math.max(0.06, (box.max.y - box.min.y) * 0.42),
-        frontZ * 0.92
+        Math.max(0.035, (box.max.y - box.min.y) * 0.28),
+        box.max.z * 0.92
       );
     }
     if (id === 'book'){
@@ -613,8 +616,7 @@ async function mountProps(){
       lampLight.position.set(0.02, 0.42, 0.0);
       lampLight.target.position.set(-0.62, 0.0, -0.05);
       wrap.add(lampLight); wrap.add(lampLight.target);
-      lampLight.castShadow = !isMobile;
-      if (lampLight.castShadow){ lampLight.shadow.mapSize.set(1024,1024); lampLight.shadow.bias=-0.001; }
+      lampLight.castShadow = false; // avoid long hard secondary shadows; key+blob handle contact
       const fillL = new THREE.PointLight(MAT.lampEmissive, 0.85, 2.8);
       fillL.position.set(0, 0.48, 0);
       wrap.add(fillL);
@@ -653,68 +655,43 @@ function buildPrinterSpitStrip(){
   const pool = lockScatterTexList.length ? lockScatterTexList : stickerTexList;
   if (!pool.length) return;
 
-  // Build one continuous strip canvas from 3 stickers
-  const c=document.createElement('canvas'); c.width=768; c.height=256;
-  const g=c.getContext('2d');
-  g.fillStyle='#F7F0E6'; g.fillRect(0,0,768,256);
-  const cellW=240, pad=12;
-  for (let i=0;i<3;i++){
-    const pick=pool[(i+1)%pool.length];
-    const img=pick.tex?.image;
-    const x=pad + i*(cellW+pad);
-    g.fillStyle='#fff'; g.strokeStyle='#e8e0d4'; g.lineWidth=2;
-    g.beginPath(); 
-    const r=18; const y=pad; const w=cellW; const h=256-pad*2;
-    g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r);
-    g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); g.fill(); g.stroke();
-    if (img){
-      try {
-        const iw=img.width||img.videoWidth||256, ih=img.height||img.videoHeight||256;
-        const scale=Math.min((w-20)/iw,(h-20)/ih);
-        const dw=iw*scale, dh=ih*scale;
-        g.drawImage(img, x+(w-dw)/2, y+(h-dh)/2, dw, dh);
-      } catch(e){}
-    }
-  }
-  const stripTex=new THREE.CanvasTexture(c); stripTex.colorSpace=THREE.SRGBColorSpace;
-
   printerGroup.updateWorldMatrix(true, true);
-  const bb=new THREE.Box3().setFromObject(printerGroup);
-  const inv=new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
-  const front=new THREE.Vector3((bb.min.x+bb.max.x)*0.5, bb.min.y, bb.max.z);
-  front.applyMatrix4(inv);
+  deskTop.updateWorldMatrix(true, true);
+  const bb = new THREE.Box3().setFromObject(printerGroup);
+  const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
+  const midX = (bb.min.x + bb.max.x) * 0.5;
+  // Choose the printer face closer to camera (+Z world) as spit mouth
+  const candA = new THREE.Vector3(midX, bb.min.y + 0.01, bb.max.z);
+  const candB = new THREE.Vector3(midX, bb.min.y + 0.01, bb.min.z);
+  const cam = camera.position;
+  const mouthW = candA.distanceToSquared(cam) <= candB.distanceToSquared(cam) ? candA : candB;
+  const towardCam = mouthW === candA ? 1 : -1;
+  const mouth = mouthW.clone().applyMatrix4(inv);
 
-  const stripLen=0.11, stripW=0.050, thick=0.008;
-  const slab=createFlatThickSticker(stripLen, stripW, stripTex, thick);
-  // override front map already set via tex
-  slab.rotation.set(-Math.PI/2, 0, Math.PI/2); // length along +Z
-  // Re-orient: length along Z toward camera
-  slab.rotation.set(-Math.PI/2, 0, 0);
-  // Use box geometry sized length(Z) x width(X) — createFlatThick uses w,h in XY then we lay flat
-  // Rebuild as custom so length extends in +Z
-  const strip=new THREE.Group(); strip.name='printerSpitStrip';
-  // Manual slab: w along X, h along Z when laid flat
-  const rim=new THREE.Mesh(
-    new THREE.BoxGeometry(stripW, thick, stripLen),
-    new THREE.MeshStandardMaterial({ color:0xF7F0E6, roughness:0.8, metalness:0 })
-  );
-  const face=new THREE.Mesh(
-    new THREE.PlaneGeometry(stripW, stripLen),
-    new THREE.MeshStandardMaterial({
-      map:stripTex, roughness:0.7, metalness:0, transparent:true, alphaTest:0.2, side:THREE.DoubleSide
-    })
-  );
-  face.rotation.x=-Math.PI/2; face.position.y=thick*0.5+0.0004;
-  rim.castShadow=true; face.castShadow=true;
-  strip.add(rim, face);
-  // Nest: back edge of strip under printer front lip
-  strip.position.set(front.x, 0.003, front.z + stripLen*0.5 - 0.062);
+  const strip = new THREE.Group();
+  strip.name = 'printerSpitStrip';
+  for (let i = 0; i < 2; i++){
+    const pick = pool[i % pool.length];
+    const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+    const h = 0.046;
+    const w = h * Math.min(1.25, Math.max(0.75, aspect));
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.008);
+    slab.rotation.set(-Math.PI / 2, (i - 0.5) * 0.04, 0);
+    // nest into mouth then out toward camera
+    const zOff = towardCam * (-0.008 + i * 0.036);
+    slab.position.set((i - 0.5) * 0.006, 0.004, zOff);
+    const blob = makeBlobShadow(Math.max(w, h) * 0.85);
+    blob.position.set(slab.position.x + 0.005, 0.0015, slab.position.z + towardCam * 0.004);
+    blob.material.opacity = 0.22;
+    strip.add(slab, blob);
+  }
+  strip.position.set(mouth.x, 0.003, mouth.z);
   deskTop.add(strip);
-  printerGroup.userData.spitStrip=strip;
+  printerGroup.userData.spitStrip = strip;
 }
 
 
-/** Stickers seated on open Steno pages (left/right columns); no fake card overlays. */
+/** Open Steno: thick spine + lifted L/R pages with micro contact shadows + die-cut page stickers. */
 function decorateSketchbookPages(){
   if (!bookGroup) return;
   const pool = (lockScatterTexList.length ? lockScatterTexList : stickerTexList);
@@ -726,48 +703,77 @@ function decorateSketchbookPages(){
   const loc = bb.clone().applyMatrix4(inv);
   const midX = (loc.min.x + loc.max.x) * 0.5;
   const midZ = (loc.min.z + loc.max.z) * 0.5;
-  const pageW = (loc.max.x - loc.min.x) * 0.42;
-  const pageD = (loc.max.z - loc.min.z) * 0.70;
-  const y = loc.max.y + 0.004;
+  const pageW = Math.max(0.09, (loc.max.x - loc.min.x) * 0.44);
+  const pageD = Math.max(0.12, (loc.max.z - loc.min.z) * 0.78);
+  const baseY = loc.max.y + 0.001;
 
   const spread = new THREE.Group();
-  spread.name = 'bookPageStickers';
-  // subtle cream sheet ON each half so pages read clearer over dark cover
-  const sheetMat = new THREE.MeshStandardMaterial({
-    color: 0xF7F2E8, roughness: 0.92, metalness: 0, transparent: true, opacity: 0.92,
-  });
-  const leftSheet = new THREE.Mesh(new THREE.BoxGeometry(pageW, 0.0025, pageD), sheetMat);
-  const rightSheet = new THREE.Mesh(new THREE.BoxGeometry(pageW, 0.0025, pageD), sheetMat.clone());
-  leftSheet.position.set(midX - pageW * 0.55, y, midZ);
-  rightSheet.position.set(midX + pageW * 0.55, y, midZ);
-  leftSheet.receiveShadow = true; rightSheet.receiveShadow = true;
-  // thin dark spine ridge
-  const spine = new THREE.Mesh(
-    new THREE.BoxGeometry(0.012, 0.005, pageD * 0.92),
-    new THREE.MeshStandardMaterial({ color: 0x1A1A1E, roughness: 0.75, metalness: 0.05 })
-  );
-  spine.position.set(midX, y + 0.001, midZ);
-  spread.add(leftSheet, rightSheet, spine);
+  spread.name = 'bookOpenSpread';
 
+  const pageMat = new THREE.MeshStandardMaterial({
+    color: 0xF6F0E4, roughness: 0.9, metalness: 0.0,
+  });
+  const coverMat = new THREE.MeshStandardMaterial({
+    color: 0x2A2A2E, roughness: 0.72, metalness: 0.06,
+  });
+
+  // Thick cover bed under pages
+  const cover = new THREE.Mesh(
+    new THREE.BoxGeometry(pageW * 2.15, 0.012, pageD * 1.08),
+    coverMat
+  );
+  cover.position.set(midX, baseY + 0.006, midZ);
+  cover.castShadow = true; cover.receiveShadow = true;
+
+  // Spine block — readable 3D thickness (LOCK open book)
+  const spine = new THREE.Mesh(
+    new THREE.BoxGeometry(Math.max(0.024, pageW * 0.18), 0.028, pageD * 0.96),
+    coverMat.clone()
+  );
+  spine.position.set(midX, baseY + 0.018, midZ);
+  spine.castShadow = true;
+
+  // Left / right pages — lift + valley toward spine
+  const pageT = 0.0045;
+  const leftPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), pageMat);
+  const rightPage = new THREE.Mesh(new THREE.BoxGeometry(pageW, pageT, pageD), pageMat.clone());
+  leftPage.position.set(midX - pageW * 0.55, baseY + 0.020, midZ);
+  rightPage.position.set(midX + pageW * 0.55, baseY + 0.020, midZ);
+  leftPage.rotation.z = 0.07;
+  rightPage.rotation.z = -0.07;
+  leftPage.castShadow = true; rightPage.castShadow = true;
+  leftPage.receiveShadow = true; rightPage.receiveShadow = true;
+
+  // Micro contact shadows under each page
+  const pageBlobL = makeBlobShadow(pageW * 1.0);
+  pageBlobL.position.set(midX - pageW * 0.52, baseY + 0.013, midZ + 0.008);
+  pageBlobL.material.opacity = 0.20;
+  const pageBlobR = makeBlobShadow(pageW * 1.0);
+  pageBlobR.position.set(midX + pageW * 0.52, baseY + 0.013, midZ + 0.008);
+  pageBlobR.material.opacity = 0.20;
+
+  spread.add(cover, spine, leftPage, rightPage, pageBlobL, pageBlobR);
+
+  const stickY = baseY + 0.026;
   const slots = [
-    [midX - pageW * 0.75, y + 0.005, midZ - pageD * 0.25],
-    [midX - pageW * 0.55, y + 0.005, midZ + pageD * 0.08],
-    [midX - pageW * 0.72, y + 0.005, midZ + pageD * 0.32],
-    [midX + pageW * 0.45, y + 0.005, midZ - pageD * 0.20],
-    [midX + pageW * 0.70, y + 0.005, midZ + pageD * 0.02],
-    [midX + pageW * 0.52, y + 0.005, midZ + pageD * 0.30],
+    [midX - pageW * 0.72, stickY, midZ - pageD * 0.22],
+    [midX - pageW * 0.52, stickY, midZ + pageD * 0.10],
+    [midX - pageW * 0.68, stickY, midZ + pageD * 0.30],
+    [midX + pageW * 0.48, stickY, midZ - pageD * 0.18],
+    [midX + pageW * 0.68, stickY, midZ + pageD * 0.04],
+    [midX + pageW * 0.52, stickY, midZ + pageD * 0.28],
   ];
   for (let i = 0; i < slots.length; i++){
     const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = Math.min(pageD, pageW) * 0.28;
-    const w = h * Math.min(1.15, Math.max(0.8, aspect));
+    const h = Math.min(pageD, pageW) * 0.26;
+    const w = h * Math.min(1.15, Math.max(0.75, aspect));
     const slab = createFlatThickSticker(w, h, pick.tex, 0.007);
-    slab.rotation.set(-Math.PI / 2, (i % 2 ? 0.07 : -0.06), 0);
+    slab.rotation.set(-Math.PI / 2, (i % 2 ? 0.06 : -0.05), 0);
     slab.position.set(slots[i][0], slots[i][1], slots[i][2]);
-    const blob = makeBlobShadow(Math.max(w,h)*1.0);
-    blob.position.set(slots[i][0]+0.003, y + 0.001, slots[i][2]+0.003);
-    blob.material.opacity = 0.3;
+    const blob = makeBlobShadow(Math.max(w,h) * 0.9);
+    blob.position.set(slots[i][0] + 0.006, baseY + 0.012, slots[i][2] + 0.005);
+    blob.material.opacity = 0.24;
     spread.add(slab, blob);
   }
   bookGroup.add(spread);
@@ -842,6 +848,7 @@ async function loadLockScatterTextures(){
     'sticker-cat.png',
     'sticker-lemon.png',
     'sticker-vibe.png',
+    'sticker-msb.png',
   ];
   const loads = files.map((file) => new Promise((resolve) => {
     texLoader.load(`${ASSET}/stickers/${file}`, (tex) => {
@@ -875,17 +882,17 @@ const pointer = new THREE.Vector2(9999, 9999);
 const pointerWorld = new THREE.Vector3(9999, 9999, 9999);
 let pointerActive = false;
 
-/** Soft radial blob texture for contact / drop shadows (ref: sticker-style-flat-thick) */
+/** Soft radial blob — short warm contact (LOCK) */
 function makeSoftBlobTex(){
   const S = 256;
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(S*0.5, S*0.5, S*0.05, S*0.5, S*0.5, S*0.5);
-  g.addColorStop(0, 'rgba(26,18,12,0.70)');
-  g.addColorStop(0.35, 'rgba(26,18,12,0.38)');
-  g.addColorStop(0.7, 'rgba(26,18,12,0.12)');
-  g.addColorStop(1, 'rgba(26,18,12,0)');
+  const g = ctx.createRadialGradient(S*0.5, S*0.48, S*0.04, S*0.5, S*0.5, S*0.42);
+  g.addColorStop(0, 'rgba(40,24,12,0.55)');
+  g.addColorStop(0.4, 'rgba(40,24,12,0.22)');
+  g.addColorStop(0.75, 'rgba(40,24,12,0.06)');
+  g.addColorStop(1, 'rgba(40,24,12,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0,0,S,S);
   const tex = new THREE.CanvasTexture(c);
@@ -893,7 +900,7 @@ function makeSoftBlobTex(){
   return tex;
 }
 const softBlobTex = makeSoftBlobTex();
-const SHADOW_LIGHT_DIR = new THREE.Vector3(0.45, 0, 0.35); // blob offset on receiving plane (key from upper-right)
+const SHADOW_LIGHT_DIR = new THREE.Vector3(0.08, 0, 0.05); // very short contact
 
 function makeBlobShadow(size){
   const mat = new THREE.MeshBasicMaterial({
@@ -911,35 +918,119 @@ function makeBlobShadow(size){
   return mesh;
 }
 
-/** Rigid flat-thick PVC/card slab — NO bend/curl. Shadows via castShadow + soft blob. */
-function createFlatThickSticker(w, h, tex, thickness = 0.022){
+/** Radial alpha silhouette → THREE.Shape (die-cut). Falls back to rounded rect. */
+function shapeFromAlpha(img, wWorld, hWorld){
+  const N = 64;
+  const c = document.createElement('canvas');
+  c.width = N; c.height = N;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.clearRect(0,0,N,N);
+  if (img) ctx.drawImage(img, 0, 0, N, N);
+  const data = ctx.getImageData(0,0,N,N).data;
+  const solid = (x,y)=>{
+    if (x<0||y<0||x>=N||y>=N) return false;
+    return data[(y*N+x)*4+3] > 28;
+  };
+  let any=false;
+  for (let i=3;i<data.length;i+=4){ if (data[i]>28){ any=true; break; } }
+  const shape = new THREE.Shape();
+  if (!any){
+    const rx = wWorld*0.46, ry = hWorld*0.46, r = Math.min(rx,ry)*0.18;
+    shape.moveTo(-rx+r, -ry);
+    shape.lineTo(rx-r, -ry); shape.quadraticCurveTo(rx,-ry,rx,-ry+r);
+    shape.lineTo(rx, ry-r); shape.quadraticCurveTo(rx,ry,rx-r,ry);
+    shape.lineTo(-rx+r, ry); shape.quadraticCurveTo(-rx,ry,-rx,ry-r);
+    shape.lineTo(-rx, -ry+r); shape.quadraticCurveTo(-rx,-ry,-rx+r,-ry);
+    return shape;
+  }
+  const cx = N/2, cy = N/2, steps = 72;
+  for (let i=0;i<steps;i++){
+    const ang = (i/steps)*Math.PI*2;
+    const dx = Math.cos(ang), dy = Math.sin(ang);
+    let rMax = 1;
+    for (let t=1; t<N*0.72; t+=0.35){
+      const x = Math.round(cx + dx*t);
+      const y = Math.round(cy + dy*t);
+      if (x<0||y<0||x>=N||y>=N) break;
+      if (solid(x,y)) rMax = t;
+    }
+    // slight pad so white PVC edge peeks
+    rMax = Math.min(N*0.49, rMax + 0.6);
+    const px = ((cx + dx*rMax)/N - 0.5) * wWorld;
+    const py = (0.5 - (cy + dy*rMax)/N) * hWorld;
+    if (i===0) shape.moveTo(px, py);
+    else shape.lineTo(px, py);
+  }
+  shape.closePath();
+  return shape;
+}
+
+/**
+ * Die-cut flat-thick PVC from transparent PNG — NO white rectangle board.
+ * Stack of alpha-tested planes (cream edge layers + full-color front) follows die-cut.
+ */
+const _pvcEdgeTexCache = new WeakMap();
+function pvcEdgeTexFrom(tex){
+  if (!tex || !tex.image) return tex;
+  if (_pvcEdgeTexCache.has(tex)) return _pvcEdgeTexCache.get(tex);
+  const img = tex.image;
+  const w = img.width || img.videoWidth || 256;
+  const h = img.height || img.videoHeight || 256;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  try { ctx.drawImage(img, 0, 0, w, h); } catch(e){ return tex; }
+  const id = ctx.getImageData(0,0,w,h);
+  const d = id.data;
+  for (let i=0;i<d.length;i+=4){
+    if (d[i+3] > 40){ d[i]=247; d[i+1]=242; d[i+2]=234; }
+  }
+  ctx.putImageData(id,0,0);
+  const out = new THREE.CanvasTexture(c);
+  out.colorSpace = THREE.SRGBColorSpace;
+  out.flipY = tex.flipY;
+  _pvcEdgeTexCache.set(tex, out);
+  return out;
+}
+
+function createFlatThickSticker(w, h, tex, thickness = 0.009){
   const group = new THREE.Group();
-  const frontMat = new THREE.MeshStandardMaterial({
-    map: tex, roughness: 0.68, metalness: 0.0,
-    transparent: true, alphaTest: 0.35, depthWrite: true, side: THREE.DoubleSide,
-  });
-  const whiteMat = new THREE.MeshStandardMaterial({
-    color: 0xF7F0E6, roughness: 0.8, metalness: 0.0,
-  });
-  const rim = new THREE.Mesh(new THREE.BoxGeometry(w, h, thickness), whiteMat);
-  const front = new THREE.Mesh(new THREE.PlaneGeometry(w, h), frontMat);
-  front.position.z = thickness * 0.5 + 0.0005;
-  front.castShadow = true; rim.castShadow = true;
-  front.receiveShadow = true; rim.receiveShadow = true;
-  // Local "behind" soft shadow card — always sits just behind the slab to pop white edge
-  // (matches sticker-style-flat-thick drop-shadow language even mid-air)
+  const edgeTex = pvcEdgeTexFrom(tex);
+  const layers = Math.max(4, Math.round(thickness / 0.0035));
+  let front = null;
+  for (let i = 0; i < layers; i++){
+    const isFront = (i === layers - 1);
+    const mat = new THREE.MeshStandardMaterial({
+      map: isFront ? tex : edgeTex,
+      color: 0xffffff,
+      roughness: isFront ? 0.58 : 0.86,
+      metalness: 0.0,
+      transparent: true,
+      alphaTest: 0.42,
+      depthWrite: true,
+      side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    m.position.z = -thickness * 0.5 + (i / Math.max(1, layers - 1)) * thickness;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+    if (isFront) front = m;
+  }
+  // Die-cut local drop shade (alpha-shaped)
   const backMat = new THREE.MeshBasicMaterial({
-    map: softBlobTex,
-    color: 0xffffff,
+    map: edgeTex,
+    color: 0x2a1810,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.34,
+    alphaTest: 0.25,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const backShade = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.25, h * 1.25), backMat);
-  backShade.position.set(0.02 * Math.max(w,h), -0.025 * Math.max(w,h), -(thickness * 0.5 + 0.004));
+  const backShade = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.06, h * 1.06), backMat);
+  backShade.position.set(0.01 * Math.max(w,h), -0.012 * Math.max(w,h), -(thickness * 0.5 + 0.003));
   backShade.renderOrder = 0;
-  group.add(rim, front, backShade);
+  group.add(backShade);
   group.userData.front = front;
   group.userData.backShade = backShade;
   group.userData.thickness = thickness;
@@ -947,37 +1038,36 @@ function createFlatThickSticker(w, h, tex, thickness = 0.022){
   return group;
 }
 
-/** Project soft blob under sticker onto desk top or ground; offset like style-lock drop shadow. */
+/** Short warm contact blobs under stickers (LOCK). */
 function syncStickerShadow(s){
   const gp = s.group.position;
   const onDesk = Math.abs(gp.x) < 1.35 && Math.abs(gp.z) < 1.45 && gp.y > topY - 0.08;
-  const planeY = onDesk ? (topY + 0.0035) : 0.01;
-  const height = Math.max(0.008, gp.y - planeY);
+  const planeY = onDesk ? (topY + 0.0028) : 0.008;
+  const height = Math.max(0.004, gp.y - planeY);
   const foot = s.group.userData.footprint || s.size || 0.3;
-  const prox = THREE.MathUtils.clamp(1 - height / 1.35, 0, 1);
-  // Hard requirement: readable shadow behind every sticker (style-flat-thick)
-  const op = THREE.MathUtils.clamp(0.22 + prox * 0.48, 0.22, 0.72);
-  const sc = foot * (1.2 + height * 0.65);
-  const ox = SHADOW_LIGHT_DIR.x * (0.05 + height * 0.14);
-  const oz = SHADOW_LIGHT_DIR.z * (0.05 + height * 0.14);
+  const prox = THREE.MathUtils.clamp(1 - height / 0.85, 0, 1);
+  const op = THREE.MathUtils.clamp(0.14 + prox * 0.28, 0.12, 0.40);
+  const sc = foot * (0.82 + height * 0.12);
+  const ox = SHADOW_LIGHT_DIR.x * (0.01 + height * 0.03);
+  const oz = SHADOW_LIGHT_DIR.z * (0.01 + height * 0.03);
   if (s.shadow){
     s.shadow.position.set(gp.x + ox, planeY, gp.z + oz);
-    s.shadow.scale.set(sc * 1.25, sc * 1.0, 1);
+    s.shadow.scale.set(sc * 1.05, sc * 0.92, 1);
     s.shadow.material.opacity = op;
     s.shadow.visible = true;
   }
   if (s.shadowSoft){
-    s.shadowSoft.position.set(gp.x + ox * 1.4, planeY + 0.0012, gp.z + oz * 1.4);
-    s.shadowSoft.scale.set(sc * 1.7, sc * 1.35, 1);
-    s.shadowSoft.material.opacity = Math.max(0.12, op * 0.5);
+    s.shadowSoft.position.set(gp.x + ox * 1.25, planeY + 0.0008, gp.z + oz * 1.25);
+    s.shadowSoft.scale.set(sc * 1.35, sc * 1.15, 1);
+    s.shadowSoft.material.opacity = Math.max(0.08, op * 0.42);
     s.shadowSoft.visible = true;
   }
-  // Local backShade opacity: stronger when floating (no nearby plane contact)
   const bs = s.group.userData.backShade;
   if (bs && bs.material){
-    bs.material.opacity = THREE.MathUtils.clamp(0.35 + (1 - prox) * 0.35, 0.35, 0.7);
+    bs.material.opacity = 0.22 + (1 - prox) * 0.18;
   }
 }
+
 
 function spawnSticker(forceLanded = false){
   if (stickers.length >= MAX_STICKERS){
@@ -1318,10 +1408,10 @@ function placeLockRow(){
     const pick = picks[i % picks.length];
     // temporarily bias spawn pool by pushing pick to front of stickerTexList usage
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const size = 0.20;
+    const size = 0.18;
     const w = size * Math.min(1.25, Math.max(0.75, aspect));
     const h = size;
-    const thickness = 0.02;
+    const thickness = 0.008;
     const group = createFlatThickSticker(w, h, pick.tex, thickness);
     const sh = makeBlobShadow(size * 1.35);
     const shSoft = makeBlobShadow(size * 1.7);
