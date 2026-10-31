@@ -35,6 +35,8 @@
   #err{display:none;position:fixed;inset:0;z-index:20;align-items:center;justify-content:center;
     padding:24px;background:rgba(247,243,236,.95);color:var(--ink);font-size:15px;line-height:1.6;text-align:center}
   #err.show{display:flex}
+  #status{position:fixed;left:12px;bottom:12px;z-index:6;font-size:10px;letter-spacing:.06em;
+    color:rgba(42,34,28,.35);pointer-events:none;max-width:70vw}
   @media (max-width:640px){
     .brand .vibe{font-size:32px}
     .tag{font-size:9px;top:20px;right:16px}
@@ -54,6 +56,7 @@
   <p class="scroll-cue" id="scrollCue"><span>↓ 滚轮看工作台</span></p>
   <p class="hint" id="hint">打印机持续吐贴纸 · <em>鼠标靠近</em>贴纸会躲开</p>
 </div>
+<div id="status"></div>
 <div id="err" role="alert"></div>
 <canvas id="c"></canvas>
 <script type="importmap">
@@ -64,24 +67,52 @@
 </script>
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-const COLORS = {
-  cream: 0xF7F3EC, apricot: 0xE8D9C8, oak: 0xC4A882,
-  coral: 0xE87A6B, ink: 0x2A221C, mint: 0x7CB8A0,
-  lemon: 0xF0C94A, berry: 0xD94A3D, white: 0xFFF8F0,
-  brass: 0xC9A56B,
+/* —— palette / materials from MATERIALS.json + LIGHTING-SPEC —— */
+const MAT = {
+  bg: 0xF7F3EC,
+  oak: 0xC4A882,
+  coral: 0xE87A6B,
+  brass: 0xC4A06A,
+  plastic: 0xF5F2EC,
+  ceramic: 0xD9D0C3,
+  ink: 0x2A221C,
+  ambient: 0xFFF5EB,
+  key: 0xFFE4C8,
+  fill: 0xFFF8F0,
+  lampEmissive: 0xFFD2A6,
 };
+
+const ASSET = './studio/webgl-assets';
+const GLB = {
+  desk: `${ASSET}/glb/desk.glb`,
+  cutter: `${ASSET}/glb/cutter.glb`,
+  printer: `${ASSET}/glb/printer.glb`,
+  book: `${ASSET}/glb/book.glb`,
+  lamp: `${ASSET}/glb/lamp.glb`,
+  plant: `${ASSET}/glb/plant.glb`,
+};
+const qaLight = new URLSearchParams(location.search).has('qa')
+  || new URLSearchParams(location.search).get('light') === '1';
+const viewMode = new URLSearchParams(location.search).get('view') || '';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const errEl = document.getElementById('err');
 const hintEl = document.getElementById('hint');
 const scrollCueEl = document.getElementById('scrollCue');
+const statusEl = document.getElementById('status');
 function showErr(msg){
   console.error(msg);
   errEl.textContent = '加载失败\n' + msg;
   errEl.classList.add('show');
 }
+function setStatus(t){ statusEl.textContent = t; }
 
 try {
 
@@ -89,27 +120,31 @@ const canvas = document.getElementById('c');
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
 
+/* ========== renderer: AA forced, warm tone ========== */
 const renderer = new THREE.WebGLRenderer({
-  canvas, antialias: !isMobile, alpha: false,
+  canvas,
+  antialias: true, // forced on mobile too
+  alpha: false,
   powerPreference: 'high-performance',
+  stencil: false,
 });
 if (!renderer.getContext()) throw new Error('WebGL 不可用');
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.5 : 1.75));
+const maxPR = 2;
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, maxPR));
 renderer.setSize(innerWidth, innerHeight, false);
-renderer.setClearColor(COLORS.cream, 1);
+renderer.setClearColor(MAT.bg, 1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
-renderer.shadowMap.enabled = !isMobile;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(COLORS.cream);
-scene.fog = new THREE.Fog(COLORS.cream, 16, 32);
+scene.background = new THREE.Color(MAT.bg);
+scene.fog = new THREE.Fog(MAT.bg, 18, 36);
 
 const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 60);
 
-/* scroll progress 0 = hero float, 1 = workbench */
 let scrollTarget = 0;
 let scrollProg = 0;
 
@@ -123,7 +158,6 @@ const camDesk = {
 };
 const _camPos = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
-
 function applyCamera(){
   _camPos.lerpVectors(camHero.pos, camDesk.pos, scrollProg);
   _camLook.lerpVectors(camHero.look, camDesk.look, scrollProg);
@@ -131,34 +165,47 @@ function applyCamera(){
   camera.lookAt(_camLook);
 }
 applyCamera();
+if (viewMode === 'desk' || viewMode === 'workbench') {
+  scrollTarget = 1; scrollProg = 1; applyCamera();
+}
 
-/* —— lights —— */
-const amb = new THREE.AmbientLight(0xFFF4E8, 0.7);
+/* ========== lights (LIGHTING-SPEC) ========== */
+const amb = new THREE.AmbientLight(MAT.ambient, 0.55);
 scene.add(amb);
-const hemi = new THREE.HemisphereLight(0xFFF8F0, 0xE8D9C8, 0.5);
+const hemi = new THREE.HemisphereLight(0xFFF8F0, 0xE8D9C8, 0.35);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xFFF6EA, 1.05);
-key.position.set(-2.8, 8.5, 5.2);
-key.castShadow = !isMobile;
+
+/* Key: top-right, warm soft */
+const key = new THREE.DirectionalLight(MAT.key, 1.45);
+key.position.set(3.6, 8.2, 4.2);
+key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 1;
-key.shadow.camera.far = 28;
-key.shadow.camera.left = -7;
-key.shadow.camera.right = 7;
-key.shadow.camera.top = 7;
-key.shadow.camera.bottom = -5;
-key.shadow.bias = -0.00035;
-key.shadow.radius = 3.5;
+key.shadow.camera.far = 30;
+key.shadow.camera.left = -8;
+key.shadow.camera.right = 8;
+key.shadow.camera.top = 8;
+key.shadow.camera.bottom = -6;
+key.shadow.bias = -0.00028;
+key.shadow.normalBias = 0.02;
+key.shadow.radius = 4.5; // soft
 scene.add(key);
-const fill = new THREE.DirectionalLight(0xFFE8D8, 0.32);
-fill.position.set(5, 4, 2.5);
+
+/* Fill: front-left weak */
+const fill = new THREE.DirectionalLight(MAT.fill, 0.38);
+fill.position.set(-4.5, 3.5, 5.5);
 scene.add(fill);
 
-/* soft void ground (studio seamless) */
+/* rim / bounce from below-front to open dark faces */
+const bounce = new THREE.DirectionalLight(0xFFEBD8, 0.18);
+bounce.position.set(0.5, -1.5, 3);
+scene.add(bounce);
+
+/* ground */
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(50, 50),
   new THREE.MeshStandardMaterial({
-    color: COLORS.cream, roughness: 0.95, metalness: 0.0,
+    color: MAT.bg, roughness: 0.88, metalness: 0.0,
   })
 );
 ground.rotation.x = -Math.PI / 2;
@@ -166,600 +213,288 @@ ground.position.y = 0;
 ground.receiveShadow = true;
 scene.add(ground);
 
-/* ========== procedural textures ========== */
-function makeOakTexture(){
-  const S = 512;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const g = ctx.createLinearGradient(0,0,S,0);
-  g.addColorStop(0,'#D4B896');
-  g.addColorStop(0.35,'#C4A882');
-  g.addColorStop(0.55,'#B8956C');
-  g.addColorStop(0.8,'#C9AD88');
-  g.addColorStop(1,'#D0B490');
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,S,S);
-  // grain lines
-  for (let i=0;i<70;i++){
-    const y = (i/70)*S + Math.sin(i*1.7)*4;
-    ctx.strokeStyle = `rgba(90,60,30,${0.035 + (i%5)*0.01})`;
-    ctx.lineWidth = 1 + (i%3)*0.6;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    for (let x=0;x<=S;x+=16){
-      ctx.lineTo(x, y + Math.sin(x*0.02 + i)*3 + Math.sin(x*0.07)*1.5);
-    }
-    ctx.stroke();
-  }
-  // subtle pores
-  ctx.fillStyle = 'rgba(80,50,25,0.06)';
-  for (let i=0;i<180;i++){
-    ctx.fillRect(Math.random()*S, Math.random()*S, 1.5, 1.5);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = 8;
-  return tex;
-}
-const oakTex = makeOakTexture();
-oakTex.repeat.set(2.2, 1.1);
+/* ========== post: SMAA ========== */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const smaaPass = new SMAAPass(
+  Math.floor(innerWidth * renderer.getPixelRatio()),
+  Math.floor(innerHeight * renderer.getPixelRatio())
+);
+composer.addPass(smaaPass);
+composer.addPass(new OutputPass());
 
-function makePaperTex(tint='#FFFDF8'){
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = tint;
-  ctx.fillRect(0,0,S,S);
-  ctx.fillStyle = 'rgba(196,168,130,0.12)';
-  for (let i=0;i<30;i++) ctx.fillRect(Math.random()*S, Math.random()*S, 2, 2);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-/* ========== sticker textures (canvas) ========== */
-function makeStickerTexture(kind){
-  const S = 256;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const pad = 18;
-  const r = 36;
-  ctx.clearRect(0,0,S,S);
-  ctx.save();
-  ctx.shadowColor = 'rgba(42,34,28,0.18)';
-  ctx.shadowBlur = 10;
-  ctx.shadowOffsetY = 3;
-  roundRect(ctx, pad, pad, S-pad*2, S-pad*2, r);
-  ctx.fillStyle = '#FFFDF8';
-  ctx.fill();
-  ctx.restore();
-  roundRect(ctx, pad, pad, S-pad*2, S-pad*2, r);
-  ctx.fillStyle = '#FFFDF8';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(42,34,28,0.08)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  const cx = S/2, cy = S/2;
-  if (kind === 'cat') drawCat(ctx, cx, cy-6, 78);
-  else if (kind === 'berry') drawBerry(ctx, cx, cy-4, 70);
-  else if (kind === 'peach') drawPeach(ctx, cx, cy-2, 72);
-  else if (kind === 'lemon') drawLemon(ctx, cx, cy, 74);
-  else if (kind === 'blossom') drawBlossom(ctx, cx, cy, 68);
-  else if (kind === 'vibe') drawVibe(ctx, cx, cy);
-  else if (kind === 'mint') drawMintLeaf(ctx, cx, cy, 70);
-  else if (kind === 'make') drawMake(ctx, cx, cy);
-  else drawStar(ctx, cx, cy, 60);
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
-function roundRect(ctx,x,y,w,h,r){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
-  ctx.closePath();
-}
-function drawCat(ctx,cx,cy,s){
-  ctx.fillStyle = '#C9A88A';
-  ctx.beginPath(); ctx.ellipse(cx, cy+4, s*0.55, s*0.48, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(cx-s*0.42, cy-s*0.15); ctx.lineTo(cx-s*0.55, cy-s*0.62); ctx.lineTo(cx-s*0.12, cy-s*0.32); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(cx+s*0.42, cy-s*0.15); ctx.lineTo(cx+s*0.55, cy-s*0.62); ctx.lineTo(cx+s*0.12, cy-s*0.32); ctx.fill();
-  ctx.fillStyle = '#E8C4A8';
-  ctx.beginPath();
-  ctx.moveTo(cx-s*0.38, cy-s*0.18); ctx.lineTo(cx-s*0.48, cy-s*0.48); ctx.lineTo(cx-s*0.18, cy-s*0.28); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(cx+s*0.38, cy-s*0.18); ctx.lineTo(cx+s*0.48, cy-s*0.48); ctx.lineTo(cx+s*0.18, cy-s*0.28); ctx.fill();
-  // tabby stripes
-  ctx.strokeStyle = 'rgba(90,60,40,0.35)'; ctx.lineWidth = 3;
-  for (let i=-1;i<=1;i++){
-    ctx.beginPath(); ctx.moveTo(cx+i*s*0.18, cy-s*0.25); ctx.quadraticCurveTo(cx+i*s*0.1, cy, cx+i*s*0.22, cy+s*0.25); ctx.stroke();
-  }
-  ctx.fillStyle = '#5A9A88';
-  ctx.beginPath(); ctx.ellipse(cx-s*0.2, cy-s*0.02, s*0.11, s*0.14, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx+s*0.2, cy-s*0.02, s*0.11, s*0.14, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#2A221C';
-  ctx.beginPath(); ctx.arc(cx-s*0.2, cy-s*0.02, s*0.045, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx+s*0.2, cy-s*0.02, s*0.045, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#E87A6B';
-  ctx.beginPath();
-  ctx.moveTo(cx, cy+s*0.12); ctx.lineTo(cx-s*0.06, cy+s*0.2); ctx.lineTo(cx+s*0.06, cy+s*0.2); ctx.fill();
-  ctx.strokeStyle = '#2A221C'; ctx.lineWidth = 2; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(cx, cy+s*0.2); ctx.quadraticCurveTo(cx-s*0.12, cy+s*0.3, cx-s*0.18, cy+s*0.22); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx, cy+s*0.2); ctx.quadraticCurveTo(cx+s*0.12, cy+s*0.3, cx+s*0.18, cy+s*0.22); ctx.stroke();
-}
-function drawBerry(ctx,cx,cy,s){
-  ctx.fillStyle = '#D94A3D';
-  ctx.beginPath();
-  ctx.moveTo(cx, cy+s*0.55);
-  ctx.bezierCurveTo(cx+s*0.55, cy+s*0.2, cx+s*0.45, cy-s*0.35, cx, cy-s*0.25);
-  ctx.bezierCurveTo(cx-s*0.45, cy-s*0.35, cx-s*0.55, cy+s*0.2, cx, cy+s*0.55);
-  ctx.fill();
-  ctx.fillStyle = '#F7F3EC';
-  for (let i=0;i<8;i++){
-    const a = (i/8)*Math.PI*2 + 0.4;
-    const r = s*0.22;
-    ctx.beginPath(); ctx.ellipse(cx+Math.cos(a)*r, cy+Math.sin(a)*r*0.7, 3, 5, a, 0, Math.PI*2); ctx.fill();
-  }
-  ctx.fillStyle = '#7CB8A0';
-  ctx.beginPath(); ctx.ellipse(cx-s*0.12, cy-s*0.38, s*0.18, s*0.1, -0.6, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx+s*0.12, cy-s*0.38, s*0.18, s*0.1, 0.6, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx, cy-s*0.48, s*0.12, s*0.08, 0, 0, Math.PI*2); ctx.fill();
-}
-function drawPeach(ctx,cx,cy,s){
-  ctx.fillStyle = '#F0A878';
-  ctx.beginPath(); ctx.ellipse(cx-s*0.08, cy+s*0.05, s*0.42, s*0.48, -0.15, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#E87A6B';
-  ctx.globalAlpha = 0.45;
-  ctx.beginPath(); ctx.ellipse(cx+s*0.12, cy+s*0.08, s*0.32, s*0.4, 0.2, 0, Math.PI*2); ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = 'rgba(217,74,61,0.35)'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(cx, cy-s*0.35); ctx.quadraticCurveTo(cx-s*0.05, cy, cx, cy+s*0.4); ctx.stroke();
-  ctx.fillStyle = '#7CB8A0';
-  ctx.beginPath(); ctx.ellipse(cx+s*0.1, cy-s*0.42, s*0.2, s*0.1, 0.5, 0, Math.PI*2); ctx.fill();
-}
-function drawLemon(ctx,cx,cy,s){
-  ctx.fillStyle = '#F0C94A';
-  ctx.beginPath(); ctx.ellipse(cx, cy, s*0.55, s*0.55, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#FFF8DC';
-  ctx.beginPath(); ctx.arc(cx, cy, s*0.38, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = '#E8B84A'; ctx.lineWidth = 2;
-  for (let i=0;i<8;i++){
-    const a = (i/8)*Math.PI*2;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx+Math.cos(a)*s*0.38, cy+Math.sin(a)*s*0.38); ctx.stroke();
-  }
-  ctx.fillStyle = '#F0C94A';
-  ctx.beginPath(); ctx.arc(cx, cy, s*0.08, 0, Math.PI*2); ctx.fill();
-}
-function drawBlossom(ctx,cx,cy,s){
-  const petals = 5;
-  for (let i=0;i<petals;i++){
-    const a = (i/petals)*Math.PI*2 - Math.PI/2;
-    ctx.fillStyle = i%2 ? '#F5B0A8' : '#E87A6B';
-    ctx.beginPath();
-    ctx.ellipse(cx+Math.cos(a)*s*0.28, cy+Math.sin(a)*s*0.28, s*0.22, s*0.14, a, 0, Math.PI*2);
-    ctx.fill();
-  }
-  ctx.fillStyle = '#F0C94A';
-  ctx.beginPath(); ctx.arc(cx, cy, s*0.12, 0, Math.PI*2); ctx.fill();
-}
-function drawVibe(ctx,cx,cy){
-  ctx.font = 'bold 72px Caveat, cursive';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.strokeStyle = '#FFFDF8';
-  ctx.lineWidth = 14;
-  ctx.lineJoin = 'round';
-  ctx.strokeText('VIBE', cx, cy+4);
-  ctx.fillStyle = '#E87A6B';
-  ctx.fillText('VIBE', cx, cy+4);
-}
-function drawMake(ctx,cx,cy){
-  ctx.fillStyle = '#FFFDF8';
-  roundRect(ctx, 28, 70, 200, 116, 18);
-  ctx.fill();
-  ctx.fillStyle = '#E87A6B';
-  ctx.font = '600 22px DM Sans, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.letterSpacing = '0.08em';
-  ctx.fillText('MAKE', cx, cy-22);
-  ctx.fillText('SOMETHING', cx, cy+6);
-  ctx.fillText('BEAUTIFUL', cx, cy+34);
-}
-function drawMintLeaf(ctx,cx,cy,s){
-  ctx.fillStyle = '#7CB8A0';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, s*0.35, s*0.55, 0.3, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = '#5A9A80'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(cx-s*0.05, cy+s*0.5); ctx.quadraticCurveTo(cx+s*0.05, cy, cx-s*0.02, cy-s*0.5); ctx.stroke();
-}
-function drawStar(ctx,cx,cy,s){
-  ctx.fillStyle = '#F0C94A';
-  ctx.beginPath();
-  for (let i=0;i<5;i++){
-    const a = (i*2/5)*Math.PI*2 - Math.PI/2;
-    const b = ((i*2+1)/5)*Math.PI*2 - Math.PI/2;
-    const x1 = cx+Math.cos(a)*s*0.55, y1 = cy+Math.sin(a)*s*0.55;
-    const x2 = cx+Math.cos(b)*s*0.22, y2 = cy+Math.sin(b)*s*0.22;
-    if (i===0) ctx.moveTo(x1,y1); else ctx.lineTo(x1,y1);
-    ctx.lineTo(x2,y2);
-  }
-  ctx.closePath(); ctx.fill();
-}
-
-const STICKER_KINDS = ['cat','berry','peach','lemon','blossom','vibe','mint','star','make'];
-const stickerTextures = STICKER_KINDS.map(makeStickerTexture);
-function makeBackTexture(){
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#F3E6D4';
-  ctx.fillRect(0,0,S,S);
-  ctx.fillStyle = 'rgba(196,168,130,0.25)';
-  for (let i=0;i<40;i++) ctx.fillRect(Math.random()*S, Math.random()*S, 2, 2);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-const backTex = makeBackTexture();
-
-/* ========== WORKBENCH ========== */
+/* ========== workbench root ========== */
 const bench = new THREE.Group();
-bench.position.set(0, 0, 0);
 scene.add(bench);
-
-const oakMat = new THREE.MeshStandardMaterial({
-  map: oakTex, color: 0xffffff, roughness: 0.62, metalness: 0.04,
-});
-const creamMat = new THREE.MeshStandardMaterial({
-  color: 0xF5EEE4, roughness: 0.48, metalness: 0.04,
-});
-const coralMat = new THREE.MeshStandardMaterial({
-  color: COLORS.coral, roughness: 0.38, metalness: 0.1,
-});
-const coralSoftMat = new THREE.MeshStandardMaterial({
-  color: 0xF0A898, roughness: 0.45, metalness: 0.06,
-});
-const darkMat = new THREE.MeshStandardMaterial({
-  color: 0x3A322C, roughness: 0.85, metalness: 0.05,
-});
-const brassMat = new THREE.MeshStandardMaterial({
-  color: COLORS.brass, roughness: 0.28, metalness: 0.75,
-});
-const potMat = new THREE.MeshStandardMaterial({
-  color: 0x9A9A98, roughness: 0.7, metalness: 0.05,
-});
-const leafMat = new THREE.MeshStandardMaterial({
-  color: COLORS.mint, roughness: 0.55, metalness: 0.0,
-});
-const leafDarkMat = new THREE.MeshStandardMaterial({
-  color: 0x5A9A80, roughness: 0.6, metalness: 0.0,
-});
-
-/* floating desk */
 const DESK_Y = 0.92;
-const desk = new THREE.Mesh(new RoundedBoxGeometry(4.6, 0.2, 2.35, 6, 0.1), oakMat);
-desk.position.set(0, DESK_Y, 0);
-desk.castShadow = true;
-desk.receiveShadow = true;
-bench.add(desk);
-
-/* underside rim for thickness */
-const deskRim = new THREE.Mesh(
-  new RoundedBoxGeometry(4.45, 0.06, 2.2, 4, 0.06),
-  new THREE.MeshStandardMaterial({ color: 0xB8956C, roughness: 0.7, metalness: 0.03 })
-);
-deskRim.position.set(0, DESK_Y - 0.12, 0);
-deskRim.castShadow = true;
-bench.add(deskRim);
-
-/* soft contact shadow under floating desk */
-const deskShadow = new THREE.Mesh(
-  new THREE.PlaneGeometry(5.4, 3.0),
-  new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.14, depthWrite: false })
-);
-deskShadow.rotation.x = -Math.PI/2;
-deskShadow.position.set(0.1, 0.02, 0.15);
-bench.add(deskShadow);
-// blur-ish outer shadow
-const deskShadow2 = new THREE.Mesh(
-  new THREE.PlaneGeometry(6.2, 3.6),
-  new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.06, depthWrite: false })
-);
-deskShadow2.rotation.x = -Math.PI/2;
-deskShadow2.position.set(0.15, 0.015, 0.2);
-bench.add(deskShadow2);
-
 const topY = DESK_Y + 0.11;
+const loadedProps = Object.create(null);
+let printerSlotLocal = new THREE.Vector3(0, 0.42, 0.62);
+let printerGroup = null;
+let lampGroup = null;
+let tempDesk = null;
 
-/* —— cutting machine (left, coral/pink accent) —— */
-const cutter = new THREE.Group();
-cutter.position.set(-1.55, topY, -0.15);
-bench.add(cutter);
-{
-  const body = new THREE.Mesh(new RoundedBoxGeometry(1.25, 0.55, 1.05, 4, 0.1), creamMat);
-  body.position.y = 0.28;
-  body.castShadow = true;
-  body.receiveShadow = true;
-  cutter.add(body);
-  // coral side panel / lid accent
-  const lid = new THREE.Mesh(new RoundedBoxGeometry(1.18, 0.08, 0.95, 3, 0.05), coralSoftMat);
-  lid.position.y = 0.58;
-  lid.castShadow = true;
-  cutter.add(lid);
-  // front coral strip
-  const strip = new THREE.Mesh(new RoundedBoxGeometry(1.05, 0.12, 0.06, 2, 0.03), coralMat);
-  strip.position.set(0, 0.22, 0.52);
-  cutter.add(strip);
-  // power button
-  const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 20), coralMat);
-  btn.rotation.x = Math.PI/2;
-  btn.position.set(0.4, 0.35, 0.54);
-  cutter.add(btn);
-  // roller slot
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.05, 0.12), darkMat);
-  slot.position.set(0, 0.18, 0.48);
-  cutter.add(slot);
+const texLoader = new THREE.TextureLoader();
+function loadTex(url, { colorSpace = THREE.SRGBColorSpace, wrap = true, aniso = 8 } = {}){
+  return new Promise((resolve, reject) => {
+    texLoader.load(url, (t) => {
+      t.colorSpace = colorSpace;
+      if (wrap){
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      }
+      t.anisotropy = Math.min(aniso, renderer.capabilities.getMaxAnisotropy());
+      t.needsUpdate = true;
+      resolve(t);
+    }, undefined, reject);
+  });
 }
 
-/* —— printer on desk (mid-left) —— */
-const printerGroup = new THREE.Group();
-printerGroup.position.set(-0.25, topY, -0.05);
-bench.add(printerGroup);
-
-function buildPrinter(){
-  const bodyMat = creamMat;
-  const woodMat = new THREE.MeshStandardMaterial({
-    map: oakTex, color: 0xffffff, roughness: 0.65, metalness: 0.03,
+function enableShadows(root){
+  root.traverse((o) => {
+    if (o.isMesh){
+      o.castShadow = true;
+      o.receiveShadow = true;
+      if (o.material){
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats){
+          if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+          m.needsUpdate = true;
+        }
+      }
+    }
   });
-  woodMat.map = oakTex.clone();
-  woodMat.map.repeat.set(0.4, 0.6);
-  woodMat.map.needsUpdate = true;
+}
 
-  const body = new THREE.Mesh(new RoundedBoxGeometry(1.15, 0.95, 1.05, 4, 0.1), bodyMat);
-  body.position.y = 0.52;
-  body.castShadow = true;
-  body.receiveShadow = true;
-  printerGroup.add(body);
+function fitProp(root, targetSize, yAlign = 'bottom'){
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const s = targetSize / maxDim;
+  root.scale.setScalar(s);
+  box.setFromObject(root);
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.x -= c.x;
+  root.position.z -= c.z;
+  if (yAlign === 'bottom'){
+    root.position.y -= box.min.y;
+  } else {
+    root.position.y -= c.y;
+  }
+}
 
-  const side = new THREE.Mesh(new RoundedBoxGeometry(0.07, 0.78, 0.9, 2, 0.03), woodMat);
-  side.position.set(0.58, 0.52, 0);
-  side.castShadow = true;
-  printerGroup.add(side);
+async function tryLoadGLB(url){
+  const loader = new GLTFLoader();
+  try {
+    const gltf = await loader.loadAsync(url);
+    return gltf.scene;
+  } catch (e) {
+    return null;
+  }
+}
 
-  const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 28), coralMat);
-  btn.rotation.z = Math.PI/2;
-  btn.position.set(0.63, 0.55, 0.12);
-  btn.castShadow = true;
-  printerGroup.add(btn);
+/* —— temp oak desk ONLY for lighting QA (not a delivery prop set) —— */
+async function buildTempLightDesk(){
+  let albedo, normal, rough;
+  try {
+    albedo = await loadTex(`${ASSET}/materials/wood-oak/web/albedo.jpg`);
+    normal = await loadTex(`${ASSET}/materials/wood-oak/web/normal.jpg`, { colorSpace: THREE.LinearSRGBColorSpace });
+    rough = await loadTex(`${ASSET}/materials/wood-oak/web/roughness.jpg`, { colorSpace: THREE.NoColorSpace });
+    albedo.repeat.set(1.6, 0.85);
+    normal.repeat.copy(albedo.repeat);
+    rough.repeat.copy(albedo.repeat);
+  } catch (e) {
+    console.warn('oak maps missing', e);
+  }
+  const mat = new THREE.MeshStandardMaterial({
+    color: albedo ? 0xffffff : MAT.oak,
+    map: albedo || null,
+    normalMap: normal || null,
+    roughnessMap: rough || null,
+    roughness: 0.55,
+    metalness: 0.0,
+  });
+  // single slab — lighting probe only; no machines
+  const desk = new THREE.Mesh(new RoundedBoxGeometry(4.6, 0.18, 2.2, 8, 0.08), mat);
+  desk.position.set(0, DESK_Y, 0);
+  desk.castShadow = true;
+  desk.receiveShadow = true;
+  desk.name = 'temp-light-desk';
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.6, 3.1),
+    new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.13, depthWrite: false })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.set(0.12, 0.02, 0.18);
+  const g = new THREE.Group();
+  g.add(desk, shadow);
+  g.visible = false; // shown only for qa / until real desk.glb
+  return g;
+}
 
-  const lid = new THREE.Mesh(new RoundedBoxGeometry(1.05, 0.07, 0.95, 2, 0.035), bodyMat);
-  lid.position.y = 1.02;
-  printerGroup.add(lid);
+async function mountProps(){
+  tempDesk = await buildTempLightDesk();
+  bench.add(tempDesk);
 
-  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.06, 0.14), darkMat);
-  slot.position.set(0, 0.42, 0.52);
-  printerGroup.add(slot);
+  const placements = {
+    desk: { pos: [0, DESK_Y, 0], size: 4.6, yAlign: 'bottom' },
+    cutter: { pos: [-1.55, topY, -0.15], size: 1.35 },
+    printer: { pos: [-0.25, topY, -0.05], size: 1.2 },
+    book: { pos: [1.15, topY, 0.15], size: 1.55, rotY: -0.18 },
+    plant: { pos: [1.55, topY, -0.55], size: 0.55 },
+    lamp: { pos: [1.85, topY, 0.55], size: 1.15 },
+  };
 
-  const lip = new THREE.Mesh(new RoundedBoxGeometry(0.9, 0.04, 0.18, 2, 0.02), bodyMat);
-  lip.position.set(0, 0.38, 0.56);
-  printerGroup.add(lip);
+  const results = {};
+  await Promise.all(Object.keys(GLB).map(async (id) => {
+    const sceneRoot = await tryLoadGLB(GLB[id]);
+    results[id] = sceneRoot;
+  }));
 
-  for (const [x,z] of [[-0.4,-0.35],[0.4,-0.35],[-0.4,0.35],[0.4,0.35]]){
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.06, 12), darkMat);
-    foot.position.set(x, 0.03, z);
-    printerGroup.add(foot);
+  let any = false;
+  for (const id of Object.keys(GLB)){
+    const root = results[id];
+    if (!root) continue;
+    any = true;
+    const cfg = placements[id];
+    const wrap = new THREE.Group();
+    wrap.add(root);
+    fitProp(root, cfg.size, cfg.yAlign || 'bottom');
+    wrap.position.set(...cfg.pos);
+    if (cfg.rotY) wrap.rotation.y = cfg.rotY;
+    enableShadows(wrap);
+    bench.add(wrap);
+    loadedProps[id] = wrap;
+    if (id === 'printer'){
+      printerGroup = wrap;
+      // heuristic slot near front of bbox
+      const box = new THREE.Box3().setFromObject(root);
+      printerSlotLocal = new THREE.Vector3(0, Math.max(0.2, (box.max.y - box.min.y) * 0.45), box.max.z * 0.9);
+    }
+    if (id === 'lamp'){
+      lampGroup = wrap;
+      const lampLight = new THREE.SpotLight(MAT.lampEmissive, 1.2, 5.5, 0.55, 0.5, 1.1);
+      lampLight.position.set(-0.35, 0.7, 0);
+      lampLight.target.position.set(-0.8, 0.05, 0.15);
+      wrap.add(lampLight);
+      wrap.add(lampLight.target);
+      lampLight.castShadow = !isMobile;
+      if (lampLight.castShadow){
+        lampLight.shadow.mapSize.set(1024, 1024);
+        lampLight.shadow.bias = -0.001;
+      }
+      const fillL = new THREE.PointLight(MAT.lampEmissive, 0.5, 3.0);
+      fillL.position.set(-0.3, 0.55, 0.05);
+      wrap.add(fillL);
+      wrap.userData.light = lampLight;
+      wrap.userData.fill = fillL;
+    }
   }
 
-  // sheet emerging from slot (static floral sheet look)
-  const sheetGeo = new THREE.PlaneGeometry(0.7, 0.55, 8, 8);
-  const sheetTex = makeStickerTexture('blossom');
-  const sheet = new THREE.Mesh(sheetGeo, new THREE.MeshStandardMaterial({
-    map: sheetTex, roughness: 0.7, metalness: 0, side: THREE.DoubleSide,
-  }));
-  sheet.position.set(0, 0.42, 0.72);
-  sheet.rotation.x = -0.55;
-  sheet.castShadow = true;
-  printerGroup.add(sheet);
+  // show temp oak desk only if no desk.glb AND (qa mode OR we want light probe for scroll view)
+  if (!loadedProps.desk){
+    // Temp oak slab is lighting probe ONLY — hide on hero so LOCK-hero-float compare is fair.
+    // Show when scrolled to workbench / ?view=desk|workbench (still not a delivery prop set).
+    const wantDeskView = viewMode === 'desk' || viewMode === 'workbench' || qaLight;
+    tempDesk.visible = wantDeskView;
+    tempDesk.userData.lightingProbe = true;
+  } else {
+    tempDesk.visible = false;
+  }
 
-  return { slotLocal: new THREE.Vector3(0, 0.42, 0.62) };
+  const missing = Object.keys(GLB).filter((k) => !loadedProps[k]);
+  setStatus(
+    missing.length === 6
+      ? '精模 GLB 未到齐 · 仅漂浮贴纸 + 暖光空台（临时木纹桌仅自检对光，非交付）'
+      : `已载: ${Object.keys(loadedProps).join(', ') || '无'} · 仍缺: ${missing.join(', ')}`
+  );
+  return { any, missing };
 }
-const printerMeta = buildPrinter();
 
 function getSlotWorld(){
-  const v = printerMeta.slotLocal.clone();
-  printerGroup.localToWorld(v);
-  return v;
+  const v = printerSlotLocal.clone();
+  if (printerGroup){
+    printerGroup.localToWorld(v);
+    return v;
+  }
+  // fallback spawn matching hero-float narrative (mid-left above desk height)
+  return new THREE.Vector3(-0.25, topY + 0.45, 0.55);
 }
 
-/* —— loose stickers on desk —— */
-function flatSticker(kind, x, z, rot, scale=0.38){
-  const tex = stickerTextures[STICKER_KINDS.indexOf(kind)] || stickerTextures[0];
-  const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(scale, scale * (kind==='make' ? 0.72 : 1)),
-    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, metalness: 0, transparent: true, alphaTest: 0.05 })
-  );
-  m.rotation.x = -Math.PI/2;
-  m.rotation.z = rot;
-  m.position.set(x, topY + 0.012, z);
-  m.receiveShadow = true;
-  m.castShadow = true;
-  bench.add(m);
-  return m;
-}
-flatSticker('berry', -0.85, 0.72, 0.2, 0.34);
-flatSticker('cat', -0.35, 0.85, -0.35, 0.36);
-flatSticker('lemon', 0.15, 0.78, 0.45, 0.32);
-flatSticker('make', 0.55, 0.95, 0.08, 0.52);
-
-/* —— open notebook —— */
-const book = new THREE.Group();
-book.position.set(1.15, topY, 0.15);
-book.rotation.y = -0.18;
-bench.add(book);
-{
-  const coverMat = new THREE.MeshStandardMaterial({ color: 0xE8D9C8, roughness: 0.65, metalness: 0.02 });
-  const pageMat = new THREE.MeshStandardMaterial({ color: 0xFFFDF8, roughness: 0.85, metalness: 0 });
-  // left page
-  const left = new THREE.Mesh(new RoundedBoxGeometry(0.72, 0.025, 0.95, 2, 0.02), pageMat);
-  left.position.set(-0.36, 0.02, 0);
-  left.rotation.z = 0.04;
-  left.castShadow = true;
-  book.add(left);
-  // right page
-  const right = new THREE.Mesh(new RoundedBoxGeometry(0.72, 0.025, 0.95, 2, 0.02), pageMat);
-  right.position.set(0.36, 0.02, 0);
-  right.rotation.z = -0.04;
-  right.castShadow = true;
-  book.add(right);
-  // cover under
-  const cover = new THREE.Mesh(new RoundedBoxGeometry(1.5, 0.04, 1.0, 2, 0.03), coverMat);
-  cover.position.y = -0.01;
-  cover.castShadow = true;
-  book.add(cover);
-  // stickers on pages
-  const pageStickers = [
-    ['mint', -0.5, -0.2, 0.5],
-    ['blossom', -0.25, 0.15, 0.35],
-    ['lemon', 0.25, -0.25, 0.32],
-    ['berry', 0.48, 0.1, 0.3],
-    ['peach', 0.2, 0.25, 0.28],
-    ['star', -0.45, 0.25, 0.22],
+/* ========== soft paper stickers (thin box + bend, no billboard) ========== */
+const stickerTexList = [];
+async function loadStickerTextures(){
+  // Official transparent albedo PNGs (STICKERS.md) — not greenscreen slices / canvas fakes
+  const files = [
+    'sticker-strawberry.png',
+    'sticker-cat.png',
+    'sticker-lemon.png',
+    'sticker-peach.png',
+    'sticker-vibe.png',
+    'sticker-msb.png',
+    'sticker-blossom.png',
+    // peel / variant accents (lower weight via duplicates of primaries in spawn)
+    'sticker-cat-peel.png',
+    'sticker-blossom-peel.png',
+    'sticker-strawberry-b.png',
+    'sticker-blossom-b.png',
+    'sticker-blossom-c.png',
+    'sticker-blossom-d.png',
   ];
-  for (const [k,x,z,sc] of pageStickers){
-    const tex = stickerTextures[STICKER_KINDS.indexOf(k)] || stickerTextures[0];
-    const s = new THREE.Mesh(
-      new THREE.PlaneGeometry(sc, sc),
-      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, transparent: true, alphaTest: 0.05 })
-    );
-    s.rotation.x = -Math.PI/2;
-    s.position.set(x, 0.04, z);
-    book.add(s);
+  const primary = files.slice(0, 7);
+  const loads = primary.map((file) => new Promise((resolve) => {
+    texLoader.load(`${ASSET}/stickers/${file}`, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const img = tex.image;
+      resolve({ tex, w: img?.width || 512, h: img?.height || 512, file, primary: true });
+    }, undefined, () => resolve(null));
+  }));
+  const variants = files.slice(7).map((file) => new Promise((resolve) => {
+    texLoader.load(`${ASSET}/stickers/${file}`, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const img = tex.image;
+      resolve({ tex, w: img?.width || 512, h: img?.height || 512, file, primary: false });
+    }, undefined, () => resolve(null));
+  }));
+  const got = (await Promise.all([...loads, ...variants])).filter(Boolean);
+  // weight primaries ~3x for spawn variety
+  for (const g of got){
+    stickerTexList.push(g);
+    if (g.primary){ stickerTexList.push(g, g); }
   }
+  if (!stickerTexList.length) throw new Error('贴纸 PNG 加载失败（STICKERS.md）');
+  console.info('[studio] stickers loaded', got.map((g) => g.file));
 }
 
-/* —— plant —— */
-const plant = new THREE.Group();
-plant.position.set(1.55, topY, -0.55);
-bench.add(plant);
-{
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.13, 0.22, 24), potMat);
-  pot.position.y = 0.11;
-  pot.castShadow = true;
-  plant.add(pot);
-  const soil = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.14, 0.14, 0.03, 20),
-    new THREE.MeshStandardMaterial({ color: 0x5A4030, roughness: 1 })
-  );
-  soil.position.y = 0.22;
-  plant.add(soil);
-  // foliage clusters
-  const leaves = [
-    [0, 0.42, 0, 0.18, leafMat],
-    [-0.1, 0.38, 0.08, 0.14, leafDarkMat],
-    [0.1, 0.4, -0.06, 0.15, leafMat],
-    [0.05, 0.5, 0.05, 0.12, leafDarkMat],
-    [-0.06, 0.48, -0.08, 0.13, leafMat],
-    [0, 0.55, 0, 0.1, leafDarkMat],
-  ];
-  for (const [x,y,z,r,mat] of leaves){
-    const leaf = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), mat);
-    leaf.position.set(x,y,z);
-    leaf.scale.y = 1.25;
-    leaf.castShadow = true;
-    plant.add(leaf);
-  }
+function makeBackTex(){
+  const S = 64;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#F5F2EC';
+  ctx.fillRect(0, 0, S, S);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
+const backTex = makeBackTex();
 
-/* —— desk lamp (right, warm brass) —— */
-const lamp = new THREE.Group();
-lamp.position.set(1.85, topY, 0.55);
-bench.add(lamp);
-{
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.04, 24), brassMat);
-  base.position.y = 0.02;
-  base.castShadow = true;
-  lamp.add(base);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.85, 12), brassMat);
-  stem.position.set(-0.05, 0.45, -0.05);
-  stem.rotation.z = 0.22;
-  stem.castShadow = true;
-  lamp.add(stem);
-  const joint = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), brassMat);
-  joint.position.set(-0.15, 0.88, -0.08);
-  lamp.add(joint);
-  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.45, 10), brassMat);
-  arm.position.set(-0.32, 0.78, -0.05);
-  arm.rotation.z = 1.15;
-  arm.castShadow = true;
-  lamp.add(arm);
-  // cone shade
-  const shade = new THREE.Mesh(
-    new THREE.ConeGeometry(0.22, 0.28, 24, 1, true),
-    new THREE.MeshStandardMaterial({
-      color: 0xE8D5B8, roughness: 0.55, metalness: 0.15, side: THREE.DoubleSide,
-    })
-  );
-  shade.position.set(-0.48, 0.62, 0);
-  shade.rotation.z = 0.55;
-  shade.castShadow = true;
-  lamp.add(shade);
-  // inner glow disc
-  const glow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.18, 20),
-    new THREE.MeshBasicMaterial({ color: 0xFFE4B8, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
-  );
-  glow.position.set(-0.48, 0.52, 0);
-  glow.rotation.x = Math.PI/2;
-  glow.rotation.z = 0.55;
-  lamp.add(glow);
-
-  const lampLight = new THREE.SpotLight(0xFFD8A8, 2.4, 5.5, 0.55, 0.45, 1.2);
-  lampLight.position.set(-0.48, 0.58, 0);
-  lampLight.target.position.set(-0.9, 0.05, 0.2);
-  lamp.add(lampLight);
-  lamp.add(lampLight.target);
-  lampLight.castShadow = !isMobile;
-  if (lampLight.castShadow){
-    lampLight.shadow.mapSize.set(512, 512);
-    lampLight.shadow.bias = -0.001;
-  }
-  // fill point for soft bloom feel
-  const lampFill = new THREE.PointLight(0xFFCC88, 0.55, 3.2);
-  lampFill.position.set(-0.4, 0.5, 0.1);
-  lamp.add(lampFill);
-  lamp.userData.light = lampLight;
-  lamp.userData.fill = lampFill;
-}
-
-/* ========== soft paper sticker system ========== */
 const stickers = [];
-const MAX_STICKERS = isMobile ? 20 : 32;
+const MAX_STICKERS = isMobile ? 18 : 28;
 const pointer = new THREE.Vector2(9999, 9999);
 const pointerWorld = new THREE.Vector3(9999, 9999, 9999);
 let pointerActive = false;
 
-function createPaperGeo(w, h, segX=10, segY=12){
+/** Thin paper slab: subdivided planes front/back + edge rim; bend via vertex displace */
+function createPaperGeo(w, h, segX = 12, segY = 14){
   const geo = new THREE.PlaneGeometry(w, h, segX, segY);
   const pos = geo.attributes.position;
   const rest = new Float32Array(pos.count * 3);
-  for (let i=0;i<pos.count;i++){
-    rest[i*3] = pos.getX(i);
-    rest[i*3+1] = pos.getY(i);
-    rest[i*3+2] = pos.getZ(i);
+  for (let i = 0; i < pos.count; i++){
+    rest[i * 3] = pos.getX(i);
+    rest[i * 3 + 1] = pos.getY(i);
+    rest[i * 3 + 2] = pos.getZ(i);
   }
   geo.userData.rest = rest;
   geo.userData.w = w;
@@ -771,12 +506,12 @@ function bendPaper(geo, curlAmt, rollAmt, twist, time){
   const pos = geo.attributes.position;
   const rest = geo.userData.rest;
   const w = geo.userData.w, h = geo.userData.h;
-  for (let i=0;i<pos.count;i++){
-    const x = rest[i*3], y = rest[i*3+1];
-    const u = x / (w*0.5);
-    const v = y / (h*0.5);
+  for (let i = 0; i < pos.count; i++){
+    const x = rest[i * 3], y = rest[i * 3 + 1];
+    const u = x / (w * 0.5);
+    const v = y / (h * 0.5);
     const wave = Math.sin(v * Math.PI * 0.85 + time) * curlAmt;
-    const edgeRoll = (u*u) * rollAmt * (0.55 + 0.45*Math.sin(time*0.7 + v));
+    const edgeRoll = (u * u) * rollAmt * (0.55 + 0.45 * Math.sin(time * 0.7 + v));
     const twistZ = twist * u * v * 0.15;
     pos.setXYZ(i, x, y, wave + edgeRoll + twistZ);
   }
@@ -784,9 +519,9 @@ function bendPaper(geo, curlAmt, rollAmt, twist, time){
   geo.computeVertexNormals();
 }
 
-function spawnSticker(forceLanded=false){
+function spawnSticker(forceLanded = false){
   if (stickers.length >= MAX_STICKERS){
-    let victim = stickers.find(s => s.state === 'landed' && s.age > 4);
+    let victim = stickers.find((s) => s.state === 'landed' && s.age > 4);
     if (!victim) victim = stickers[0];
     if (victim){
       scene.remove(victim.group);
@@ -794,100 +529,103 @@ function spawnSticker(forceLanded=false){
       stickers.splice(stickers.indexOf(victim), 1);
     }
   }
-  const kindIdx = (Math.random()*STICKER_KINDS.length)|0;
-  const tex = stickerTextures[kindIdx];
-  const size = 0.38 + Math.random()*0.2;
-  const geo = createPaperGeo(size, size * (0.95 + Math.random()*0.15), 10, 12);
+  const pick = stickerTexList[(Math.random() * stickerTexList.length) | 0];
+  const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+  const size = 0.36 + Math.random() * 0.22;
+  const w = size * Math.min(1.35, Math.max(0.7, aspect));
+  const h = size;
+  const thickness = 0.012; // ~1.2mm paper thickness in scene scale
+  const geo = createPaperGeo(w, h, 12, 14);
   const frontMat = new THREE.MeshStandardMaterial({
-    map: tex, roughness: 0.72, metalness: 0.0,
-    side: THREE.FrontSide, transparent: true, alphaTest: 0.05,
+    map: pick.tex,
+    roughness: 0.75,
+    metalness: 0.0,
+    side: THREE.FrontSide,
+    transparent: true,
+    alphaTest: 0.35,
+    depthWrite: true,
   });
   const backMat = new THREE.MeshStandardMaterial({
-    map: backTex, color: 0xF0E4D4, roughness: 0.85, metalness: 0.0,
+    map: backTex,
+    color: 0xF5F2EC,
+    roughness: 0.85,
+    metalness: 0.0,
     side: THREE.BackSide,
   });
   const front = new THREE.Mesh(geo, frontMat);
   const back = new THREE.Mesh(geo.clone(), backMat);
-  back.position.z = -0.012;
+  back.position.z = -thickness;
   front.castShadow = true;
   back.castShadow = true;
 
-  const edgeGeo = new THREE.PlaneGeometry(size, 0.014, 1, 1);
-  const edgeMat = new THREE.MeshStandardMaterial({ color: 0xE8D9C8, roughness: 0.8, side: THREE.DoubleSide });
-  const edgeTop = new THREE.Mesh(edgeGeo, edgeMat);
-  edgeTop.rotation.x = Math.PI/2;
-  edgeTop.position.y = size*0.48;
-  const edgeBot = edgeTop.clone();
-  edgeBot.position.y = -size*0.48;
-
+  // thickness = front/back separation; white paper edge reads when curling (no rigid rim boxes)
   const group = new THREE.Group();
-  group.add(front, back, edgeTop, edgeBot);
+  group.add(front, back);
 
   const slot = getSlotWorld();
   group.position.copy(slot);
-  group.position.x += (Math.random()-0.5)*0.08;
-  group.position.y += (Math.random()-0.5)*0.04;
+  group.position.x += (Math.random() - 0.5) * 0.08;
+  group.position.y += (Math.random() - 0.5) * 0.04;
   group.rotation.set(
-    (Math.random()-0.5)*0.3,
-    (Math.random()-0.5)*0.4,
-    (Math.random()-0.5)*0.5
+    (Math.random() - 0.5) * 0.3,
+    (Math.random() - 0.5) * 0.4,
+    (Math.random() - 0.5) * 0.5
   );
 
   const sh = new THREE.Mesh(
-    new THREE.CircleGeometry(size*0.45, 20),
+    new THREE.CircleGeometry(size * 0.45, 24),
     new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0, depthWrite: false })
   );
-  sh.rotation.x = -Math.PI/2;
+  sh.rotation.x = -Math.PI / 2;
   sh.position.y = topY + 0.014;
   scene.add(sh);
   scene.add(group);
 
   const willLand = forceLanded || Math.random() < 0.42;
-  const floatDur = 2.8 + Math.random()*2.4;
-  const driftX = 0.6 + Math.random()*2.8;
-  const driftZ = (Math.random()-0.5)*1.4;
-  const peakY = 1.6 + Math.random()*2.0;
+  const floatDur = 2.8 + Math.random() * 2.4;
+  const driftX = 0.6 + Math.random() * 2.8;
+  const driftZ = (Math.random() - 0.5) * 1.4;
+  const peakY = 1.6 + Math.random() * 2.0;
 
   const s = {
-    group, front, back, geo, edgeTop, edgeBot, shadow: sh,
+    group, front, back, geo, shadow: sh,
     state: forceLanded ? 'landed' : 'eject',
     age: 0, t: 0, size,
-    curl: 0.07 + Math.random()*0.10,
-    roll: 0.035 + Math.random()*0.06,
-    twist: (Math.random()-0.5)*0.8,
+    curl: 0.07 + Math.random() * 0.10,
+    roll: 0.035 + Math.random() * 0.06,
+    twist: (Math.random() - 0.5) * 0.8,
     spin: new THREE.Vector3(
-      (Math.random()-0.5)*0.6,
-      (Math.random()-0.5)*1.2,
-      (Math.random()-0.5)*0.8
+      (Math.random() - 0.5) * 0.6,
+      (Math.random() - 0.5) * 1.2,
+      (Math.random() - 0.5) * 0.8
     ),
     willLand, floatDur,
     origin: group.position.clone(),
     home: null,
-    vel: new THREE.Vector3(0.7 + Math.random()*0.55, 0.85 + Math.random()*0.45, (Math.random()-0.5)*0.28),
+    vel: new THREE.Vector3(0.7 + Math.random() * 0.55, 0.85 + Math.random() * 0.45, (Math.random() - 0.5) * 0.28),
     landPos: new THREE.Vector3(
-      slot.x + driftX * (0.4 + Math.random()*0.5),
+      slot.x + driftX * (0.4 + Math.random() * 0.5),
       topY + 0.02,
-      slot.z + driftZ + 0.5 + Math.random()*0.9
+      slot.z + driftZ + 0.5 + Math.random() * 0.9
     ),
     peakY, driftX, driftZ,
     bounce: 0, ejectT: 0, pathT: 0,
     push: new THREE.Vector3(),
     pushVel: new THREE.Vector3(),
-    breathe: Math.random()*Math.PI*2,
+    breathe: Math.random() * Math.PI * 2,
   };
-  // clamp land onto desk roughly
   s.landPos.x = THREE.MathUtils.clamp(s.landPos.x, -2.0, 2.0);
   s.landPos.z = THREE.MathUtils.clamp(s.landPos.z, -0.9, 1.05);
 
   if (forceLanded){
     group.position.copy(s.landPos);
-    group.position.x += (Math.random()-0.5)*0.8;
-    group.position.z += (Math.random()-0.5)*0.5;
+    group.position.x += (Math.random() - 0.5) * 0.8;
+    group.position.z += (Math.random() - 0.5) * 0.5;
     group.position.x = THREE.MathUtils.clamp(group.position.x, -2.0, 1.9);
     group.position.z = THREE.MathUtils.clamp(group.position.z, -0.85, 1.0);
-    group.rotation.set(-Math.PI/2 + (Math.random()-0.5)*0.2, Math.random()*Math.PI, (Math.random()-0.5)*0.15);
-    bendPaper(geo, s.curl*0.4, s.roll*0.5, s.twist*0.3, Math.random()*10);
-    if (back.geometry !== geo) bendPaper(back.geometry, s.curl*0.4, s.roll*0.5, s.twist*0.3, Math.random()*10);
+    group.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.15);
+    bendPaper(geo, s.curl * 0.4, s.roll * 0.5, s.twist * 0.3, Math.random() * 10);
+    if (back.geometry !== geo) bendPaper(back.geometry, s.curl * 0.4, s.roll * 0.5, s.twist * 0.3, Math.random() * 10);
     sh.position.set(group.position.x, topY + 0.014, group.position.z);
     sh.material.opacity = 0.12;
     s.home = group.position.clone();
@@ -897,26 +635,7 @@ function spawnSticker(forceLanded=false){
   return s;
 }
 
-for (let i=0;i<6;i++) spawnSticker(true);
-for (let i=0;i<5;i++){
-  const s = spawnSticker(false);
-  s.state = 'float';
-  s.pathT = 0.2 + Math.random()*0.55;
-  s.age = s.pathT * s.floatDur;
-  const u = s.pathT;
-  const slot = getSlotWorld();
-  s.group.position.set(
-    slot.x + s.driftX * u,
-    slot.y + Math.sin(u*Math.PI) * s.peakY * 0.85 + u*0.2,
-    slot.z + s.driftZ * u + u*0.45
-  );
-  s.home = s.group.position.clone();
-}
-
-let spawnAcc = 0;
-const SPAWN_EVERY = reduceMotion ? 1.15 : 0.45;
-
-/* ========== pointer / repulsion ========== */
+/* ========== pointer / scroll ========== */
 function onPointer(e){
   const rect = canvas.getBoundingClientRect();
   const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -927,11 +646,8 @@ function onPointer(e){
   ray.setFromCamera(pointer, camera);
   const hPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(topY + 0.9));
   const hit = new THREE.Vector3();
-  if (ray.ray.intersectPlane(hPlane, hit)){
-    pointerWorld.copy(hit);
-  } else {
-    pointerWorld.set(9999,9999,9999);
-  }
+  if (ray.ray.intersectPlane(hPlane, hit)) pointerWorld.copy(hit);
+  else pointerWorld.set(9999, 9999, 9999);
 }
 canvas.addEventListener('pointermove', onPointer);
 canvas.addEventListener('pointerleave', () => { pointerActive = false; });
@@ -939,11 +655,9 @@ canvas.addEventListener('touchmove', (e) => {
   if (e.touches[0]) onPointer(e.touches[0]);
 }, { passive: true });
 
-/* ========== scroll → workbench ========== */
 function onWheel(e){
   e.preventDefault();
-  const delta = e.deltaY;
-  scrollTarget = THREE.MathUtils.clamp(scrollTarget + delta * 0.00115, 0, 1);
+  scrollTarget = THREE.MathUtils.clamp(scrollTarget + e.deltaY * 0.00115, 0, 1);
 }
 canvas.addEventListener('wheel', onWheel, { passive: false });
 
@@ -963,13 +677,15 @@ canvas.addEventListener('touchmove', (e) => {
 const clock = new THREE.Clock();
 const _tmp = new THREE.Vector3();
 const _push = new THREE.Vector3();
+let spawnAcc = 0;
+const SPAWN_EVERY = reduceMotion ? 1.15 : 0.45;
 
 function updateSticker(s, dt){
   s.age += dt;
   s.t += dt;
   s.breathe += dt * 1.4;
 
-  const curlPulse = s.curl * (0.85 + 0.15*Math.sin(s.breathe));
+  const curlPulse = s.curl * (0.85 + 0.15 * Math.sin(s.breathe));
   bendPaper(s.geo, curlPulse, s.roll, s.twist, s.t * 1.6);
   if (s.back.geometry !== s.geo){
     bendPaper(s.back.geometry, curlPulse, s.roll, s.twist, s.t * 1.6);
@@ -992,7 +708,7 @@ function updateSticker(s, dt){
   } else if (s.state === 'float'){
     s.pathT += dt / s.floatDur;
     const u = Math.min(1, s.pathT);
-    const ease = 1 - Math.pow(1-u, 2.2);
+    const ease = 1 - Math.pow(1 - u, 2.2);
     const slotish = s.origin;
     const target = _tmp.set(
       slotish.x + s.driftX * ease,
@@ -1010,9 +726,8 @@ function updateSticker(s, dt){
       const dist = _push.length();
       const radius = 1.35;
       if (dist < radius && dist > 0.001){
-        const f = (1 - dist/radius);
-        const force = f * f * 5.5;
-        _push.normalize().multiplyScalar(force);
+        const f = (1 - dist / radius);
+        _push.normalize().multiplyScalar(f * f * 5.5);
         s.pushVel.addScaledVector(_push, dt * 18);
       }
     }
@@ -1025,10 +740,9 @@ function updateSticker(s, dt){
     s.group.rotation.x += s.spin.x * dt * 0.45;
     s.group.rotation.y += s.spin.y * dt * 0.55;
     s.group.rotation.z += s.spin.z * dt * 0.4;
-    s.group.rotation.x += Math.sin(s.breathe*0.5)*0.002;
 
     s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
-    s.shadow.material.opacity = THREE.MathUtils.clamp(0.04 + (2.2 - (s.group.position.y-topY))*0.02, 0.02, 0.08);
+    s.shadow.material.opacity = THREE.MathUtils.clamp(0.04 + (2.2 - (s.group.position.y - topY)) * 0.02, 0.02, 0.08);
 
     if (u >= 1){
       if (s.willLand){
@@ -1044,9 +758,9 @@ function updateSticker(s, dt){
     s.fallT = (s.fallT || 0) + dt;
     const dur = 0.85;
     const u = Math.min(1, s.fallT / dur);
-    const ease = u*u*(3-2*u);
+    const ease = u * u * (3 - 2 * u);
     s.group.position.lerpVectors(s.fallFrom, s.landPos, ease);
-    const flatX = -Math.PI/2 + Math.sin(s.breathe)*0.05;
+    const flatX = -Math.PI / 2 + Math.sin(s.breathe) * 0.05;
     s.group.rotation.x += (flatX - s.group.rotation.x) * ease * 0.2;
     s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
     s.shadow.material.opacity = 0.04 + ease * 0.1;
@@ -1060,9 +774,9 @@ function updateSticker(s, dt){
     if (s.bounce > 0){
       s.bounce -= dt * 2.2;
       const b = Math.max(0, s.bounce);
-      s.group.position.y = s.landPos.y + Math.sin((1-b)*Math.PI) * 0.08 * b;
-      s.shadow.material.opacity = 0.14 - b*0.04;
-      s.shadow.scale.setScalar(1 + (1-b)*0.15);
+      s.group.position.y = s.landPos.y + Math.sin((1 - b) * Math.PI) * 0.08 * b;
+      s.shadow.material.opacity = 0.14 - b * 0.04;
+      s.shadow.scale.setScalar(1 + (1 - b) * 0.15);
     } else {
       s.group.position.y = s.landPos.y;
       s.shadow.material.opacity = 0.12;
@@ -1072,17 +786,17 @@ function updateSticker(s, dt){
       _push.y = 0;
       const dist = _push.length();
       if (dist < 0.9 && dist > 0.001){
-        _push.normalize().multiplyScalar((1-dist/0.9)*0.015);
+        _push.normalize().multiplyScalar((1 - dist / 0.9) * 0.015);
         s.group.position.add(_push);
         s.group.position.y = s.landPos.y;
         s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
       }
     }
   } else if (s.state === 'fade'){
-    s.fadeT = (s.fadeT||0) + dt;
+    s.fadeT = (s.fadeT || 0) + dt;
     s.group.position.y += dt * 0.4;
     s.group.position.x += dt * 0.5;
-    const op = 1 - s.fadeT/0.8;
+    const op = 1 - s.fadeT / 0.8;
     s.front.material.opacity = Math.max(0, op);
     s.back.material.opacity = Math.max(0, op);
     s.shadow.material.opacity *= 0.9;
@@ -1098,15 +812,18 @@ function tick(){
   requestAnimationFrame(tick);
   const dt = Math.min(0.033, clock.getDelta());
 
-  // smooth scroll camera
   scrollProg += (scrollTarget - scrollProg) * (reduceMotion ? 1 : 0.08);
   applyCamera();
-  const cueOp = 1 - Math.min(1, scrollProg * 2.2);
-  scrollCueEl.style.opacity = String(cueOp);
+  if (tempDesk && tempDesk.userData.lightingProbe && !loadedProps.desk){
+    tempDesk.visible = scrollProg > 0.35 || viewMode === 'desk' || viewMode === 'workbench';
+  }
+  scrollCueEl.style.opacity = String(1 - Math.min(1, scrollProg * 2.2));
   if (scrollProg > 0.55){
-    hintEl.innerHTML = '工作台 · 切割机 / 打印机 / 贴纸本 / 台灯 · <em>滚轮</em>可回到首屏';
+    hintEl.innerHTML = loadedProps.desk
+      ? '工作台 · 切割机 / 打印机 / 贴纸本 / 台灯 · <em>滚轮</em>可回到首屏'
+      : '工作台精模待接入 · <em>滚轮</em>可回到首屏（当前仅对光用临时木纹桌）';
   } else {
-    hintEl.innerHTML = '打印机持续吐贴纸 · <em>鼠标靠近</em>贴纸会躲开';
+    hintEl.innerHTML = '贴纸持续飘出 · <em>鼠标靠近</em>贴纸会躲开';
   }
 
   spawnAcc += dt;
@@ -1115,31 +832,57 @@ function tick(){
     spawnSticker(false);
   }
 
-  // subtle idle
-  printerGroup.position.y = topY + Math.sin(clock.elapsedTime * 1.2) * 0.006;
-  // lamp pulse
-  if (lamp.userData.light){
-    const pulse = 2.2 + Math.sin(clock.elapsedTime * 1.5) * 0.25;
-    lamp.userData.light.intensity = pulse;
-    if (lamp.userData.fill) lamp.userData.fill.intensity = 0.45 + Math.sin(clock.elapsedTime * 1.5) * 0.08;
+  if (printerGroup){
+    printerGroup.position.y = topY + Math.sin(clock.elapsedTime * 1.2) * 0.006;
   }
-  // plant gentle sway
-  plant.rotation.z = Math.sin(clock.elapsedTime * 0.8) * 0.02;
+  if (lampGroup && lampGroup.userData.light){
+    const pulse = 1.15 + Math.sin(clock.elapsedTime * 1.5) * 0.2;
+    lampGroup.userData.light.intensity = pulse;
+    if (lampGroup.userData.fill) lampGroup.userData.fill.intensity = 0.45 + Math.sin(clock.elapsedTime * 1.5) * 0.08;
+  }
+  if (loadedProps.plant){
+    loadedProps.plant.rotation.z = Math.sin(clock.elapsedTime * 0.8) * 0.02;
+  }
 
-  for (let i=stickers.length-1;i>=0;i--){
+  for (let i = stickers.length - 1; i >= 0; i--){
     updateSticker(stickers[i], dt);
   }
 
-  renderer.render(scene, camera);
+  composer.render();
 }
-tick();
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isMobile ? 1.5 : 1.75));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, maxPR));
   renderer.setSize(innerWidth, innerHeight, false);
+  composer.setSize(innerWidth, innerHeight);
+  smaaPass.setSize(
+    Math.floor(innerWidth * renderer.getPixelRatio()),
+    Math.floor(innerHeight * renderer.getPixelRatio())
+  );
 });
+
+/* boot */
+await loadStickerTextures();
+const mount = await mountProps();
+for (let i = 0; i < 6; i++) spawnSticker(true);
+for (let i = 0; i < 5; i++){
+  const s = spawnSticker(false);
+  s.state = 'float';
+  s.pathT = 0.2 + Math.random() * 0.55;
+  s.age = s.pathT * s.floatDur;
+  const u = s.pathT;
+  const slot = getSlotWorld();
+  s.group.position.set(
+    slot.x + s.driftX * u,
+    slot.y + Math.sin(u * Math.PI) * s.peakY * 0.85 + u * 0.2,
+    slot.z + s.driftZ * u + u * 0.45
+  );
+  s.home = s.group.position.clone();
+}
+console.info('[studio] AA=MSAA+SMAA pr=', renderer.getPixelRatio(), 'missing=', mount.missing);
+tick();
 
 } catch (e) {
   showErr(e && e.message ? e.message : String(e));

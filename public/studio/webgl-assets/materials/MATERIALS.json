@@ -1,0 +1,77 @@
+{
+  "palette": {
+    "bg": "#F7F3EC",
+    "oak": "#C4A882",
+    "coral": "#E87A6B",
+    "strawberry": "#D94A3D",
+    "lemon": "#F0C94A",
+    "mint": "#7CB8A0",
+    "ink": "#2A221C",
+    "brass": "#C4A06A",
+    "plasticWhite": "#F5F2EC",
+    "ceramic": "#D9D0C3"
+  },
+  "props": {
+    "desk": {
+      "baseColor": "#C4A882",
+      "roughness": 0.55,
+      "metalness": 0.0,
+      "maps": ["albedo", "roughness", "normal", "ao"],
+      "notes": "horizontal oak grain, matte, soft bevel"
+    },
+    "cutter": {
+      "baseColor": "#F5F2EC",
+      "roughness": 0.65,
+      "metalness": 0.0,
+      "maps": ["albedo", "roughness", "ao"],
+      "notes": "matte plastic, rounded capsule, front slot + power + LEDs"
+    },
+    "printer": {
+      "baseColor": "#F5F2EC",
+      "roughness": 0.62,
+      "metalness": 0.0,
+      "accent": "#E87A6B",
+      "maps": ["albedo", "roughness", "ao"],
+      "notes": "hero variant may add light-oak side panels; paper strip emerges front"
+    },
+    "book": {
+      "coverColor": "#3A3530",
+      "pageColor": "#F5EDE4",
+      "roughness": 0.7,
+      "metalness": 0.0,
+      "maps": ["albedo", "roughness"],
+      "notes": "open spread with die-cut stickers printed on page albedo"
+    },
+    "lamp": {
+      "baseColor": "#C4A06A",
+      "roughness": 0.35,
+      "metalness": 0.85,
+      "emissive": "#FFD2A6",
+      "emissiveIntensity": 1.2,
+      "maps": ["albedo", "roughness", "metalness"],
+      "notes": "brushed brass; cone shade with warm interior glow"
+    },
+    "plant": {
+      "leafColor": "#5F8F5A",
+      "potColor": "#D9D0C3",
+      "roughness": 0.7,
+      "metalness": 0.0,
+      "maps": ["albedo", "roughness", "normal"],
+      "notes": "small dense leafy plant, matte ceramic pot"
+    },
+    "sticker": {
+      "borderColor": "#FFFFFF",
+      "roughness": 0.75,
+      "metalness": 0.0,
+      "thicknessMm": 1.0,
+      "maps": ["albedo(alpha)", "optional normal for curl"],
+      "notes": "soft paper: bend/curl required; no flat billboard"
+    }
+  },
+  "lighting": {
+    "ambient": "#FFF5EB",
+    "keyColor": "#FFE4C8",
+    "keyIntensity": 1.4,
+    "shadowSoftness": "high"
+  }
+}
