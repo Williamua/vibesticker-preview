@@ -1,0 +1,3 @@
+f7fa87e3a234284afffcd09355732eb1  /workspace/vibesticker/cartoon/cards/rebuild/sticker-studio/user-picks/hdri/batch-all/09.hdr
+47ade2b1a29bb8ec424e9b8819f0ab89  /workspace/sticker-shop/public/studio/webgl-assets/hdri/09.hdr
+47ade2b1a29bb8ec424e9b8819f0ab89  /workspace/sticker-shop/public/studio/webgl-assets/hdri/studio-09-4000k-1k.hdr
