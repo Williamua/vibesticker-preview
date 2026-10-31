@@ -199,22 +199,22 @@ if (viewMode === 'desk' || viewMode === 'workbench') {
 }
 
 /* ========== lights (LIGHTING-SPEC) ========== */
-const amb = new THREE.AmbientLight(MAT.ambient, 0.68);
+const amb = new THREE.AmbientLight(MAT.ambient, 0.78);
 scene.add(amb);
 const hemi = new THREE.HemisphereLight(0xFFF6EC, 0xEADCC8, 0.48);
 scene.add(hemi);
 
 /* Key: top-right, warm soft */
-const key = new THREE.DirectionalLight(MAT.key, 0.95);
-key.position.set(1.2, 9.0, 1.0); // overhead-ish → short warm contact
+const key = new THREE.DirectionalLight(MAT.key, 0.75);
+key.position.set(0.6, 10.5, 0.4); // nearly overhead → minimal floor drag
 key.castShadow = true;
 key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.near = 0.5;
-key.shadow.camera.far = 18;
-key.shadow.camera.left = -3.5;
-key.shadow.camera.right = 3.5;
-key.shadow.camera.top = 3.5;
-key.shadow.camera.bottom = -3.5;
+key.shadow.camera.far = 12;
+key.shadow.camera.left = -2.4;
+key.shadow.camera.right = 2.4;
+key.shadow.camera.top = 2.4;
+key.shadow.camera.bottom = -2.4;
 key.shadow.bias = -0.00012;
 key.shadow.normalBias = 0.025;
 key.shadow.radius = 6.5; // soft warm contact
@@ -338,8 +338,8 @@ async function loadStudioHDRI(){
     tex.dispose(); pmrem.dispose();
     amb.intensity = 0.18;
     hemi.intensity = 0.12;
-    key.intensity = 0.52;
-    key.position.set(1.0, 8.5, 0.9);
+    key.intensity = 0.42;
+    key.position.set(0.5, 10.0, 0.35);
     key.castShadow = true;
     key.shadow.radius = 7.0;
     key.shadow.camera.left = -3.2;
@@ -406,8 +406,8 @@ async function mountProps(){
   deskTop.name = 'deskTop';
   const localPlace = {
     // LAYOUT-CAMERA-SPEC §3 — accept mesh limits, tune for readability
-    laptop: { pos: [-0.62, 0, 0.10], size: 0.38, rotY: 0.35 },
-    printer: { pos: [-0.18, 0, 0.10], size: 0.16, rotY: 0.08 }, // LOCK small thermal, clear of laptop
+    laptop: { pos: [-0.55, 0, 0.10], size: 0.32, rotY: 0.18 },
+    printer: { pos: [-0.22, 0, 0.08], size: 0.15, rotY: 0 }, // LOCK small thermal
     book: { pos: [0.30, 0, 0.0], size: 0.50, rotY: -0.12 },
     plant: { pos: [0.68, 0, -0.12], size: 0.26 },
     lamp: { pos: [0.88, 0, 0.10], size: 0.40, rotY: -1.15 }, // shorter; shade → book
@@ -425,6 +425,7 @@ async function mountProps(){
     const root = results.desk;
     const wrap = new THREE.Group();
     wrap.add(root);
+    root.rotation.y = Math.PI / 2; // long oval along +X (LAYOUT)
     root.scale.setScalar(DESK_SCALE);
     root.traverse((o)=>{
       if(!o.isMesh||!o.material) return;
@@ -453,13 +454,17 @@ async function mountProps(){
     wrap.add(deskTop);
     // soft ground contact under table
     const foot = new THREE.Mesh(
-      new THREE.PlaneGeometry((box2.max.x-box2.min.x)+0.5, (box2.max.z-box2.min.z)+0.4),
-      new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.18, depthWrite: false })
+      new THREE.PlaneGeometry((box2.max.x-box2.min.x)+0.25, (box2.max.z-box2.min.z)+0.2),
+      new THREE.MeshBasicMaterial({ color: 0x3A2A1C, transparent: true, opacity: 0.08, depthWrite: false })
     );
     foot.rotation.x = -Math.PI/2;
-    foot.position.set(0.04, 0.012, 0.06);
+    foot.position.set(0.02, 0.008, 0.03);
     wrap.add(foot);
-    enableShadows(wrap);
+    // Desk receives light but does NOT cast long floor drag shadows (LOCK short contact)
+    wrap.traverse((o)=>{
+      if (o.isMesh){ o.castShadow = false; o.receiveShadow = true; }
+    });
+    foot.receiveShadow = false;
     bench.add(wrap);
     loadedProps.desk = wrap;
     refreshCameras();
@@ -506,7 +511,7 @@ async function mountProps(){
         emissiveIntensity: 0.85, roughness: 0.5, metalness: 0,
       });
       const clean = new THREE.Group(); clean.name='laptopClean';
-      const baseW=0.34, baseD=0.23, baseH=0.018;
+      const baseW=0.28, baseD=0.19, baseH=0.015;
       const base = new THREE.Mesh(new THREE.BoxGeometry(baseW, baseH, baseD), silver);
       base.name='laptopBase';
       base.position.set(0, baseH*0.5, 0);
@@ -515,7 +520,7 @@ async function mountProps(){
       const keys = new THREE.Mesh(new THREE.BoxGeometry(baseW*0.86, 0.0012, baseD*0.5), dark);
       keys.position.set(0, baseH+0.0006, baseD*0.04);
       // Lid: one box, materials [+x,-x,+y,-y,+z,-z]
-      const lidW=baseW*0.96, lidH=0.205, lidT=0.008;
+      const lidW=baseW*0.96, lidH=0.18, lidT=0.007;
       const lidMats = [silver, silver, silver, silver, screenMat, dark];
       const lid = new THREE.Mesh(new THREE.BoxGeometry(lidW, lidH, lidT), lidMats);
       lid.name='laptopLid';
@@ -527,17 +532,44 @@ async function mountProps(){
       pivot.add(lid);
       clean.add(base, keys, pivot);
       wrap.add(clean);
+      // Seat flush on deskTop in LOCAL space (base bottom already at y=0).
+      // Pull inward if local footprint overhangs desk rim.
+      {
+        wrap.position.y = 0;
+        wrap.updateMatrixWorld(true);
+        const bb = new THREE.Box3().setFromObject(wrap);
+        const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
+        const minL = bb.min.clone().applyMatrix4(inv);
+        const maxL = bb.max.clone().applyMatrix4(inv);
+        // Ensure bottom sits on deskTop local y=0
+        wrap.position.y -= minL.y;
+        const deskHalfX = 1.05, deskHalfZ = 0.55;
+        if (minL.x < -deskHalfX) wrap.position.x += (-deskHalfX - minL.x) + 0.02;
+        if (maxL.x > deskHalfX) wrap.position.x -= (maxL.x - deskHalfX) + 0.02;
+        if (minL.z < -deskHalfZ) wrap.position.z += (-deskHalfZ - minL.z) + 0.02;
+        if (maxL.z > deskHalfZ) wrap.position.z -= (maxL.z - deskHalfZ) + 0.02;
+      }
     }
     if (id === 'printer'){
       printerGroup = wrap;
-      // Keep real thermal-printer textures; only warm/lighten slightly
+      // LOCK white thermal: dark baked albedo → near-white plastic; keep emissive LEDs
       wrap.traverse((o)=>{
         if(!o.isMesh||!o.material) return;
         const mats=Array.isArray(o.material)?o.material:[o.material];
         for(const m of mats){
-          if(m.color) m.color.lerp(new THREE.Color(0xFFF8F2), 0.12);
-          if(m.roughness!=null) m.roughness = Math.min(0.85, Math.max(0.4, m.roughness));
-          m.envMapIntensity = 0.35;
+          const led = m.emissiveMap;
+          m.map = null; m.normalMap = null; m.roughnessMap = null;
+          m.metalnessMap = null; m.aoMap = null;
+          m.color.setHex(0xF4F0E8);
+          m.roughness = 0.58; m.metalness = 0.04;
+          m.envMapIntensity = 0.45;
+          if (led){
+            m.emissiveMap = led;
+            m.emissive = new THREE.Color(0xffffff);
+            m.emissiveIntensity = 1.1;
+          } else if (m.emissive){
+            m.emissive.setHex(0x111111); m.emissiveIntensity = 0.05;
+          }
           m.needsUpdate = true;
         }
       });
@@ -650,43 +682,45 @@ async function mountProps(){
 /** Spit a rigid thick-slab strip from printer mouth toward camera (LOCK). */
 function buildPrinterSpitStrip(){
   if (!printerGroup) return;
-  const deskTop = printerGroup.parent;
-  if (!deskTop) return;
   const pool = lockScatterTexList.length ? lockScatterTexList : stickerTexList;
   if (!pool.length) return;
 
   printerGroup.updateWorldMatrix(true, true);
-  deskTop.updateWorldMatrix(true, true);
+  // Local extents of printer mesh
   const bb = new THREE.Box3().setFromObject(printerGroup);
-  const inv = new THREE.Matrix4().copy(deskTop.matrixWorld).invert();
-  const midX = (bb.min.x + bb.max.x) * 0.5;
-  // Choose the printer face closer to camera (+Z world) as spit mouth
-  const candA = new THREE.Vector3(midX, bb.min.y + 0.01, bb.max.z);
-  const candB = new THREE.Vector3(midX, bb.min.y + 0.01, bb.min.z);
-  const cam = camera.position;
-  const mouthW = candA.distanceToSquared(cam) <= candB.distanceToSquared(cam) ? candA : candB;
-  const towardCam = mouthW === candA ? 1 : -1;
-  const mouth = mouthW.clone().applyMatrix4(inv);
+  const inv = new THREE.Matrix4().copy(printerGroup.matrixWorld).invert();
+  const minL = bb.min.clone().applyMatrix4(inv);
+  const maxL = bb.max.clone().applyMatrix4(inv);
+  const midX = (minL.x + maxL.x) * 0.5;
+  // Prefer +Z local as mouth (desk front after layout); fall back if camera prefers -Z
+  const mouthA = new THREE.Vector3(midX, 0.003, maxL.z);
+  const mouthB = new THREE.Vector3(midX, 0.003, minL.z);
+  const mouthWA = mouthA.clone(); printerGroup.localToWorld(mouthWA);
+  const mouthWB = mouthB.clone(); printerGroup.localToWorld(mouthWB);
+  const useA = mouthWA.distanceToSquared(camera.position) <= mouthWB.distanceToSquared(camera.position);
+  const toward = useA ? 1 : -1;
+  const mouthZ = useA ? maxL.z : minL.z;
 
   const strip = new THREE.Group();
   strip.name = 'printerSpitStrip';
-  for (let i = 0; i < 2; i++){
+  const n = 5;
+  for (let i = 0; i < n; i++){
     const pick = pool[i % pool.length];
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-    const h = 0.046;
-    const w = h * Math.min(1.25, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.008);
-    slab.rotation.set(-Math.PI / 2, (i - 0.5) * 0.04, 0);
-    // nest into mouth then out toward camera
-    const zOff = towardCam * (-0.008 + i * 0.036);
-    slab.position.set((i - 0.5) * 0.006, 0.004, zOff);
-    const blob = makeBlobShadow(Math.max(w, h) * 0.85);
-    blob.position.set(slab.position.x + 0.005, 0.0015, slab.position.z + towardCam * 0.004);
-    blob.material.opacity = 0.22;
+    const h = 0.038;
+    const w = h * Math.min(1.2, Math.max(0.75, aspect));
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.004);
+    slab.rotation.set(-Math.PI / 2, (i - (n-1)/2) * 0.02, 0);
+    // Nested under lip then walk out along toward (+/- local Z)
+    const zOff = toward * (-0.015 + i * 0.032);
+    slab.position.set((i - (n-1)/2) * 0.0015, 0.0028, zOff);
+    const blob = makeBlobShadow(Math.max(w, h) * 0.7);
+    blob.position.set(slab.position.x + 0.002, 0.0008, slab.position.z + toward * 0.002);
+    blob.material.opacity = 0.15;
     strip.add(slab, blob);
   }
-  strip.position.set(mouth.x, 0.003, mouth.z);
-  deskTop.add(strip);
+  strip.position.set(midX, 0.0025, mouthZ);
+  printerGroup.add(strip);
   printerGroup.userData.spitStrip = strip;
 }
 
@@ -768,7 +802,7 @@ function decorateSketchbookPages(){
     const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
     const h = Math.min(pageD, pageW) * 0.26;
     const w = h * Math.min(1.15, Math.max(0.75, aspect));
-    const slab = createFlatThickSticker(w, h, pick.tex, 0.007);
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.0045);
     slab.rotation.set(-Math.PI / 2, (i % 2 ? 0.06 : -0.05), 0);
     slab.position.set(slots[i][0], slots[i][1], slots[i][2]);
     const blob = makeBlobShadow(Math.max(w,h) * 0.9);
@@ -993,10 +1027,10 @@ function pvcEdgeTexFrom(tex){
   return out;
 }
 
-function createFlatThickSticker(w, h, tex, thickness = 0.009){
+function createFlatThickSticker(w, h, tex, thickness = 0.004){
   const group = new THREE.Group();
   const edgeTex = pvcEdgeTexFrom(tex);
-  const layers = Math.max(4, Math.round(thickness / 0.0035));
+  const layers = Math.max(3, Math.min(5, Math.round(thickness / 0.0022)));
   let front = null;
   for (let i = 0; i < layers; i++){
     const isFront = (i === layers - 1);
@@ -1084,7 +1118,7 @@ function spawnSticker(forceLanded = false){
   const size = 0.22 + Math.random() * 0.14;
   const w = size * Math.min(1.35, Math.max(0.7, aspect));
   const h = size;
-  const thickness = 0.020 + Math.random() * 0.008; // rigid slab depth for cast + blob
+  const thickness = 0.0045 + Math.random() * 0.002; // LOCK paper-card thick, still rigid
   const group = createFlatThickSticker(w, h, pick.tex, thickness);
   const front = group.userData.front;
 
@@ -1400,7 +1434,7 @@ refreshCameras(); applyCamera();
 
 // LOCK foreground row: 草莓/猫/柠檬/VIBE — flat on desk + clear rear shadow
 function placeLockRow(){
-  const xs = [-0.22, -0.02, 0.18, 0.38];
+  const xs = [-0.15, 0.02, 0.18, 0.34];
   const picks = lockScatterTexList.length >= 4
     ? lockScatterTexList
     : stickerTexList;
@@ -1411,11 +1445,11 @@ function placeLockRow(){
     const size = 0.18;
     const w = size * Math.min(1.25, Math.max(0.75, aspect));
     const h = size;
-    const thickness = 0.008;
+    const thickness = 0.004;
     const group = createFlatThickSticker(w, h, pick.tex, thickness);
     const sh = makeBlobShadow(size * 1.35);
     const shSoft = makeBlobShadow(size * 1.7);
-    group.position.set(xs[i], topY + thickness * 0.5 + 0.01, 0.70);
+    group.position.set(xs[i], topY + thickness * 0.5 + 0.005, 0.36);
     group.rotation.set(-Math.PI / 2, (i - 1.5) * 0.08, 0);
     scene.add(group); scene.add(sh); scene.add(shSoft);
     const s = {
@@ -1433,7 +1467,19 @@ function placeLockRow(){
 }
 placeLockRow();
 window.__studioDump = () => {
-  const out={laptop:[],book:[],printer:[],spit:null};
+  const out={laptop:[],book:[],printer:[],spit:null,desk:null,lapWrap:null};
+  if (loadedProps.desk){
+    const bb=new THREE.Box3().setFromObject(loadedProps.desk);
+    out.desk={min:bb.min.toArray().map(n=>+n.toFixed(3)),max:bb.max.toArray().map(n=>+n.toFixed(3))};
+  }
+  if (loadedProps.laptop){
+    const bb=new THREE.Box3().setFromObject(loadedProps.laptop);
+    out.lapWrap={
+      min:bb.min.toArray().map(n=>+n.toFixed(3)),
+      max:bb.max.toArray().map(n=>+n.toFixed(3)),
+      pos:loadedProps.laptop.position.toArray().map(n=>+n.toFixed(3))
+    };
+  }
   const dump=(root,arr)=>{
     if(!root) return;
     root.traverse(o=>{
