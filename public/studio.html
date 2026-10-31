@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="description" content="VibeSticker 贴纸工作室 · 漂浮贴纸与工作台"/>
 <title>VibeSticker · 贴纸工作室</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=DM+Sans:opsz,wght@9..40,500;9..40,600&display=swap" rel="stylesheet">
@@ -68,6 +69,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -92,12 +94,17 @@ const MAT = {
 const ASSET = './studio/webgl-assets';
 const GLB = {
   desk: `${ASSET}/glb/desk.glb`,
-  cutter: `${ASSET}/glb/cutter.glb`,
+  laptop: `${ASSET}/glb/laptop.glb`,
   printer: `${ASSET}/glb/printer.glb`,
   book: `${ASSET}/glb/book.glb`,
   lamp: `${ASSET}/glb/lamp.glb`,
   plant: `${ASSET}/glb/plant.glb`,
 };
+const HDRI_URL = `${ASSET}/hdri/studio-09-4000k-1k.hdr`;
+const STICKER_MANIFEST = `${ASSET}/stickers/manifest.json`;
+const STICKER_API = '/api/studio-stickers';
+const DESK_SCALE = 0.82; // LAYOUT-CAMERA-SPEC: long edge ~2.2, height ~0.66
+
 const qaLight = new URLSearchParams(location.search).has('qa')
   || new URLSearchParams(location.search).get('light') === '1';
 const viewMode = new URLSearchParams(location.search).get('view') || '';
@@ -143,19 +150,31 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(MAT.bg);
 scene.fog = new THREE.Fog(MAT.bg, 18, 36);
 
-const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 60);
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.05, 40);
 
 let scrollTarget = 0;
 let scrollProg = 0;
 
-const camHero = {
-  pos: new THREE.Vector3(0.55, 2.35, 5.8),
-  look: new THREE.Vector3(-0.8, 1.35, 0.2),
-};
-const camDesk = {
-  pos: new THREE.Vector3(0.15, 3.55, 5.2),
-  look: new THREE.Vector3(0.05, 1.15, 0.05),
-};
+function orbitCam(look, dist, elevDeg, azimDeg){
+  const el = elevDeg * Math.PI / 180;
+  const az = azimDeg * Math.PI / 180;
+  const x = look.x + dist * Math.cos(el) * Math.sin(az);
+  const y = look.y + dist * Math.sin(el);
+  const z = look.z + dist * Math.cos(el) * Math.cos(az);
+  return { pos: new THREE.Vector3(x, y, z), look: look.clone() };
+}
+// LAYOUT-CAMERA-SPEC defaults (refined after desk mounts)
+let tableTopY = 0.66;
+let camLook = new THREE.Vector3(0, tableTopY, -0.05);
+let camDesk = orbitCam(camLook, 3.5, 30, -40);
+// Hero: same orbit, slightly farther / higher for floating stickers over desk
+let camHero = orbitCam(new THREE.Vector3(0, tableTopY + 0.35, 0.15), 4.2, 22, -38);
+function refreshCameras(){
+  camLook.set(0.05, tableTopY + 0.02, 0.05);
+  // LAYOUT: fov35 already; elev~30, azim~-40; closer to match LOCK framing
+  camDesk = orbitCam(camLook, 2.85, 28, -36);
+  camHero = orbitCam(new THREE.Vector3(0.05, tableTopY + 0.45, 0.15), 3.35, 24, -36);
+}
 const _camPos = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
 function applyCamera(){
@@ -188,7 +207,7 @@ key.shadow.camera.top = 8;
 key.shadow.camera.bottom = -6;
 key.shadow.bias = -0.00028;
 key.shadow.normalBias = 0.02;
-key.shadow.radius = 4.5; // soft
+key.shadow.radius = 2.8; // softer still readable contact
 scene.add(key);
 
 /* Fill: front-left weak */
@@ -226,13 +245,15 @@ composer.addPass(new OutputPass());
 /* ========== workbench root ========== */
 const bench = new THREE.Group();
 scene.add(bench);
-const DESK_Y = 0.92;
-const topY = DESK_Y + 0.11;
+let DESK_Y = 0.66;
+let topY = 0.66;
 const loadedProps = Object.create(null);
-let printerSlotLocal = new THREE.Vector3(0, 0.42, 0.62);
+let printerSlotLocal = new THREE.Vector3(0, 0.15, 0.35);
 let printerGroup = null;
 let lampGroup = null;
+let bookGroup = null;
 let tempDesk = null;
+let envReady = false;
 
 const texLoader = new THREE.TextureLoader();
 function loadTex(url, { colorSpace = THREE.SRGBColorSpace, wrap = true, aniso = 8 } = {}){
@@ -292,6 +313,34 @@ async function tryLoadGLB(url){
   }
 }
 
+async function loadStudioHDRI(){
+  try {
+    const tex = await new RGBELoader().loadAsync(HDRI_URL);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    const envMap = pmrem.fromEquirectangular(tex).texture;
+    scene.environment = envMap;
+    scene.background = new THREE.Color(MAT.bg);
+    // three@0.160: no environmentRotation — yaw via key/fill placement instead
+    tex.dispose(); pmrem.dispose();
+    amb.intensity = 0.18;
+    hemi.intensity = 0.12;
+    key.intensity = 0.85; // need readable cast shadows under thick slabs
+    key.position.set(2.6, 5.8, 2.4);
+    key.castShadow = true;
+    key.shadow.radius = 3.2;
+    fill.intensity = 0.16;
+    bounce.intensity = 0.05;
+    renderer.toneMappingExposure = 1.12;
+    envReady = true;
+    return true;
+  } catch (e) {
+    console.warn('HDRI fail', e);
+    return false;
+  }
+}
+
 /* —— temp oak desk ONLY for lighting QA (not a delivery prop set) —— */
 async function buildTempLightDesk(){
   let albedo, normal, rough;
@@ -335,60 +384,206 @@ async function mountProps(){
   tempDesk = await buildTempLightDesk();
   bench.add(tempDesk);
 
-  const placements = {
-    desk: { pos: [0, DESK_Y, 0], size: 4.6, yAlign: 'bottom' },
-    cutter: { pos: [-1.55, topY, -0.15], size: 1.35 },
-    printer: { pos: [-0.25, topY, -0.05], size: 1.2 },
-    book: { pos: [1.15, topY, 0.15], size: 1.55, rotY: -0.18 },
-    plant: { pos: [1.55, topY, -0.55], size: 0.55 },
-    lamp: { pos: [1.85, topY, 0.55], size: 1.15 },
+  // LAYOUT-CAMERA-SPEC §3 — local tabletop coords (origin = desk top center, Y=0 on top)
+  // World = deskWrap + (local * deskScale already applied via desk); props parented to deskTop
+  const deskTop = new THREE.Group();
+  deskTop.name = 'deskTop';
+  const localPlace = {
+    // LAYOUT-CAMERA-SPEC §3 + LOCK framing
+    laptop: { pos: [-0.72, 0, 0.18], size: 0.58, rotY: 0.42 },
+    printer: { pos: [-0.28, 0, 0.08], size: 0.28, rotY: 0 }, // local −Z spit; slot uses min.z
+    book: { pos: [0.32, 0, -0.02], size: 0.52, rotY: -0.15 },
+    plant: { pos: [0.70, 0, -0.10], size: 0.30 },
+    lamp: { pos: [0.90, 0, 0.14], size: 0.62, rotY: -1.05 }, // shade toward book
   };
 
   const results = {};
   await Promise.all(Object.keys(GLB).map(async (id) => {
-    const sceneRoot = await tryLoadGLB(GLB[id]);
-    results[id] = sceneRoot;
+    results[id] = await tryLoadGLB(GLB[id]);
   }));
 
   let any = false;
-  for (const id of Object.keys(GLB)){
+  // Desk first: full mesh WITH legs, uniform scale 0.82
+  if (results.desk){
+    any = true;
+    const root = results.desk;
+    const wrap = new THREE.Group();
+    wrap.add(root);
+    root.scale.setScalar(DESK_SCALE);
+    root.traverse((o)=>{
+      if(!o.isMesh||!o.material) return;
+      const mats=Array.isArray(o.material)?o.material:[o.material];
+      for(const m of mats){
+        // Brighten embedded wood map toward LOCK pale oak (keep grain)
+        if(m.map && m.map.image){
+          try{
+            const img=m.map.image;
+            const c=document.createElement('canvas');
+            c.width=img.width; c.height=img.height;
+            const ctx=c.getContext('2d');
+            ctx.drawImage(img,0,0);
+            const id=ctx.getImageData(0,0,c.width,c.height);
+            const d=id.data;
+            for(let i=0;i<d.length;i+=4){
+              // lift midtones + warm
+              d[i]  =Math.min(255, d[i]*1.45 + 48);
+              d[i+1]=Math.min(255, d[i+1]*1.38 + 40);
+              d[i+2]=Math.min(255, d[i+2]*1.18 + 28);
+            }
+            ctx.putImageData(id,0,0);
+            const nt=new THREE.CanvasTexture(c);
+            nt.colorSpace=THREE.SRGBColorSpace;
+            nt.wrapS=nt.wrapT=m.map.wrapS;
+            nt.anisotropy=m.map.anisotropy||4;
+            nt.needsUpdate=true;
+            m.map=nt;
+          }catch(e){ console.warn('desk map lift fail', e); }
+        }
+        if(m.color) m.color.setHex(0xFFF6E8);
+        if(m.roughness!=null) m.roughness = 0.62;
+        if(m.metalness!=null) m.metalness = 0;
+        if(m.aoMapIntensity!=null) m.aoMapIntensity = 0.35;
+        m.envMapIntensity = 0.2;
+        m.needsUpdate = true;
+      }
+    });
+    const box = new THREE.Box3().setFromObject(root);
+    const c = box.getCenter(new THREE.Vector3());
+    root.position.x -= c.x;
+    root.position.z -= c.z;
+    root.position.y -= box.min.y; // feet on ground
+    const box2 = new THREE.Box3().setFromObject(wrap);
+    tableTopY = box2.max.y;
+    topY = tableTopY;
+    DESK_Y = tableTopY;
+    deskTop.position.set(0, tableTopY, 0);
+    wrap.add(deskTop);
+    // soft ground contact under table
+    const foot = new THREE.Mesh(
+      new THREE.PlaneGeometry((box2.max.x-box2.min.x)+0.5, (box2.max.z-box2.min.z)+0.4),
+      new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0.18, depthWrite: false })
+    );
+    foot.rotation.x = -Math.PI/2;
+    foot.position.set(0.04, 0.012, 0.06);
+    wrap.add(foot);
+    enableShadows(wrap);
+    bench.add(wrap);
+    loadedProps.desk = wrap;
+    refreshCameras();
+    applyCamera();
+  }
+
+  for (const id of ['laptop','printer','book','plant','lamp']){
     const root = results[id];
     if (!root) continue;
     any = true;
-    const cfg = placements[id];
+    const cfg = localPlace[id];
     const wrap = new THREE.Group();
     wrap.add(root);
-    fitProp(root, cfg.size, cfg.yAlign || 'bottom');
-    wrap.position.set(...cfg.pos);
+    fitProp(root, cfg.size, 'bottom');
+    wrap.position.set(cfg.pos[0], 0, cfg.pos[2]);
     if (cfg.rotY) wrap.rotation.y = cfg.rotY;
     enableShadows(wrap);
-    bench.add(wrap);
+    deskTop.add(wrap);
     loadedProps[id] = wrap;
+    if (id === 'laptop'){
+      wrap.traverse((o)=>{
+        if(!o.isMesh||!o.material) return;
+        const mats=Array.isArray(o.material)?o.material:[o.material];
+        for(const m of mats){
+          if('transmission' in m) m.transmission = 0;
+          if(m.transparent){ m.transparent=false; m.opacity=1; }
+          if(m.emissiveIntensity && m.emissiveIntensity>0.5){
+            // fake screen panes — mute
+            m.emissiveIntensity = 0.05;
+            m.emissive.setHex(0x000000);
+          }
+          if(m.opacity < 0.99){ o.visible = false; }
+          m.depthWrite = true;
+          m.needsUpdate = true;
+        }
+        // hide clearcoat / glass looking oversized planes
+        const n=(o.name||'').toLowerCase();
+        if(n.includes('screen')||n.includes('display')||n.includes('glass')){
+          // keep but darken screen
+          for(const m of mats){ if(m.color) m.color.setHex(0x1a1a1a); }
+        }
+      });
+    }
     if (id === 'printer'){
       printerGroup = wrap;
-      // heuristic slot near front of bbox
+      // Force matte white body (LOCK) — drop dark baked maps
+      wrap.traverse((o)=>{
+        if(!o.isMesh||!o.material) return;
+        const mats=Array.isArray(o.material)?o.material:[o.material];
+        for(const m of mats){
+          m.map = null; m.normalMap = null; m.roughnessMap = null; m.metalnessMap = null;
+          m.aoMap = null; m.emissiveMap = null;
+          m.color.setHex(0xF5F2EC);
+          m.roughness = 0.68; m.metalness = 0.0;
+          if(m.emissive){ m.emissive.setHex(0x222222); m.emissiveIntensity = 0.08; }
+          m.envMapIntensity = 0.15;
+          m.needsUpdate = true;
+        }
+      });
       const box = new THREE.Box3().setFromObject(root);
-      printerSlotLocal = new THREE.Vector3(0, Math.max(0.2, (box.max.y - box.min.y) * 0.45), box.max.z * 0.9);
+      const frontZ = box.min.z < 0 ? box.min.z : -Math.abs(box.max.z);
+      printerSlotLocal = new THREE.Vector3(
+        0,
+        Math.max(0.06, (box.max.y - box.min.y) * 0.42),
+        frontZ * 0.92
+      );
     }
+    if (id === 'book') bookGroup = wrap;
     if (id === 'lamp'){
       lampGroup = wrap;
-      const lampLight = new THREE.SpotLight(MAT.lampEmissive, 1.2, 5.5, 0.55, 0.5, 1.1);
-      lampLight.position.set(-0.35, 0.7, 0);
-      lampLight.target.position.set(-0.8, 0.05, 0.15);
-      wrap.add(lampLight);
-      wrap.add(lampLight.target);
+      wrap.traverse((o)=>{
+        if(!o.isMesh||!o.material) return;
+        const mats=Array.isArray(o.material)?o.material:[o.material];
+        for(const m of mats){
+          const n=(m.name||o.name||'').toLowerCase();
+          if(n.includes('bulb')){
+            m.emissive = new THREE.Color(MAT.lampEmissive);
+            m.emissiveIntensity = 3.2;
+            m.color.setHex(0xFFE8C8);
+          } else if(n.includes('chrome') || n.includes('steel')){
+            // brushed brass shade / stem
+            m.color.setHex(0xC4A06A);
+            m.metalness = 0.88;
+            m.roughness = 0.32;
+            m.envMapIntensity = 1.1;
+          } else if(n.includes('blackmetal') || n.includes('black')){
+            // warm dark brass base
+            m.color.setHex(0x8A6A3E);
+            m.metalness = 0.75;
+            m.roughness = 0.4;
+          } else {
+            if(m.metalness!=null && m.metalness>0.4){
+              m.color.setHex(0xC4A06A);
+              m.metalness = 0.85;
+              m.roughness = 0.35;
+            }
+          }
+          m.needsUpdate = true;
+        }
+      });
+      // Shade tips toward sketchbook (local −X/−Z)
+      const lampLight = new THREE.SpotLight(MAT.lampEmissive, 2.0, 5.0, 0.7, 0.45, 1.0);
+      lampLight.position.set(0.05, 0.62, 0.02);
+      lampLight.target.position.set(-0.7, 0.02, -0.12);
+      wrap.add(lampLight); wrap.add(lampLight.target);
       lampLight.castShadow = !isMobile;
-      if (lampLight.castShadow){
-        lampLight.shadow.mapSize.set(1024, 1024);
-        lampLight.shadow.bias = -0.001;
-      }
-      const fillL = new THREE.PointLight(MAT.lampEmissive, 0.5, 3.0);
-      fillL.position.set(-0.3, 0.55, 0.05);
+      if (lampLight.castShadow){ lampLight.shadow.mapSize.set(1024,1024); lampLight.shadow.bias=-0.001; }
+      const fillL = new THREE.PointLight(MAT.lampEmissive, 0.85, 2.8);
+      fillL.position.set(0, 0.48, 0);
       wrap.add(fillL);
       wrap.userData.light = lampLight;
       wrap.userData.fill = fillL;
     }
   }
+
+  // Defer page stickers + spit strip until textures ready (called from boot)
+  
 
   // show temp oak desk only if no desk.glb AND (qa mode OR we want light probe for scroll view)
   if (!loadedProps.desk){
@@ -403,11 +598,64 @@ async function mountProps(){
 
   const missing = Object.keys(GLB).filter((k) => !loadedProps[k]);
   setStatus(
-    missing.length === 6
-      ? '精模 GLB 未到齐 · 仅漂浮贴纸 + 暖光空台（临时木纹桌仅自检对光，非交付）'
-      : `已载: ${Object.keys(loadedProps).join(', ') || '无'} · 仍缺: ${missing.join(', ')}`
+    `已载: ${Object.keys(loadedProps).join(', ')||'无'} · 缺: ${missing.join(', ')||'无'} · HDRI:${envReady?'09@4000K':'…'} · topY=${tableTopY.toFixed(3)}`
   );
   return { any, missing };
+}
+
+
+/** Spit a rigid thick-slab strip from printer mouth toward camera (LOCK). */
+function buildPrinterSpitStrip(){
+  if (!printerGroup || !stickerTexList.length) return;
+  const strip = new THREE.Group();
+  strip.name = 'printerSpitStrip';
+  const n = 3;
+  for (let i = 0; i < n; i++){
+    const pick = stickerTexList[(i * 3) % stickerTexList.length];
+    const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+    const h = 0.11;
+    const w = h * Math.min(1.3, Math.max(0.75, aspect));
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.014);
+    // face up-ish toward camera; lined along −Z out of slot
+    // face-up thick slabs in a spit strip toward front (−Z)
+    slab.rotation.set(-Math.PI / 2, 0, (i - 1) * 0.05);
+    slab.position.set((i - 1) * 0.09, 0.012, -0.06 - i * 0.11);
+    strip.add(slab);
+  }
+  strip.position.copy(printerSlotLocal);
+  strip.position.y = Math.max(0.02, printerSlotLocal.y * 0.3);
+  strip.position.z = Math.min(printerSlotLocal.z, -0.02) - 0.04;
+  printerGroup.add(strip);
+  printerGroup.userData.spitStrip = strip;
+}
+
+/** Decorate open sketchbook pages with flat-thick stickers (albedo PNGs). */
+function decorateSketchbookPages(){
+  if (!bookGroup || !stickerTexList.length) return;
+  const page = new THREE.Group();
+  page.name = 'bookPageStickers';
+  const box = new THREE.Box3().setFromObject(bookGroup);
+  const size = box.getSize(new THREE.Vector3());
+  // local offsets on open spread (approx page plane)
+  const slots = [
+    [-0.12, 0.012, -0.04], [-0.02, 0.012, 0.02], [0.1, 0.012, -0.03],
+    [-0.08, 0.014, 0.06], [0.06, 0.014, 0.05], [0.0, 0.013, -0.08],
+  ];
+  for (let i = 0; i < slots.length; i++){
+    const pick = stickerTexList[(i * 5 + 2) % stickerTexList.length];
+    const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
+    const h = 0.07 + (i % 3) * 0.012;
+    const w = h * Math.min(1.25, Math.max(0.75, aspect));
+    const slab = createFlatThickSticker(w, h, pick.tex, 0.012);
+    slab.rotation.set(-Math.PI / 2, (Math.random() - 0.5) * 0.4, 0);
+    slab.position.set(slots[i][0], Math.max(0.01, size.y * 0.55), slots[i][2]);
+    // soft blob under each page sticker
+    const blob = makeBlobShadow(Math.max(w, h) * 1.1);
+    blob.position.set(slots[i][0] + 0.01, 0.008, slots[i][2] + 0.01);
+    blob.material.opacity = 0.35;
+    page.add(slab, blob);
+  }
+  bookGroup.add(page);
 }
 
 function getSlotWorld(){
@@ -420,51 +668,54 @@ function getSlotWorld(){
   return new THREE.Vector3(-0.25, topY + 0.45, 0.55);
 }
 
-/* ========== soft paper stickers (thin box + bend, no billboard) ========== */
+/* ========== flat-thick stickers (slab + float + heavy shadow; NO bend/curl) ========== */
 const stickerTexList = [];
+
+async function resolveStickerFileList(){
+  try {
+    const r = await fetch(STICKER_API, { cache: 'no-store' });
+    if (r.ok){
+      const j = await r.json();
+      if (Array.isArray(j.items) && j.items.length){
+        return j.items.map((it) => ({ file: it.file, url: it.url }));
+      }
+      if (Array.isArray(j.files) && j.files.length){
+        return j.files.map((f) => ({ file: f, url: `${ASSET}/stickers/${f}` }));
+      }
+    }
+  } catch (e) { console.warn('sticker API', e); }
+  try {
+    const r = await fetch(STICKER_MANIFEST, { cache: 'no-store' });
+    if (r.ok){
+      const j = await r.json();
+      const excl = new Set(j.exclude || []);
+      const re = new RegExp(j.pattern || '^sticker-.*\\.png$', 'i');
+      return (j.include || []).filter((f) => !excl.has(f) && re.test(f))
+        .map((f) => ({ file: f, url: `${ASSET}/stickers/${f}` }));
+    }
+  } catch (e) { console.warn('sticker manifest', e); }
+  return ['sticker-strawberry.png','sticker-cat.png','sticker-lemon.png','sticker-peach.png','sticker-vibe.png','sticker-msb.png','sticker-blossom.png']
+    .map((f) => ({ file: f, url: `${ASSET}/stickers/${f}` }));
+}
+
 async function loadStickerTextures(){
-  // Official transparent albedo PNGs (STICKERS.md) — not greenscreen slices / canvas fakes
-  const files = [
-    'sticker-strawberry.png',
-    'sticker-cat.png',
-    'sticker-lemon.png',
-    'sticker-peach.png',
-    'sticker-vibe.png',
-    'sticker-msb.png',
-    'sticker-blossom.png',
-    // peel / variant accents (lower weight via duplicates of primaries in spawn)
-    'sticker-cat-peel.png',
-    'sticker-blossom-peel.png',
-    'sticker-strawberry-b.png',
-    'sticker-blossom-b.png',
-    'sticker-blossom-c.png',
-    'sticker-blossom-d.png',
-  ];
-  const primary = files.slice(0, 7);
-  const loads = primary.map((file) => new Promise((resolve) => {
-    texLoader.load(`${ASSET}/stickers/${file}`, (tex) => {
+  const entries = await resolveStickerFileList();
+  const loads = entries.map(({ file, url }) => new Promise((resolve) => {
+    texLoader.load(url, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
       const img = tex.image;
-      resolve({ tex, w: img?.width || 512, h: img?.height || 512, file, primary: true });
+      resolve({ tex, w: img?.width || 512, h: img?.height || 512, file,
+        primary: !/-(b|c|d|peel)\.png$/i.test(file) });
     }, undefined, () => resolve(null));
   }));
-  const variants = files.slice(7).map((file) => new Promise((resolve) => {
-    texLoader.load(`${ASSET}/stickers/${file}`, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 4;
-      const img = tex.image;
-      resolve({ tex, w: img?.width || 512, h: img?.height || 512, file, primary: false });
-    }, undefined, () => resolve(null));
-  }));
-  const got = (await Promise.all([...loads, ...variants])).filter(Boolean);
-  // weight primaries ~3x for spawn variety
+  const got = (await Promise.all(loads)).filter(Boolean);
   for (const g of got){
     stickerTexList.push(g);
-    if (g.primary){ stickerTexList.push(g, g); }
+    if (g.primary) stickerTexList.push(g, g);
   }
-  if (!stickerTexList.length) throw new Error('贴纸 PNG 加载失败（STICKERS.md）');
-  console.info('[studio] stickers loaded', got.map((g) => g.file));
+  if (!stickerTexList.length) throw new Error('贴纸 PNG 加载失败');
+  console.info('[studio] stickers hot-plug', got.map((g) => g.file));
 }
 
 function makeBackTex(){
@@ -486,127 +737,169 @@ const pointer = new THREE.Vector2(9999, 9999);
 const pointerWorld = new THREE.Vector3(9999, 9999, 9999);
 let pointerActive = false;
 
-/** Thin paper slab: subdivided planes front/back + edge rim; bend via vertex displace */
-function createPaperGeo(w, h, segX = 12, segY = 14){
-  const geo = new THREE.PlaneGeometry(w, h, segX, segY);
-  const pos = geo.attributes.position;
-  const rest = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++){
-    rest[i * 3] = pos.getX(i);
-    rest[i * 3 + 1] = pos.getY(i);
-    rest[i * 3 + 2] = pos.getZ(i);
-  }
-  geo.userData.rest = rest;
-  geo.userData.w = w;
-  geo.userData.h = h;
-  return geo;
+/** Soft radial blob texture for contact / drop shadows (ref: sticker-style-flat-thick) */
+function makeSoftBlobTex(){
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(S*0.5, S*0.5, S*0.05, S*0.5, S*0.5, S*0.5);
+  g.addColorStop(0, 'rgba(26,18,12,0.70)');
+  g.addColorStop(0.35, 'rgba(26,18,12,0.38)');
+  g.addColorStop(0.7, 'rgba(26,18,12,0.12)');
+  g.addColorStop(1, 'rgba(26,18,12,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,S,S);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.NoColorSpace;
+  return tex;
+}
+const softBlobTex = makeSoftBlobTex();
+const SHADOW_LIGHT_DIR = new THREE.Vector3(0.45, 0, 0.35); // blob offset on receiving plane (key from upper-right)
+
+function makeBlobShadow(size){
+  const mat = new THREE.MeshBasicMaterial({
+    map: softBlobTex,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    depthTest: true,
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.scale.setScalar(size);
+  mesh.renderOrder = 1;
+  return mesh;
 }
 
-function bendPaper(geo, curlAmt, rollAmt, twist, time){
-  const pos = geo.attributes.position;
-  const rest = geo.userData.rest;
-  const w = geo.userData.w, h = geo.userData.h;
-  for (let i = 0; i < pos.count; i++){
-    const x = rest[i * 3], y = rest[i * 3 + 1];
-    const u = x / (w * 0.5);
-    const v = y / (h * 0.5);
-    const wave = Math.sin(v * Math.PI * 0.85 + time) * curlAmt;
-    const edgeRoll = (u * u) * rollAmt * (0.55 + 0.45 * Math.sin(time * 0.7 + v));
-    const twistZ = twist * u * v * 0.15;
-    pos.setXYZ(i, x, y, wave + edgeRoll + twistZ);
+/** Rigid flat-thick PVC/card slab — NO bend/curl. Shadows via castShadow + soft blob. */
+function createFlatThickSticker(w, h, tex, thickness = 0.022){
+  const group = new THREE.Group();
+  const frontMat = new THREE.MeshStandardMaterial({
+    map: tex, roughness: 0.68, metalness: 0.0,
+    transparent: true, alphaTest: 0.35, depthWrite: true, side: THREE.DoubleSide,
+  });
+  const whiteMat = new THREE.MeshStandardMaterial({
+    color: 0xF7F0E6, roughness: 0.8, metalness: 0.0,
+  });
+  const rim = new THREE.Mesh(new THREE.BoxGeometry(w, h, thickness), whiteMat);
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(w, h), frontMat);
+  front.position.z = thickness * 0.5 + 0.0005;
+  front.castShadow = true; rim.castShadow = true;
+  front.receiveShadow = true; rim.receiveShadow = true;
+  // Local "behind" soft shadow card — always sits just behind the slab to pop white edge
+  // (matches sticker-style-flat-thick drop-shadow language even mid-air)
+  const backMat = new THREE.MeshBasicMaterial({
+    map: softBlobTex,
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const backShade = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.25, h * 1.25), backMat);
+  backShade.position.set(0.02 * Math.max(w,h), -0.025 * Math.max(w,h), -(thickness * 0.5 + 0.004));
+  backShade.renderOrder = 0;
+  group.add(rim, front, backShade);
+  group.userData.front = front;
+  group.userData.backShade = backShade;
+  group.userData.thickness = thickness;
+  group.userData.footprint = Math.max(w, h);
+  return group;
+}
+
+/** Project soft blob under sticker onto desk top or ground; offset like style-lock drop shadow. */
+function syncStickerShadow(s){
+  const gp = s.group.position;
+  const onDesk = Math.abs(gp.x) < 1.35 && Math.abs(gp.z) < 1.45 && gp.y > topY - 0.08;
+  const planeY = onDesk ? (topY + 0.0035) : 0.01;
+  const height = Math.max(0.008, gp.y - planeY);
+  const foot = s.group.userData.footprint || s.size || 0.3;
+  const prox = THREE.MathUtils.clamp(1 - height / 1.35, 0, 1);
+  // Hard requirement: readable shadow behind every sticker (style-flat-thick)
+  const op = THREE.MathUtils.clamp(0.22 + prox * 0.48, 0.22, 0.72);
+  const sc = foot * (1.2 + height * 0.65);
+  const ox = SHADOW_LIGHT_DIR.x * (0.05 + height * 0.14);
+  const oz = SHADOW_LIGHT_DIR.z * (0.05 + height * 0.14);
+  if (s.shadow){
+    s.shadow.position.set(gp.x + ox, planeY, gp.z + oz);
+    s.shadow.scale.set(sc * 1.25, sc * 1.0, 1);
+    s.shadow.material.opacity = op;
+    s.shadow.visible = true;
   }
-  pos.needsUpdate = true;
-  geo.computeVertexNormals();
+  if (s.shadowSoft){
+    s.shadowSoft.position.set(gp.x + ox * 1.4, planeY + 0.0012, gp.z + oz * 1.4);
+    s.shadowSoft.scale.set(sc * 1.7, sc * 1.35, 1);
+    s.shadowSoft.material.opacity = Math.max(0.12, op * 0.5);
+    s.shadowSoft.visible = true;
+  }
+  // Local backShade opacity: stronger when floating (no nearby plane contact)
+  const bs = s.group.userData.backShade;
+  if (bs && bs.material){
+    bs.material.opacity = THREE.MathUtils.clamp(0.35 + (1 - prox) * 0.35, 0.35, 0.7);
+  }
 }
 
 function spawnSticker(forceLanded = false){
   if (stickers.length >= MAX_STICKERS){
-    let victim = stickers.find((s) => s.state === 'landed' && s.age > 4);
-    if (!victim) victim = stickers[0];
+    let victim = stickers.find((s) => s.state === 'landed' && s.age > 4) || stickers[0];
     if (victim){
       scene.remove(victim.group);
-      scene.remove(victim.shadow);
+      if (victim.shadow) scene.remove(victim.shadow);
+      if (victim.shadowSoft) scene.remove(victim.shadowSoft);
       stickers.splice(stickers.indexOf(victim), 1);
     }
   }
   const pick = stickerTexList[(Math.random() * stickerTexList.length) | 0];
   const aspect = (pick.w && pick.h) ? (pick.w / pick.h) : 1;
-  const size = 0.36 + Math.random() * 0.22;
+  const size = 0.22 + Math.random() * 0.14;
   const w = size * Math.min(1.35, Math.max(0.7, aspect));
   const h = size;
-  const thickness = 0.012; // ~1.2mm paper thickness in scene scale
-  const geo = createPaperGeo(w, h, 12, 14);
-  const frontMat = new THREE.MeshStandardMaterial({
-    map: pick.tex,
-    roughness: 0.75,
-    metalness: 0.0,
-    side: THREE.FrontSide,
-    transparent: true,
-    alphaTest: 0.35,
-    depthWrite: true,
-  });
-  const backMat = new THREE.MeshStandardMaterial({
-    map: backTex,
-    color: 0xF5F2EC,
-    roughness: 0.85,
-    metalness: 0.0,
-    side: THREE.BackSide,
-  });
-  const front = new THREE.Mesh(geo, frontMat);
-  const back = new THREE.Mesh(geo.clone(), backMat);
-  back.position.z = -thickness;
-  front.castShadow = true;
-  back.castShadow = true;
-
-  // thickness = front/back separation; white paper edge reads when curling (no rigid rim boxes)
-  const group = new THREE.Group();
-  group.add(front, back);
+  const thickness = 0.020 + Math.random() * 0.008; // rigid slab depth for cast + blob
+  const group = createFlatThickSticker(w, h, pick.tex, thickness);
+  const front = group.userData.front;
 
   const slot = getSlotWorld();
   group.position.copy(slot);
-  group.position.x += (Math.random() - 0.5) * 0.08;
-  group.position.y += (Math.random() - 0.5) * 0.04;
+  group.position.x += (Math.random() - 0.5) * 0.06;
+  group.position.y += (Math.random() - 0.5) * 0.03;
+  // slight tilt only — no curl
   group.rotation.set(
-    (Math.random() - 0.5) * 0.3,
-    (Math.random() - 0.5) * 0.4,
-    (Math.random() - 0.5) * 0.5
+    (Math.random() - 0.5) * 0.25,
+    (Math.random() - 0.5) * 0.35,
+    (Math.random() - 0.5) * 0.35
   );
 
-  const sh = new THREE.Mesh(
-    new THREE.CircleGeometry(size * 0.45, 24),
-    new THREE.MeshBasicMaterial({ color: 0x2A221C, transparent: true, opacity: 0, depthWrite: false })
-  );
-  sh.rotation.x = -Math.PI / 2;
-  sh.position.y = topY + 0.014;
+  const sh = makeBlobShadow(size * 1.2);
+  const shSoft = makeBlobShadow(size * 1.6);
   scene.add(sh);
+  scene.add(shSoft);
   scene.add(group);
 
-  const willLand = forceLanded || Math.random() < 0.42;
-  const floatDur = 2.8 + Math.random() * 2.4;
-  const driftX = 0.6 + Math.random() * 2.8;
-  const driftZ = (Math.random() - 0.5) * 1.4;
-  const peakY = 1.6 + Math.random() * 2.0;
+  const willLand = forceLanded || Math.random() < 0.48;
+  const floatDur = 2.6 + Math.random() * 2.2;
+  const driftX = 0.45 + Math.random() * 1.8;
+  const driftZ = (Math.random() - 0.5) * 1.0;
+  const peakY = 1.1 + Math.random() * 1.4;
 
   const s = {
-    group, front, back, geo, shadow: sh,
+    group, front, shadow: sh, shadowSoft: shSoft,
     state: forceLanded ? 'landed' : 'eject',
-    age: 0, t: 0, size,
-    curl: 0.07 + Math.random() * 0.10,
-    roll: 0.035 + Math.random() * 0.06,
-    twist: (Math.random() - 0.5) * 0.8,
+    age: 0, t: 0, size, thickness,
     spin: new THREE.Vector3(
-      (Math.random() - 0.5) * 0.6,
-      (Math.random() - 0.5) * 1.2,
-      (Math.random() - 0.5) * 0.8
+      (Math.random() - 0.5) * 0.35,
+      (Math.random() - 0.5) * 0.7,
+      (Math.random() - 0.5) * 0.4
     ),
     willLand, floatDur,
     origin: group.position.clone(),
     home: null,
-    vel: new THREE.Vector3(0.7 + Math.random() * 0.55, 0.85 + Math.random() * 0.45, (Math.random() - 0.5) * 0.28),
+    vel: new THREE.Vector3(0.55 + Math.random() * 0.4, 0.7 + Math.random() * 0.35, -0.15 + (Math.random() - 0.5) * 0.2),
     landPos: new THREE.Vector3(
-      slot.x + driftX * (0.4 + Math.random() * 0.5),
-      topY + 0.02,
-      slot.z + driftZ + 0.5 + Math.random() * 0.9
+      (Math.random() - 0.35) * 0.9,
+      topY + thickness * 0.5 + 0.006,
+      0.55 + Math.random() * 0.55
     ),
     peakY, driftX, driftZ,
     bounce: 0, ejectT: 0, pathT: 0,
@@ -614,22 +907,25 @@ function spawnSticker(forceLanded = false){
     pushVel: new THREE.Vector3(),
     breathe: Math.random() * Math.PI * 2,
   };
-  s.landPos.x = THREE.MathUtils.clamp(s.landPos.x, -2.0, 2.0);
-  s.landPos.z = THREE.MathUtils.clamp(s.landPos.z, -0.9, 1.05);
+  // LOCK: 3–5 thick slabs on front apron between printer & sketchbook
+  s.landPos.x = THREE.MathUtils.clamp(-0.15 + Math.random() * 0.55, -0.25, 0.55);
+  s.landPos.z = THREE.MathUtils.clamp(0.55 + Math.random() * 0.35, 0.45, 0.95);
 
   if (forceLanded){
-    group.position.copy(s.landPos);
-    group.position.x += (Math.random() - 0.5) * 0.8;
-    group.position.z += (Math.random() - 0.5) * 0.5;
-    group.position.x = THREE.MathUtils.clamp(group.position.x, -2.0, 1.9);
-    group.position.z = THREE.MathUtils.clamp(group.position.z, -0.85, 1.0);
-    group.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.2, Math.random() * Math.PI, (Math.random() - 0.5) * 0.15);
-    bendPaper(geo, s.curl * 0.4, s.roll * 0.5, s.twist * 0.3, Math.random() * 10);
-    if (back.geometry !== geo) bendPaper(back.geometry, s.curl * 0.4, s.roll * 0.5, s.twist * 0.3, Math.random() * 10);
-    sh.position.set(group.position.x, topY + 0.014, group.position.z);
-    sh.material.opacity = 0.12;
+    const i = stickers.filter((x)=>x.state==='landed').length;
+    group.position.set(
+      -0.12 + i * 0.2 + (Math.random()-0.5)*0.03,
+      topY + thickness * 0.5 + 0.012,
+      0.58 + (Math.random()-0.5)*0.06
+    );
+    // face-up on desk: local +Z -> world +Y
+    group.rotation.set(-Math.PI / 2, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.08);
     s.home = group.position.clone();
     s.landPos.copy(group.position);
+    s.spin.set(0,0,0);
+    syncStickerShadow(s);
+  } else {
+    syncStickerShadow(s);
   }
   stickers.push(s);
   return s;
@@ -684,12 +980,7 @@ function updateSticker(s, dt){
   s.age += dt;
   s.t += dt;
   s.breathe += dt * 1.4;
-
-  const curlPulse = s.curl * (0.85 + 0.15 * Math.sin(s.breathe));
-  bendPaper(s.geo, curlPulse, s.roll, s.twist, s.t * 1.6);
-  if (s.back.geometry !== s.geo){
-    bendPaper(s.back.geometry, curlPulse, s.roll, s.twist, s.t * 1.6);
-  }
+  // flat-thick: no bend/curl — only rigid tilt from spin
 
   if (s.state === 'eject'){
     s.ejectT += dt;
@@ -699,6 +990,7 @@ function updateSticker(s, dt){
     s.group.rotation.x += s.spin.x * dt;
     s.group.rotation.y += s.spin.y * dt;
     s.group.rotation.z += s.spin.z * dt;
+    syncStickerShadow(s);
     if (s.ejectT > 0.35){
       s.state = 'float';
       s.pathT = 0;
@@ -741,8 +1033,7 @@ function updateSticker(s, dt){
     s.group.rotation.y += s.spin.y * dt * 0.55;
     s.group.rotation.z += s.spin.z * dt * 0.4;
 
-    s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
-    s.shadow.material.opacity = THREE.MathUtils.clamp(0.04 + (2.2 - (s.group.position.y - topY)) * 0.02, 0.02, 0.08);
+    syncStickerShadow(s);
 
     if (u >= 1){
       if (s.willLand){
@@ -760,10 +1051,10 @@ function updateSticker(s, dt){
     const u = Math.min(1, s.fallT / dur);
     const ease = u * u * (3 - 2 * u);
     s.group.position.lerpVectors(s.fallFrom, s.landPos, ease);
-    const flatX = -Math.PI / 2 + Math.sin(s.breathe) * 0.05;
-    s.group.rotation.x += (flatX - s.group.rotation.x) * ease * 0.2;
-    s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
-    s.shadow.material.opacity = 0.04 + ease * 0.1;
+    const flatX = -Math.PI / 2;
+    s.group.rotation.x += (flatX - s.group.rotation.x) * Math.min(1, ease * 0.35);
+    s.group.rotation.z *= (1 - ease * 0.2);
+    syncStickerShadow(s);
     if (u >= 1){
       s.state = 'landed';
       s.bounce = 1;
@@ -775,11 +1066,10 @@ function updateSticker(s, dt){
       s.bounce -= dt * 2.2;
       const b = Math.max(0, s.bounce);
       s.group.position.y = s.landPos.y + Math.sin((1 - b) * Math.PI) * 0.08 * b;
-      s.shadow.material.opacity = 0.14 - b * 0.04;
-      s.shadow.scale.setScalar(1 + (1 - b) * 0.15);
+      syncStickerShadow(s);
     } else {
       s.group.position.y = s.landPos.y;
-      s.shadow.material.opacity = 0.12;
+      syncStickerShadow(s);
     }
     if (pointerActive && !reduceMotion){
       _push.copy(s.group.position).sub(pointerWorld);
@@ -789,7 +1079,7 @@ function updateSticker(s, dt){
         _push.normalize().multiplyScalar((1 - dist / 0.9) * 0.015);
         s.group.position.add(_push);
         s.group.position.y = s.landPos.y;
-        s.shadow.position.set(s.group.position.x, topY + 0.014, s.group.position.z);
+        syncStickerShadow(s);
       }
     }
   } else if (s.state === 'fade'){
@@ -798,11 +1088,13 @@ function updateSticker(s, dt){
     s.group.position.x += dt * 0.5;
     const op = 1 - s.fadeT / 0.8;
     s.front.material.opacity = Math.max(0, op);
-    s.back.material.opacity = Math.max(0, op);
-    s.shadow.material.opacity *= 0.9;
+    s.group.traverse((o)=>{ if(o.isMesh && o.material && o.material.transparent) o.material.opacity = Math.max(0, op); });
+    if (s.shadow) s.shadow.material.opacity *= 0.88;
+    if (s.shadowSoft) s.shadowSoft.material.opacity *= 0.88;
     if (s.fadeT > 0.8){
       scene.remove(s.group);
-      scene.remove(s.shadow);
+      if (s.shadow) scene.remove(s.shadow);
+      if (s.shadowSoft) scene.remove(s.shadowSoft);
       stickers.splice(stickers.indexOf(s), 1);
     }
   }
@@ -820,8 +1112,8 @@ function tick(){
   scrollCueEl.style.opacity = String(1 - Math.min(1, scrollProg * 2.2));
   if (scrollProg > 0.55){
     hintEl.innerHTML = loadedProps.desk
-      ? '工作台 · 切割机 / 打印机 / 贴纸本 / 台灯 · <em>滚轮</em>可回到首屏'
-      : '工作台精模待接入 · <em>滚轮</em>可回到首屏（当前仅对光用临时木纹桌）';
+      ? '工作台 · 电脑本 / 打印机 / 速写本 / 台灯 · <em>滚轮</em>可回到首屏'
+      : '工作台精模待接入 · <em>滚轮</em>可回到首屏';
   } else {
     hintEl.innerHTML = '贴纸持续飘出 · <em>鼠标靠近</em>贴纸会躲开';
   }
@@ -833,7 +1125,7 @@ function tick(){
   }
 
   if (printerGroup){
-    printerGroup.position.y = topY + Math.sin(clock.elapsedTime * 1.2) * 0.006;
+    printerGroup.position.y = Math.sin(clock.elapsedTime * 1.2) * 0.004;
   }
   if (lampGroup && lampGroup.userData.light){
     const pulse = 1.15 + Math.sin(clock.elapsedTime * 1.5) * 0.2;
@@ -865,23 +1157,37 @@ addEventListener('resize', () => {
 
 /* boot */
 await loadStickerTextures();
+await loadStudioHDRI();
 const mount = await mountProps();
-for (let i = 0; i < 6; i++) spawnSticker(true);
-for (let i = 0; i < 5; i++){
+buildPrinterSpitStrip();
+decorateSketchbookPages();
+refreshCameras(); applyCamera();
+// LOCK foreground: 4 flat-thick slabs in a row near front edge (heavy contact shadow)
+const lockRow = [-0.25, -0.05, 0.15, 0.35];
+for (let i = 0; i < lockRow.length; i++){
+  const s = spawnSticker(true);
+  s.group.position.set(lockRow[i], topY + s.thickness * 0.5 + 0.012, 0.72);
+  s.group.rotation.set(-Math.PI / 2, (i - 1.5) * 0.12, 0);
+  s.landPos.copy(s.group.position);
+  s.home = s.group.position.clone();
+  syncStickerShadow(s);
+}
+for (let i = 0; i < 4; i++){
   const s = spawnSticker(false);
   s.state = 'float';
-  s.pathT = 0.2 + Math.random() * 0.55;
+  s.pathT = 0.2 + Math.random() * 0.45;
   s.age = s.pathT * s.floatDur;
   const u = s.pathT;
   const slot = getSlotWorld();
   s.group.position.set(
-    slot.x + s.driftX * u,
-    slot.y + Math.sin(u * Math.PI) * s.peakY * 0.85 + u * 0.2,
-    slot.z + s.driftZ * u + u * 0.45
+    slot.x + s.driftX * u * 0.7,
+    slot.y + Math.sin(u * Math.PI) * s.peakY * 0.7 + u * 0.1,
+    slot.z + s.driftZ * u + u * 0.25
   );
   s.home = s.group.position.clone();
+  syncStickerShadow(s);
 }
-console.info('[studio] AA=MSAA+SMAA pr=', renderer.getPixelRatio(), 'missing=', mount.missing);
+console.info('[studio] LOCK-tune flat-thick + HDRI09@4000K pr=', renderer.getPixelRatio(), 'missing=', mount.missing, 'topY', tableTopY);
 tick();
 
 } catch (e) {

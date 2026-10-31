@@ -56,5 +56,44 @@ async function makeGif(id){ // 2.4s seamless bounce+wobble loop, 24 frames x 100
   const c=await sharp(fr).extract({left:Math.floor((m.width-w)/2),top:Math.floor((m.height-h)/2),width:w,height:h}).toBuffer();
   frames.push(await sharp({create:{width:S,height:S,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:c,left:Math.floor((S-w)/2),top:Math.max(0,Math.floor((S-h)/2-10*Math.sin(a)))}]).raw().toBuffer());}
  await sharp(Buffer.concat(frames),{raw:{width:S,height:S*N,channels:4,pageHeight:S}}).gif({delay:Array(N).fill(100),loop:0}).toFile(path.join(DATA,id+'.gif'));}
+
+app.get('/api/studio-stickers',(req,res)=>{
+  const primary=path.join(__dirname,'public','studio','webgl-assets','stickers-flat-thick');
+  const legacy=path.join(__dirname,'public','studio','webgl-assets','stickers');
+  const source=path.join(__dirname,'..','vibesticker','cartoon','cards','rebuild','sticker-studio','user-picks','stickers-flat-thick');
+  let manifest={include:[],exclude:[],pattern:'^sticker-.*\\.png$',style:'flat-thick'};
+  for (const dir of [primary, legacy]){
+    try{ manifest={...manifest,...JSON.parse(fs.readFileSync(path.join(dir,'manifest.json'),'utf8'))}; break; }catch(e){}
+  }
+  const exclude=new Set((manifest.exclude||[]).map(String));
+  const re=new RegExp(manifest.pattern||'^sticker-.*\\.png$','i');
+  function listDir(dir, urlBase){
+    let files=[]; try{files=fs.readdirSync(dir)}catch(e){return []}
+    return files.filter(f=>!exclude.has(f)&&re.test(f)).map(f=>({file:f, url:`${urlBase}/${f}`}));
+  }
+  // Primary pack is the hot-plug source; legacy only if primary empty
+  let listed=listDir(primary, '/studio/webgl-assets/stickers-flat-thick');
+  if(!listed.length) listed=listDir(source, '/api/studio-sticker-file').map(x=>({file:x.file, url:`/api/studio-sticker-file/${encodeURIComponent(x.file)}`}));
+  if(!listed.length) listed=listDir(legacy, '/studio/webgl-assets/stickers');
+  const order=manifest.include||[];
+  listed.sort((a,b)=>{
+    const ia=order.indexOf(a.file), ib=order.indexOf(b.file);
+    if(ia<0&&ib<0) return a.file.localeCompare(b.file);
+    if(ia<0) return 1; if(ib<0) return -1; return ia-ib;
+  });
+  res.json({files:listed.map(x=>x.file), items:listed, base:'/studio/webgl-assets/stickers-flat-thick/', style:'flat-thick', primary:true});
+});
+app.get('/api/studio-sticker-file/:name',(req,res)=>{
+  const name=path.basename(req.params.name);
+  if(!/^sticker-.*\.png$/i.test(name)) return res.sendStatus(400);
+  const cands=[
+    path.join(__dirname,'public','studio','webgl-assets','stickers-flat-thick',name),
+    path.join(__dirname,'..','vibesticker','cartoon','cards','rebuild','sticker-studio','user-picks','stickers-flat-thick',name),
+    path.join(__dirname,'public','studio','webgl-assets','stickers',name),
+  ];
+  for(const c of cands){ if(fs.existsSync(c)) return res.sendFile(c); }
+  res.sendStatus(404);
+});
+app.get('/favicon.ico',(q,r)=>r.redirect(301,'/favicon.svg'));
 app.get('/health',(q,r)=>r.json({ok:true,provider:provider.name(),stripeMock:STRIPE_MOCK}));
 app.listen(process.env.PORT||3000,()=>console.log('listening',{provider:provider.name(),STRIPE_MOCK}));
