@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>进房后逛房间 · 鼠标视差</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1a1816; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    .hint {
+      position: fixed; left: 16px; bottom: 16px; z-index: 2;
+      font: 12px/1.4 system-ui, sans-serif; color: rgba(255,255,255,.55);
+      pointer-events: none; user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">移动鼠标 · 停 3 秒后自动轻晃</div>
+  <script src="./three.min.js"></script>
+  <script>
+  // —— simplex 2D（等价官网 n2d）——
+  function createNoise2D(random = Math.random) {
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor((i + 1) * random());
+      const t = p[i]; p[i] = p[j]; p[j] = t;
+    }
+    const perm = new Uint8Array(512);
+    const permMod12 = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) {
+      perm[i] = p[i & 255];
+      permMod12[i] = perm[i] % 12;
+    }
+    const grad3 = [
+      [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+      [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+      [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1],
+    ];
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    return function n2d(xin, yin) {
+      const s = (xin + yin) * F2;
+      const i = Math.floor(xin + s);
+      const j = Math.floor(yin + s);
+      const t = (i + j) * G2;
+      const x0 = xin - (i - t);
+      const y0 = yin - (j - t);
+      const i1 = x0 > y0 ? 1 : 0;
+      const j1 = x0 > y0 ? 0 : 1;
+      const x1 = x0 - i1 + G2;
+      const y1 = y0 - j1 + G2;
+      const x2 = x0 - 1 + 2 * G2;
+      const y2 = y0 - 1 + 2 * G2;
+      const ii = i & 255, jj = j & 255;
+      const gi0 = grad3[permMod12[ii + perm[jj]]];
+      const gi1 = grad3[permMod12[ii + i1 + perm[jj + j1]]];
+      const gi2 = grad3[permMod12[ii + 1 + perm[jj + 1]]];
+      let n0 = 0, n1 = 0, n2 = 0;
+      let t0 = 0.5 - x0 * x0 - y0 * y0;
+      if (t0 >= 0) { t0 *= t0; n0 = t0 * t0 * (gi0[0] * x0 + gi0[1] * y0); }
+      let t1 = 0.5 - x1 * x1 - y1 * y1;
+      if (t1 >= 0) { t1 *= t1; n1 = t1 * t1 * (gi1[0] * x1 + gi1[1] * y1); }
+      let t2 = 0.5 - x2 * x2 - y2 * y2;
+      if (t2 >= 0) { t2 *= t2; n2 = t2 * t2 * (gi2[0] * x2 + gi2[1] * y2); }
+      return 70.14805770653952 * (n0 + n1 + n2);
+    };
+  }
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const damp = (a, b, lambda, dt) => lerp(a, b, 1 - Math.exp(-lambda * dt));
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function mapRange(e, t, n, i, r) {
+    const s = i + (e - t) / (n - t) * (r - i);
+    return clamp(s, Math.min(i, r), Math.max(i, r));
+  }
+  function piecewise(points) {
+    return (x) => {
+      if (x <= points[0][0]) return points[0][1];
+      if (x >= points[points.length - 1][0]) return points[points.length - 1][1];
+      for (let i = 0; i < points.length - 1; i++) {
+        const [x0, y0] = points[i];
+        const [x1, y1] = points[i + 1];
+        if (x >= x0 && x <= x1) return lerp(y0, y1, (x - x0) / (x1 - x0));
+      }
+      return points[points.length - 1][1];
+    };
+  }
+  const angleDemult = piecewise([[0.6,0.6],[0.8,0.76],[1.3,0.9],[1.6,1],[2,1.2]]);
+  const n2d = createNoise2D();
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+
+  // 进房稳态：底座 z=10，注视 Q = camTargetZ - 3 → 7
+  const BASE_Z = 10;
+  const LOOK_AT_Z = 7;
+  const planeZ = 0;
+
+  const pointer = { x: 0, y: 0 };
+  let useTouch = false;
+  const disableParallax = false;
+
+  let lookAtNX = 0, lookAtNY = 0;
+  let idleInfluence = 0, timeWithoutMove = 0, isIdle = false;
+  let pnx = 0, pny = 0, prevNX = 0;
+  let easeRotX = 0, easeRotX2 = 0;
+  let velX = 0;
+  let hotspotZoomProgress = 0;
+  let needsInstant = true;
+  let last = performance.now();
+  let elapsed = 0;
+
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x222222 })
+  );
+  plane.position.z = planeZ;
+  scene.add(plane);
+
+  const loader = new THREE.TextureLoader();
+  loader.load('./hero.png', (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    plane.material.map = tex;
+    plane.material.color.set(0xffffff);
+    plane.material.needsUpdate = true;
+    plane.userData.aspect = (tex.image.width || 2) / (tex.image.height || 1);
+    fitPlane();
+  });
+
+  function fitPlane() {
+    const dist = Math.abs(BASE_Z - planeZ);
+    const vFov = THREE.MathUtils.degToRad(camera.fov);
+    const viewH = 2 * Math.tan(vFov / 2) * dist;
+    const viewW = viewH * camera.aspect;
+    const imgAspect = plane.userData.aspect || 2;
+    // cover
+    let w = viewW, h = viewW / imgAspect;
+    if (h < viewH) { h = viewH; w = viewH * imgAspect; }
+    plane.scale.set(w * 1.02, h * 1.02, 1);
+  }
+
+  function onPointer(e) {
+    const w = window.innerWidth, h = window.innerHeight;
+    const x = e.clientX, y = e.clientY;
+    pointer.x = mapRange(x, 0, w, -1, 1);
+    pointer.y = mapRange(y, 0, h, 1, -1);
+  }
+  window.addEventListener('pointermove', onPointer, { passive: true });
+  window.addEventListener('pointerdown', (e) => {
+    useTouch = e.pointerType === 'touch';
+    onPointer(e);
+  }, { passive: true });
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    fitPlane();
+    needsInstant = true;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function updateLookAt(dt, instant) {
+    const aspect = camera.aspect;
+    let rx = clamp(pointer.x, -1, 1);
+    let ry = clamp(pointer.y, -1, 1);
+    if (disableParallax || useTouch) { rx = 0; ry = 0; }
+
+    const moved = Math.abs(rx - pnx) > 0.001 || Math.abs(ry - pny) > 0.001;
+    pnx = rx; pny = ry;
+    if (moved) { timeWithoutMove = 0; isIdle = false; }
+    else {
+      timeWithoutMove += dt;
+      if (timeWithoutMove > 3000) isIdle = true;
+    }
+    if (disableParallax) {
+      isIdle = true; timeWithoutMove = 3001; idleInfluence = 1;
+    }
+
+    if (aspect > 1) rx /= aspect; else ry *= aspect;
+
+    idleInfluence = damp(idleInfluence, isIdle ? 1 : 0, isIdle ? 0.006 : 0.1, dt);
+
+    const u = 0.3 * idleInfluence;
+    const d = 5e-4 * elapsed;
+    let idleX = (0.6 * Math.sin(d) + 0.4 * Math.sin(2.3 * d)) * u;
+    let idleY = (0.6 * Math.sin(1.3 * d) + 0.4 * Math.sin(0.7 * d)) * u;
+    const B = 7e-4 * elapsed;
+    const C = 0.05 * idleInfluence;
+    idleX += n2d(B, 0) * C;
+    idleY += n2d(0, B) * C;
+    rx = lerp(rx, idleX, idleInfluence);
+    ry = lerp(ry, idleY, idleInfluence);
+
+    // 进房取反
+    rx = -rx;
+    ry = -ry;
+
+    const dem = angleDemult(aspect);
+    rx *= dem; ry *= dem;
+
+    const hotspotParallaxMult = mapRange(hotspotZoomProgress, 0.5, 1, 1, 0.15);
+    rx *= hotspotParallaxMult;
+    ry *= hotspotParallaxMult;
+
+    lookAtNX = damp(lookAtNX, rx, 0.07, dt);
+    lookAtNY = damp(lookAtNY, ry, 0.07, dt);
+
+    const cx = camera.position.x;
+    const cy = camera.position.y;
+    const Q = LOOK_AT_Z;
+    const m = Math.abs(camera.position.z - Q);
+    const angleScale = 0.14;
+    let ax = lookAtNX * angleScale;
+    let ay = lookAtNY * angleScale;
+    ay = lerp(ay * 0.3, ay, idleInfluence);
+
+    camera.position.x = cx + Math.sin(ax) * m;
+    camera.position.y = cy + Math.sin(ay) * m;
+    camera.position.z = Q + Math.cos(ax) * Math.cos(ay) * m;
+    camera.lookAt(cx, cy, Q);
+
+    if (instant) prevNX = rx;
+
+    const dnx = rx - prevNX;
+    prevNX = rx;
+    easeRotX = damp(easeRotX, -0.79 * velX, 0.1, dt);
+    easeRotX2 = damp(easeRotX2, -0.15 * dnx, 0.05, dt);
+    camera.rotateZ(easeRotX);
+    camera.rotateZ(easeRotX2);
+  }
+
+  function frame(now) {
+    const dt = Math.min(now - last, 50);
+    last = now;
+    elapsed += dt;
+
+    camera.position.set(0, 0, BASE_Z);
+    camera.quaternion.identity();
+
+    updateLookAt(dt, needsInstant);
+    needsInstant = false;
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
